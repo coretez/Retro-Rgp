@@ -1,3 +1,5 @@
+import { definitionId } from "./identity.js";
+
 // The solo game uses one catalog for encounter generation, AI and its manual.
 // SRD-derived entries identify their source; the remaining creatures are original.
 export const ROGUE_BESTIARY = {
@@ -610,8 +612,16 @@ export const ROGUE_BESTIARY = {
   },
 };
 
+for (const [key, entry] of Object.entries(ROGUE_BESTIARY)) {
+  entry.definitionId = definitionId("actor", `creature:${key}`);
+  entry.key = key;
+}
+
 export const ROGUE_BESTIARY_LIST = Object.entries(ROGUE_BESTIARY).map(
-  ([id, entry]) => ({ id, ...entry }),
+  ([key, entry]) => ({
+    id: entry.definitionId,
+    ...entry,
+  }),
 );
 
 export function bestiaryView() {

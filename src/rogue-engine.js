@@ -1,4 +1,3 @@
-import { createHash, randomUUID } from "node:crypto";
 import { Dice, RuleError, requireRule as check } from "./dice.js";
 import { generateDungeon } from "./dungeon-generator.js";
 import { ROGUE_BESTIARY } from "./rogue-bestiary.js";
@@ -21,6 +20,12 @@ import {
   issueGroupOrder,
   reconcileGroupLeadership,
 } from "./group-logic.js";
+import {
+  definitionId,
+  isUuid,
+  migratedInstanceId,
+  newInstanceId,
+} from "./identity.js";
 
 export const ROGUE_RULESET = "solo-roguelike-v2";
 export const DIRECTIONS = {
@@ -79,6 +84,10 @@ const ROGUE_EQUIPMENT = {
     acBonus: 2,
   },
 };
+for (const [key, value] of Object.entries(ROGUE_EQUIPMENT)) {
+  value.definitionId = definitionId("item", key);
+  value.key = key;
+}
 
 const HERO_ARCHETYPES = {
   fighter: {
@@ -88,7 +97,7 @@ const HERO_ARCHETYPES = {
     armor: "chain_shirt",
     offhand: null,
     levelHp: 7,
-    power: { id: "second_wind", name: "Second Wind", uses: 1 },
+    power: { key: "second_wind", name: "Second Wind", uses: 1 },
   },
   mage: {
     name: "Mage",
@@ -97,7 +106,7 @@ const HERO_ARCHETYPES = {
     armor: "mage_robes",
     offhand: null,
     levelHp: 5,
-    power: { id: "magic_missile", name: "Magic Missile", uses: 3 },
+    power: { key: "magic_missile", name: "Magic Missile", uses: 3 },
   },
   cleric: {
     name: "Cleric",
@@ -106,9 +115,13 @@ const HERO_ARCHETYPES = {
     armor: "chain_shirt",
     offhand: "reinforced_shield",
     levelHp: 6,
-    power: { id: "healing_word", name: "Healing Word", uses: 2 },
+    power: { key: "healing_word", name: "Healing Word", uses: 2 },
   },
 };
+for (const [key, value] of Object.entries(HERO_ARCHETYPES)) {
+  value.definitionId = definitionId("actor-archetype", key);
+  value.key = key;
+}
 
 const HERO_HIT_DICE = { fighter: 10, mage: 6, cleric: 8 };
 
@@ -186,11 +199,17 @@ const ROGUE_RELICS = {
     effect: "+1 to weapon attacks permanently",
   },
 };
+for (const [key, value] of Object.entries(ROGUE_RELICS)) {
+  value.definitionId = definitionId("item", key);
+  value.key = key;
+}
 
 const relicForDepth = ["tome_vigor", "wand_arc", "tome_might", "scroll_flame"];
 
 const equipmentItem = (id, kind, equipped = false) => ({
   id,
+  definitionId: definitionId("item", kind),
+  entityType: "item",
   kind,
   ...ROGUE_EQUIPMENT[kind],
   itemType: "equipment",
@@ -198,8 +217,6 @@ const equipmentItem = (id, kind, equipped = false) => ({
   equipped,
 });
 
-const stableId = (value) =>
-  createHash("sha256").update(value).digest("hex").slice(0, 16);
 const center = (room) => ({
   x: room.x + Math.floor(room.width / 2),
   y: room.y + Math.floor(room.height / 2),
@@ -217,7 +234,7 @@ function buildEnemyGroups(enemies, depth) {
     (enemy) => ROGUE_BESTIARY[enemy.template].faction,
   );
   return [...factions.entries()].map(([faction, actors]) => {
-    const members = actors
+    const assignments = actors
       .map((enemy) => ({
         actorId: enemy.id,
         role: ROGUE_BESTIARY[enemy.template].role,
@@ -228,18 +245,22 @@ function buildEnemyGroups(enemies, depth) {
           b.commandScore - a.commandScore || a.actorId.localeCompare(b.actorId),
       );
     return createGroup({
-      id: `enemy-group-${depth}-${faction}`,
+      id: newInstanceId(),
+      definitionId: definitionId("group", `enemy-faction:${faction}`),
       name: faction.replaceAll("_", " "),
       side: "enemy",
-      members,
-      leaderId: members[0].actorId,
+      memberIds: assignments.map((assignment) => assignment.actorId),
+      assignments,
+      leaderId: assignments[0].actorId,
       formation: faction === "wildclaw" ? "wedge" : "scatter",
-      objective: members.some((member) =>
-        ["guardian", "sentinel", "boss"].includes(member.role),
+      objective: assignments.some((assignment) =>
+        ["guardian", "sentinel", "boss"].includes(assignment.role),
       )
         ? "hold"
         : "advance",
-      retreatThreshold: members.some((member) => member.role === "coward")
+      retreatThreshold: assignments.some(
+        (assignment) => assignment.role === "coward",
+      )
         ? 50
         : 20,
     });
@@ -411,6 +432,8 @@ function collectGround(state, events) {
     state.hero.goldCp += treasure.valueCp;
     state.hero.treasures.push({
       id: treasure.id,
+      definitionId: treasure.definitionId,
+      entityType: treasure.entityType,
       name: treasure.name,
       valueCp: treasure.valueCp,
     });
@@ -435,23 +458,21 @@ function collectGround(state, events) {
     else if (ROGUE_RELICS[item.itemKind])
       state.hero.inventory.push({
         id: item.id,
+        definitionId: item.definitionId,
+        entityType: item.entityType,
         kind: item.itemKind,
         ...ROGUE_RELICS[item.itemKind],
         quantity: 1,
       });
-    else {
-      const existing = state.hero.inventory.find(
-        (entry) => entry.kind === item.itemKind,
-      );
-      if (existing) existing.quantity += 1;
-      else
-        state.hero.inventory.push({
-          id: item.id,
-          kind: item.itemKind,
-          name: item.name,
-          quantity: 1,
-        });
-    }
+    else
+      state.hero.inventory.push({
+        id: item.id,
+        definitionId: item.definitionId,
+        entityType: item.entityType,
+        kind: item.itemKind,
+        name: item.name,
+        quantity: 1,
+      });
     events.push({
       type: "item_collected",
       itemId: item.id,
@@ -534,13 +555,11 @@ function enemyStep(state, enemy, retreat = false) {
 
 function enemyGroupPolicy(state, enemy) {
   const group = (state.enemyGroups ?? []).find((candidate) =>
-    candidate.members.some((member) => member.actorId === enemy.id),
+    candidate.memberIds.includes(enemy.id),
   );
   if (!group) return { group: null, hold: false, retreat: false, reason: null };
-  const actors = group.members
-      .map((member) =>
-        state.enemies.find((actor) => actor.id === member.actorId),
-      )
+  const actors = group.memberIds
+      .map((actorId) => state.enemies.find((actor) => actor.id === actorId))
       .filter(Boolean),
     maximum = actors.reduce((total, actor) => total + actor.maxHp, 0),
     current = actors.reduce((total, actor) => total + Math.max(0, actor.hp), 0),
@@ -644,13 +663,18 @@ function positionInRoom(room, offset = 0) {
   };
 }
 
-function doorForConnection(connection, rooms, index) {
+function doorForConnection(connection, rooms) {
   const outside = connection.cells.find(
       (p) => !rooms.some((r) => roomAt({ rooms: [r] }, p)),
     ),
     p = outside ?? connection.cells[Math.floor(connection.cells.length / 2)];
   return {
-    id: `door-${index + 1}`,
+    id: newInstanceId(),
+    definitionId: definitionId(
+      "door",
+      connection.kind === "alternate_route" ? "secret" : "ordinary",
+    ),
+    entityType: "door",
     ...p,
     state: "closed",
     secret: connection.kind === "alternate_route",
@@ -659,7 +683,7 @@ function doorForConnection(connection, rooms, index) {
   };
 }
 
-function treasureForRoom(seed, room, index, hidden = false) {
+function treasureForRoom(room, index, hidden = false) {
   const choices = [
       ["A leather purse of old copper", 38],
       ["A silver votive plate", 125],
@@ -668,7 +692,9 @@ function treasureForRoom(seed, room, index, hidden = false) {
     ],
     [name, valueCp] = choices[index % choices.length];
   return {
-    id: `treasure-${stableId(`${seed}:${room.id}`)}`,
+    id: newInstanceId(),
+    definitionId: definitionId("treasure", name.toLowerCase()),
+    entityType: "treasure",
     ...positionInRoom(room, 1),
     name,
     valueCp,
@@ -677,19 +703,45 @@ function treasureForRoom(seed, room, index, hidden = false) {
   };
 }
 
+function instantiateDungeonGeometry(dungeon) {
+  const roomIds = new Map(
+    dungeon.rooms.map((room) => [room.id, newInstanceId()]),
+  );
+  dungeon.rooms = dungeon.rooms.map((room) => ({
+    ...room,
+    id: roomIds.get(room.id),
+    definitionId: definitionId("room", room.purpose ?? "room"),
+    entityType: "room",
+    contents: [],
+  }));
+  dungeon.connections = dungeon.connections.map((connection) => ({
+    ...connection,
+    id: newInstanceId(),
+    definitionId: definitionId("connection", connection.kind),
+    entityType: "connection",
+    from: roomIds.get(connection.from),
+    to: roomIds.get(connection.to),
+  }));
+  dungeon.entranceId = roomIds.get(dungeon.entranceId);
+  dungeon.exitId = roomIds.get(dungeon.exitId);
+  return dungeon;
+}
+
 function buildLevel(input, depth, maxDepth) {
-  const dungeon = generateDungeon(
-    { id: "00000000-0000-4000-8000-000000000002", revision: depth - 1 },
-    {
-      seed: `${input.seed}:level:${depth}`,
-      form: input.form,
-      size: input.size === "medium" ? "rogue_vast" : "rogue_expansive",
-      partyLevel: depth,
-      partySize: 1,
-      dungeonLevel: depth,
-      density: depth === 1 ? "normal" : "dense",
-      difficulty: depth === 1 ? "easy" : "standard",
-    },
+  const dungeon = instantiateDungeonGeometry(
+    generateDungeon(
+      { id: "00000000-0000-4000-8000-000000000002", revision: depth - 1 },
+      {
+        seed: `${input.seed}:level:${depth}`,
+        form: input.form,
+        size: input.size === "medium" ? "rogue_vast" : "rogue_expansive",
+        partyLevel: depth,
+        partySize: 1,
+        dungeonLevel: depth,
+        density: depth === 1 ? "normal" : "dense",
+        difficulty: depth === 1 ? "easy" : "standard",
+      },
+    ),
   );
   const entrance = center(
       dungeon.rooms.find((r) => r.id === dungeon.entranceId),
@@ -740,7 +792,9 @@ function buildLevel(input, depth, maxDepth) {
       const template = roster[index % roster.length],
         m = ROGUE_BESTIARY[template];
       return {
-        id: `enemy-${depth}-${index + 1}-${stableId(`${input.seed}:${room.id}:${template}`)}`,
+        id: newInstanceId(),
+        definitionId: m.definitionId,
+        entityType: "actor",
         template,
         name: `${m.name} ${index + 1}`,
         ...positionInRoom(room),
@@ -763,7 +817,9 @@ function buildLevel(input, depth, maxDepth) {
     const room = dungeon.rooms.at(-1),
       m = ROGUE_BESTIARY.reliquary_warden;
     enemies.push({
-      id: `boss-${stableId(`${input.seed}:${depth}`)}`,
+      id: newInstanceId(),
+      definitionId: m.definitionId,
+      entityType: "actor",
       template: "reliquary_warden",
       name: m.name,
       ...positionInRoom(room, 1),
@@ -784,10 +840,8 @@ function buildLevel(input, depth, maxDepth) {
   }
   const enemyGroups = buildEnemyGroups(enemies, depth);
   for (const group of enemyGroups)
-    for (const member of group.members) {
-      const enemy = enemies.find(
-        (candidate) => candidate.id === member.actorId,
-      );
+    for (const actorId of group.memberIds) {
+      const enemy = enemies.find((candidate) => candidate.id === actorId);
       if (enemy) enemy.groupId = group.id;
     }
   const ordinaryConnections = dungeon.connections.filter(
@@ -800,8 +854,8 @@ function buildLevel(input, depth, maxDepth) {
       ...ordinaryConnections.slice(0, 3 + Math.min(depth, 3)),
       ...(alternateConnection ? [alternateConnection] : []),
     ],
-    doors = doorConnections.map((connection, index) =>
-      doorForConnection(connection, dungeon.rooms, index),
+    doors = doorConnections.map((connection) =>
+      doorForConnection(connection, dungeon.rooms),
     );
   const trapRoom = candidates.at(-1) ?? dungeon.rooms.at(-1),
     potionRoom = candidates[1] ?? candidates[0],
@@ -814,7 +868,9 @@ function buildLevel(input, depth, maxDepth) {
     relic = ROGUE_RELICS[relicKind];
   const features = [
     {
-      id: `trap-${depth}`,
+      id: newInstanceId(),
+      definitionId: definitionId("feature", "trap:flagstone-snare"),
+      entityType: "feature",
       kind: "trap",
       ...positionInRoom(trapRoom, 2),
       name: depth === 1 ? "Loose flagstone snare" : "Reliquary needle plate",
@@ -828,7 +884,9 @@ function buildLevel(input, depth, maxDepth) {
     ...(potionRoom
       ? [
           {
-            id: `potion-${depth}`,
+            id: newInstanceId(),
+            definitionId: definitionId("item", "healing_potion"),
+            entityType: "item",
             kind: "item",
             ...positionInRoom(potionRoom, 2),
             itemKind: "healing_potion",
@@ -841,7 +899,9 @@ function buildLevel(input, depth, maxDepth) {
     ...(equipmentRoom
       ? [
           {
-            id: `equipment-${depth}`,
+            id: newInstanceId(),
+            definitionId: definitionId("item", equipmentKind),
+            entityType: "item",
             kind: "item",
             ...positionInRoom(equipmentRoom, 1),
             itemKind: equipmentKind,
@@ -854,7 +914,9 @@ function buildLevel(input, depth, maxDepth) {
     ...(relicRoom
       ? [
           {
-            id: `relic-${depth}`,
+            id: newInstanceId(),
+            definitionId: definitionId("item", relicKind),
+            entityType: "item",
             kind: "item",
             ...positionInRoom(relicRoom, 1),
             itemKind: relicKind,
@@ -867,7 +929,9 @@ function buildLevel(input, depth, maxDepth) {
     ...(shrineRoom
       ? [
           {
-            id: `shrine-${depth}`,
+            id: newInstanceId(),
+            definitionId: definitionId("feature", "wayfarer-shrine"),
+            entityType: "feature",
             kind: "shrine",
             ...positionInRoom(shrineRoom, 1),
             name: "Wayfarer's shrine",
@@ -879,6 +943,9 @@ function buildLevel(input, depth, maxDepth) {
       : []),
   ];
   return {
+    id: newInstanceId(),
+    definitionId: definitionId("dungeon-level", dungeon.theme.archetype),
+    entityType: "dungeon-level",
     depth,
     theme: {
       ...dungeon.theme,
@@ -896,7 +963,7 @@ function buildLevel(input, depth, maxDepth) {
     features,
     treasures: candidates
       .slice(0, 3)
-      .map((r, i) => treasureForRoom(`${input.seed}:${depth}`, r, i, i === 2)),
+      .map((room, index) => treasureForRoom(room, index, index === 2)),
     remembered: new Set(),
     searched: new Set(),
   };
@@ -905,16 +972,18 @@ function buildLevel(input, depth, maxDepth) {
 export function newRogueRun(input) {
   const maxDepth = [3, 5, 8].includes(input.levels) ? input.levels : 5,
     archetype = HERO_ARCHETYPES[input.heroClass] ?? HERO_ARCHETYPES.fighter,
-    startingWeapon = equipmentItem("starting-weapon", archetype.weapon, true),
-    startingArmor = equipmentItem("starting-armor", archetype.armor, true),
+    startingWeapon = equipmentItem(newInstanceId(), archetype.weapon, true),
+    startingArmor = equipmentItem(newInstanceId(), archetype.armor, true),
     startingOffhand = archetype.offhand
-      ? equipmentItem("starting-offhand", archetype.offhand, true)
+      ? equipmentItem(newInstanceId(), archetype.offhand, true)
       : null,
-    startingAc = startingArmor.ac + (startingOffhand?.acBonus ?? 0);
+    startingAc = startingArmor.ac + (startingOffhand?.acBonus ?? 0),
+    runId = newInstanceId(),
+    heroId = newInstanceId();
   const state = {
-    schemaVersion: 3,
+    schemaVersion: 4,
     ruleset: ROGUE_RULESET,
-    id: randomUUID(),
+    id: runId,
     revision: 0,
     tick: 0,
     status: "active",
@@ -925,7 +994,9 @@ export function newRogueRun(input) {
       buildLevel(input, i + 1, maxDepth),
     ),
     hero: {
-      id: "hero",
+      id: heroId,
+      definitionId: archetype.definitionId,
+      entityType: "actor",
       name: input.heroName,
       kind: "character",
       class: archetype.name.toLowerCase(),
@@ -953,7 +1024,11 @@ export function newRogueRun(input) {
         die: HERO_HIT_DICE[archetype.name.toLowerCase()],
         remaining: 3,
       },
-      classPower: { ...archetype.power, remaining: archetype.power.uses },
+      classPower: {
+        ...archetype.power,
+        definitionId: definitionId("feature", archetype.power.key),
+        remaining: archetype.power.uses,
+      },
       leadership: { role: "leader", commandBonus: 2 },
       tempHp: 0,
       resistances: [],
@@ -970,7 +1045,9 @@ export function newRogueRun(input) {
         startingArmor,
         ...(startingOffhand ? [startingOffhand] : []),
         {
-          id: "starting-potion",
+          id: newInstanceId(),
+          definitionId: definitionId("item", "healing_potion"),
+          entityType: "item",
           kind: "healing_potion",
           name: "Healing potion",
           quantity: 1,
@@ -987,10 +1064,14 @@ export function newRogueRun(input) {
     visionRadius: 6,
   };
   state.partyGroup = createGroup({
-    id: "party",
+    id: newInstanceId(),
+    definitionId: definitionId("group", "adventuring-party"),
     name: `${state.hero.name}'s company`,
     side: "party",
-    members: [{ actorId: state.hero.id, role: "leader", commandScore: 100 }],
+    memberIds: [state.hero.id],
+    assignments: [
+      { actorId: state.hero.id, role: "leader", commandScore: 100 },
+    ],
     leaderId: state.hero.id,
     formation: "column",
     objective: "explore",
@@ -1051,11 +1132,11 @@ function search(state, dice, events, { passive = false } = {}) {
 
 function useItem(state, intent, dice, events) {
   const item = state.hero.inventory.find(
-    (entry) => entry.kind === intent.itemKind && entry.quantity > 0,
+    (entry) => entry.id === intent.itemId && entry.quantity > 0,
   );
   check(item, "ITEM_NOT_FOUND", "That item is not in the inventory.");
   check(
-    intent.itemKind === "healing_potion",
+    item.kind === "healing_potion",
     "ITEM_NOT_USABLE",
     "That item cannot be used now.",
   );
@@ -1070,7 +1151,8 @@ function useItem(state, intent, dice, events) {
   item.quantity -= 1;
   events.push({
     type: "item_used",
-    itemKind: intent.itemKind,
+    itemId: item.id,
+    itemKind: item.kind,
     itemName: item.name,
     healing: state.hero.hp - before,
     position: { x: state.hero.x, y: state.hero.y },
@@ -1201,7 +1283,7 @@ function useClassPower(state, dice, events) {
     "NO_POWER_USES",
     `${power.name} has no uses left.`,
   );
-  if (power.id === "magic_missile") {
+  if (power.key === "magic_missile") {
     const enemy = nearestVisibleEnemy(state);
     check(enemy, "NO_VISIBLE_TARGET", "No enemy is visible for Magic Missile.");
     magicalDamage(state, enemy, dice, events, {
@@ -1216,7 +1298,7 @@ function useClassPower(state, dice, events) {
       "FULL_HEALTH",
       "Health is already full.",
     );
-    const formula = power.id === "second_wind" ? "1d10+3" : "1d4+3",
+    const formula = power.key === "second_wind" ? "1d10+3" : "1d4+3",
       healing = dice.roll(formula),
       before = state.hero.hp;
     state.hero.hp = Math.min(state.hero.maxHp, state.hero.hp + healing.total);
@@ -1272,7 +1354,7 @@ function shortRest(state, dice, events) {
     before = state.hero.hp;
   state.hero.hp = Math.min(state.hero.maxHp, state.hero.hp + roll.total);
   state.hero.hitDice.remaining -= 1;
-  if (state.hero.classPower.id === "second_wind")
+  if (state.hero.classPower.key === "second_wind")
     state.hero.classPower.remaining = state.hero.classPower.uses;
   events.push({
     type: "short_rest",
@@ -1582,6 +1664,8 @@ function cellView(state, position, currentVisible) {
     const m = ROGUE_BESTIARY[enemy.template];
     cell.enemy = {
       id: enemy.id,
+      definitionId: enemy.definitionId,
+      entityType: enemy.entityType,
       name: enemy.name,
       template: enemy.template,
       glyph: m.glyph,
@@ -1599,6 +1683,8 @@ function cellView(state, position, currentVisible) {
   if (treasure)
     cell.treasure = {
       id: treasure.id,
+      definitionId: treasure.definitionId,
+      entityType: treasure.entityType,
       name: treasure.name,
       valueCp: treasure.valueCp,
     };
@@ -1612,6 +1698,8 @@ function cellView(state, position, currentVisible) {
   if (feature)
     cell.feature = {
       id: feature.id,
+      definitionId: feature.definitionId,
+      entityType: feature.entityType,
       kind: feature.kind,
       name: feature.name,
       spent: feature.spent,
@@ -1661,6 +1749,8 @@ export function rogueRunView(state, recentEvents = []) {
     currentRoom: here
       ? {
           id: here.id,
+          definitionId: here.definitionId,
+          entityType: here.entityType,
           name: here.name,
           purpose: here.purpose,
           description: here.description,
@@ -1727,30 +1817,210 @@ export function serializeRogueState(state) {
   };
 }
 
-export function parseRogueState(value) {
-  value.schemaVersion = Math.max(value.schemaVersion ?? 1, 3);
-  value.levels = value.levels.map((level) => ({
-    ...level,
-    remembered: new Set(level.remembered),
-    searched: new Set(level.searched),
-  }));
-  value.partyGroup ??= createGroup({
+function migrateGroup(group, value, actorIds, side, fallbackName) {
+  const legacyId = group?.id ?? `${side}-group`,
+    id = isUuid(legacyId)
+      ? legacyId
+      : migratedInstanceId(value.id, "group", legacyId),
+    legacyAssignments = group?.assignments ?? group?.members ?? [],
+    legacyMemberIds =
+      group?.memberIds ?? legacyAssignments.map((member) => member.actorId),
+    memberIds = legacyMemberIds.map(
+      (actorId) => actorIds.get(actorId) ?? actorId,
+    ),
+    assignments = legacyAssignments.map((assignment) => ({
+      ...assignment,
+      actorId: actorIds.get(assignment.actorId) ?? assignment.actorId,
+    })),
+    leaderId = actorIds.get(group?.leaderId) ?? group?.leaderId ?? memberIds[0];
+  const migrated = createGroup({
+    id,
+    definitionId:
+      group?.definitionId ??
+      definitionId(
+        "group",
+        side === "party" ? "adventuring-party" : `enemy:${fallbackName}`,
+      ),
+    name: group?.name ?? fallbackName,
+    side,
+    memberIds,
+    assignments,
+    leaderId,
+    formation: group?.order?.formation ?? "column",
+    objective: group?.order?.objective ?? "explore",
+    resourcePolicy: group?.order?.resourcePolicy ?? "balanced",
+    retreatThreshold: group?.order?.retreatThreshold ?? 25,
+  });
+  migrated.leadershipRevision = group?.leadershipRevision ?? 0;
+  migrated.commandRevision = group?.commandRevision ?? 0;
+  migrated.order = {
+    ...migrated.order,
+    ...(group?.order ?? {}),
+    targetId:
+      actorIds.get(group?.order?.targetId) ?? group?.order?.targetId ?? null,
+    issuedBy: actorIds.get(group?.order?.issuedBy) ?? leaderId,
+  };
+  return migrated;
+}
+
+function migrateIdentity(value) {
+  const actorIds = new Map(),
+    objectIds = new Map(),
+    actorId = (legacyId) => {
+      const id = isUuid(legacyId)
+        ? legacyId
+        : migratedInstanceId(value.id, "actor", legacyId);
+      actorIds.set(legacyId, id);
+      return id;
+    },
+    objectId = (kind, legacyId) => {
+      const id = isUuid(legacyId)
+        ? legacyId
+        : migratedInstanceId(value.id, kind, legacyId);
+      objectIds.set(legacyId, id);
+      return id;
+    };
+
+  const legacyHeroId = value.hero.id;
+  value.hero.id = actorId(legacyHeroId);
+  value.hero.definitionId ??= definitionId("actor-archetype", value.hero.class);
+  value.hero.entityType = "actor";
+  if (value.hero.classPower.id && !value.hero.classPower.key) {
+    value.hero.classPower.key = value.hero.classPower.id;
+    delete value.hero.classPower.id;
+  }
+  value.hero.classPower.definitionId ??= definitionId(
+    "feature",
+    value.hero.classPower.key,
+  );
+
+  for (const level of value.levels) {
+    level.id = objectId("dungeon-level", level.id ?? `level-${level.depth}`);
+    level.definitionId ??= definitionId(
+      "dungeon-level",
+      level.theme?.archetype ?? "dungeon",
+    );
+    level.entityType = "dungeon-level";
+    const roomIds = new Map();
+    for (const room of level.rooms) {
+      const legacyId = room.id;
+      room.id = objectId("room", legacyId);
+      roomIds.set(legacyId, room.id);
+      room.definitionId ??= definitionId("room", room.purpose ?? "room");
+      room.entityType = "room";
+    }
+    for (const connection of level.connections ?? []) {
+      connection.id = objectId("connection", connection.id);
+      connection.definitionId ??= definitionId("connection", connection.kind);
+      connection.entityType = "connection";
+      connection.from = roomIds.get(connection.from) ?? connection.from;
+      connection.to = roomIds.get(connection.to) ?? connection.to;
+    }
+    for (const enemy of level.enemies) {
+      const legacyId = enemy.id;
+      enemy.id = actorId(legacyId);
+      enemy.definitionId ??= definitionId(
+        "actor",
+        `creature:${enemy.template}`,
+      );
+      enemy.entityType = "actor";
+      enemy.homeRoomId = roomIds.get(enemy.homeRoomId) ?? enemy.homeRoomId;
+    }
+    for (const treasure of level.treasures) {
+      treasure.id = objectId("treasure", treasure.id);
+      treasure.definitionId ??= definitionId(
+        "treasure",
+        treasure.name.toLowerCase(),
+      );
+      treasure.entityType = "treasure";
+    }
+    for (const door of level.doors) {
+      door.id = objectId("door", door.id);
+      door.definitionId ??= definitionId(
+        "door",
+        door.secret ? "secret" : "ordinary",
+      );
+      door.entityType = "door";
+      door.connectionId = objectIds.get(door.connectionId) ?? door.connectionId;
+    }
+    for (const feature of level.features) {
+      feature.id = objectId(
+        feature.kind === "item" ? "item" : "feature",
+        feature.id,
+      );
+      feature.definitionId ??= definitionId(
+        feature.kind === "item" ? "item" : "feature",
+        feature.itemKind ?? feature.kind,
+      );
+      feature.entityType = feature.kind === "item" ? "item" : "feature";
+    }
+  }
+
+  for (const item of value.hero.inventory) {
+    item.id = objectIds.get(item.id) ?? objectId("item", item.id);
+    item.definitionId ??= definitionId("item", item.kind);
+    item.entityType = "item";
+  }
+  for (const treasure of value.hero.treasures ?? []) {
+    treasure.id =
+      objectIds.get(treasure.id) ?? objectId("treasure", treasure.id);
+    treasure.definitionId ??= definitionId(
+      "treasure",
+      treasure.name.toLowerCase(),
+    );
+    treasure.entityType = "treasure";
+  }
+  for (const slot of ["weapon", "armor", "offhand"])
+    if (value.hero.equipment[slot])
+      value.hero.equipment[slot] =
+        objectIds.get(value.hero.equipment[slot]) ?? value.hero.equipment[slot];
+
+  value.partyGroup ??= {
     id: "party",
     name: `${value.hero.name}'s company`,
     side: "party",
     members: [{ actorId: value.hero.id, role: "leader", commandScore: 100 }],
     leaderId: value.hero.id,
-  });
+  };
+  value.partyGroup = migrateGroup(
+    value.partyGroup,
+    value,
+    actorIds,
+    "party",
+    `${value.hero.name}'s company`,
+  );
   for (const level of value.levels) {
     level.enemyGroups ??= buildEnemyGroups(level.enemies, level.depth);
+    level.enemyGroups = level.enemyGroups.map((group) =>
+      migrateGroup(group, value, actorIds, "enemy", group.name),
+    );
+    const groupIds = new Map(
+      level.enemyGroups.map((group) => [group.name, group.id]),
+    );
     for (const group of level.enemyGroups)
-      for (const member of group.members) {
+      for (const actorId of group.memberIds) {
         const enemy = level.enemies.find(
-          (candidate) => candidate.id === member.actorId,
+          (candidate) => candidate.id === actorId,
         );
         if (enemy) enemy.groupId = group.id;
       }
+    for (const enemy of level.enemies)
+      if (!isUuid(enemy.groupId))
+        enemy.groupId = groupIds.get(
+          ROGUE_BESTIARY[enemy.template].faction.replaceAll("_", " "),
+        );
   }
+  value.schemaVersion = 4;
+  return value;
+}
+
+export function parseRogueState(value) {
+  migrateIdentity(value);
+  value.levels = value.levels.map((level) => ({
+    ...level,
+    remembered: new Set(level.remembered),
+    searched: new Set(level.searched),
+  }));
   return attachActive(value);
 }
 
@@ -1763,17 +2033,19 @@ export function rogueGroupsView(state, currentVisible = visibility(state)) {
   );
   const enemies = (state.enemyGroups ?? [])
     .filter((group) =>
-      group.members.some((member) => visibleEnemyIds.has(member.actorId)),
+      group.memberIds.some((actorId) => visibleEnemyIds.has(actorId)),
     )
     .map((group) => {
       const view = groupView(group, state.enemies);
-      view.members = view.members.filter((member) =>
+      view.memberIds = view.memberIds.filter((actorId) =>
+        visibleEnemyIds.has(actorId),
+      );
+      view.memberStatus = view.memberStatus.filter((member) =>
         visibleEnemyIds.has(member.actorId),
       );
-      view.knownMemberCount = view.members.length;
+      view.knownMemberCount = view.memberIds.length;
       view.totalMemberCount = null;
-      if (!view.members.some((member) => member.actorId === view.leaderId))
-        view.leaderId = null;
+      if (!view.memberIds.includes(view.leaderId)) view.leaderId = null;
       return view;
     });
   return { party, enemies };

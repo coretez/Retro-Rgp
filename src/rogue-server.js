@@ -33,7 +33,7 @@ const wrap = (handler) => async (args) => {
 
 export function buildRogueServer(store) {
   const server = new McpServer(
-    { name: "dungeon-rogue", version: "0.2.0-alpha.1" },
+    { name: "dungeon-rogue", version: "0.2.0-alpha.2" },
     {
       instructions:
         "A turn-based dungeon server using the SRD 5.1 compatibility profile returned by rogue_run_get. Version 0.1 play remains one-character, while the experimental group contract persists the party, creature groups, leaders, formations and revisioned orders. Read rogue_run_get and rogue_groups_get before issuing a command. Only the current leader may command its group. Submit exactly one rogue_act intent with the current run revision and a fresh requestId. One accepted intent atomically resolves the hero action or command and all enemy responses. A dying hero must submit death_save. Retry an uncertain response with the same requestId and identical intent. Never infer hidden cells, entities or group membership.",
@@ -116,12 +116,12 @@ export function buildRogueServer(store) {
             z
               .object({
                 kind: z.literal("command"),
-                groupId: text(),
-                issuerId: text(),
+                groupId: id,
+                issuerId: id,
                 expectedCommandRevision: z.number().int().min(0),
                 objective: z.enum(GROUP_OBJECTIVES),
                 formation: z.enum(GROUP_FORMATIONS),
-                targetId: text().optional(),
+                targetId: id.optional(),
                 destination: z
                   .object({
                     x: z.number().int().min(0),
@@ -154,7 +154,7 @@ export function buildRogueServer(store) {
             z
               .object({
                 kind: z.literal("use_item"),
-                itemKind: z.literal("healing_potion"),
+                itemId: id,
               })
               .strict(),
             z

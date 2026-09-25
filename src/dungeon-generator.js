@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { definitionId } from "./identity.js";
 
 export const DUNGEON_GENERATOR_VERSION = "original-table-driven-v1.0.0";
 
@@ -18,7 +19,8 @@ export const DUNGEON_FORMS = [
 // of early tabletop dungeon procedures, not copied from an edition or appendix.
 export const DUNGEON_TABLES = [
   {
-    id: "dungeon-form-v1",
+    id: definitionId("dungeon-table", "dungeon-form-v1"),
+    key: "dungeon-form-v1",
     sides: 100,
     rows: [
       { min: 1, max: 14, result: "fortress" },
@@ -32,7 +34,8 @@ export const DUNGEON_TABLES = [
     ],
   },
   {
-    id: "dungeon-state-v1",
+    id: definitionId("dungeon-table", "dungeon-state-v1"),
+    key: "dungeon-state-v1",
     sides: 12,
     rows: [
       { min: 1, max: 2, result: "occupied and maintained" },
@@ -178,7 +181,9 @@ function random(seed) {
 }
 
 export function resolveDungeonTable(id, face) {
-  const table = DUNGEON_TABLES.find((candidate) => candidate.id === id);
+  const table = DUNGEON_TABLES.find(
+    (candidate) => candidate.id === id || candidate.key === id,
+  );
   if (!table) throw new Error(`Unknown dungeon table: ${id}`);
   if (!Number.isInteger(face) || face < 1 || face > table.sides)
     throw new Error(`Face must be an integer from 1 to ${table.sides}.`);
@@ -551,7 +556,10 @@ export function generateDungeon(campaign, request) {
       profile: "original-table-driven-v1",
       source:
         "Original Retro RPG tables and geometry; inspired by procedural tabletop play, not a reproduction of historical D&D tables.",
-      tables: DUNGEON_TABLES.map((table) => table.id),
+      tables: DUNGEON_TABLES.map((table) => ({
+        id: table.id,
+        key: table.key,
+      })),
     },
     installation: {
       state: "draft",

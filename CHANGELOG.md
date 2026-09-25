@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0-alpha.2 — UUID identity model
+
+- Give definitions stable UUID v5 identifiers and runtime actors, groups,
+  items, treasures, rooms, doors, features and dungeon levels UUID v4 instance
+  identifiers.
+- Replace embedded group-member records with `memberIds`, separate role
+  assignments and a dereferenced `memberStatus` read model.
+- Address item use by exact `itemId` instead of item type.
+- Rename readable definition identifiers to `key` and retain names only as
+  presentation metadata.
+- Deterministically migrate legacy textual IDs using the run UUID as namespace.
+
 ## 0.2.0-alpha.1 — MCP-native group foundation
 
 - Persist player and creature groups with leaders/alphas, member roles,

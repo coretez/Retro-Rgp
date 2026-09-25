@@ -10,7 +10,10 @@ client reading the same run receives the same group, leader, order and revision.
 
 Every player party and creature group has:
 
-- a stable group ID, side and member roster;
+- an instance UUID, a stable definition UUID, side and `memberIds` containing
+  only actor UUID references;
+- separate role assignments and a derived `memberStatus` read model; the actor
+  sheet remains authoritative;
 - one leader or alpha plus a separate leadership revision;
 - explicit member roles and command scores used only for succession;
 - a revisioned order containing objective, formation, priority target or

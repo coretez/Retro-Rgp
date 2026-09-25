@@ -16,6 +16,7 @@ import { RogueStore } from "../src/rogue-store.js";
 import { applyTypedDamage, resolveDeathSave } from "../src/rogue-rules.js";
 import { route } from "../src/spatial.js";
 import { createGroup } from "../src/group-logic.js";
+import { definitionId, isUuid, newInstanceId } from "../src/identity.js";
 
 const input = {
   requestId: "create-demo",
@@ -141,8 +142,8 @@ test("party orders are authoritative, revisioned roguelike turns", () => {
   state.enemies = [];
   const outcome = applyRogueTurn(state, {
     kind: "command",
-    groupId: "party",
-    issuerId: "hero",
+    groupId: state.partyGroup.id,
+    issuerId: state.hero.id,
     expectedCommandRevision: 0,
     objective: "hold",
     formation: "line",
@@ -163,13 +164,30 @@ test("party orders are authoritative, revisioned roguelike turns", () => {
 test("v0.1 run snapshots acquire group state when loaded", () => {
   const legacy = serializeRogueState(newRogueRun(input));
   legacy.schemaVersion = 2;
+  legacy.hero.id = "hero";
+  delete legacy.hero.definitionId;
+  delete legacy.hero.entityType;
+  legacy.hero.inventory[0].id = "starting-weapon";
+  delete legacy.hero.inventory[0].definitionId;
+  legacy.hero.equipment.weapon = "starting-weapon";
+  legacy.levels[0].enemies[0].id = "enemy-one";
+  delete legacy.levels[0].enemies[0].definitionId;
   delete legacy.partyGroup;
   for (const level of legacy.levels) {
     delete level.enemyGroups;
     for (const enemy of level.enemies) delete enemy.groupId;
   }
-  const migrated = parseRogueState(legacy);
-  assert.equal(migrated.partyGroup.leaderId, "hero");
+  const copy = structuredClone(legacy),
+    migrated = parseRogueState(legacy),
+    migratedAgain = parseRogueState(copy);
+  assert.ok(isUuid(migrated.hero.id));
+  assert.equal(migrated.hero.id, migratedAgain.hero.id);
+  assert.equal(
+    migrated.hero.inventory[0].id,
+    migratedAgain.hero.inventory[0].id,
+  );
+  assert.equal(migrated.hero.equipment.weapon, migrated.hero.inventory[0].id);
+  assert.equal(migrated.partyGroup.leaderId, migrated.hero.id);
   assert.ok(migrated.enemyGroups.length > 0);
   assert.ok(migrated.enemies.every((enemy) => enemy.groupId));
 });
@@ -188,7 +206,9 @@ test("enemy members execute their persisted group retreat policy", () => {
   state.hero.x = 5;
   state.hero.y = 5;
   const enemy = {
-    id: "ordered-enemy",
+    id: newInstanceId(),
+    definitionId: definitionId("actor", "creature:goblin_skulk"),
+    entityType: "actor",
     template: "goblin_skulk",
     name: "Ordered enemy",
     x: 7,
@@ -206,10 +226,12 @@ test("enemy members execute their persisted group retreat policy", () => {
   };
   state.enemies = level.enemies = [enemy];
   const group = createGroup({
-    id: "enemy-test-group",
+    id: newInstanceId(),
+    definitionId: definitionId("group", "enemy:test"),
     name: "Test group",
     side: "enemy",
-    members: [{ actorId: enemy.id, role: "scout", commandScore: 20 }],
+    memberIds: [enemy.id],
+    assignments: [{ actorId: enemy.id, role: "scout", commandScore: 20 }],
     leaderId: enemy.id,
     objective: "retreat",
   });
@@ -294,9 +316,12 @@ test("search reveals nearby hidden treasure and a potion restores health", () =>
   assert.equal(hidden.hidden, false);
   assert.ok(search.events.some((event) => event.type === "search"));
   state.hero.hp = 10;
+  const potion = state.hero.inventory.find(
+    (item) => item.kind === "healing_potion",
+  );
   applyRogueTurn(
     state,
-    { kind: "use_item", itemKind: "healing_potion" },
+    { kind: "use_item", itemId: potion.id },
     new Dice(() => 4),
   );
   assert.equal(state.hero.hp, 20);
@@ -403,7 +428,7 @@ test("class selection provides distinct powers and solo XP advancement", () => {
   const state = newRogueRun({ ...input, heroClass: "mage" });
   assert.equal(state.hero.class, "mage");
   assert.equal(state.hero.maxHp, 16);
-  assert.equal(state.hero.classPower.id, "magic_missile");
+  assert.equal(state.hero.classPower.key, "magic_missile");
   state.hero.xp = 390;
   state.enemies = [
     {

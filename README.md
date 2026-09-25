@@ -57,7 +57,8 @@ resource policy, retreat thresholds, command revisions and deterministic
 succession. Group orders are replay-safe `rogue_act` intents, and
 `rogue_groups_get` exposes the party plus only currently known enemy groups. See
 [MCP-native group logic](docs/group-logic.md) for implemented behavior and the
-remaining companion-play work.
+remaining companion-play work. All persistent definitions, instances and
+references follow the [universe identity standard](docs/identity-model.md).
 
 ## Public source and restricted rights
 

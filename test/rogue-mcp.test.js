@@ -57,6 +57,9 @@ test("real rogue MCP creates, advances, retries and resumes a solo run", async (
     new Set(bestiary.creatures.map((entry) => entry.id)).size,
     bestiary.creatures.length,
   );
+  assert.ok(
+    bestiary.creatures.every((entry) => /^[0-9a-f-]{36}$/.test(entry.id)),
+  );
   assert.equal(
     new Set(bestiary.creatures.map((entry) => entry.glyph)).size,
     bestiary.creatures.length,
@@ -82,7 +85,8 @@ test("real rogue MCP creates, advances, retries and resumes a solo run", async (
     size: "small",
   });
   const groups = await call("rogue_groups_get", { runId: created.runId });
-  assert.equal(groups.groups.party.leaderId, "hero");
+  assert.match(groups.groups.party.id, /^[0-9a-f-]{36}$/);
+  assert.equal(groups.groups.party.leaderId, groups.groups.party.memberIds[0]);
   assert.equal(groups.groups.party.commandRevision, 0);
   const commanded = await call("rogue_act", {
     runId: created.runId,
@@ -90,8 +94,8 @@ test("real rogue MCP creates, advances, retries and resumes a solo run", async (
     requestId: "mcp-command-1",
     intent: {
       kind: "command",
-      groupId: "party",
-      issuerId: "hero",
+      groupId: groups.groups.party.id,
+      issuerId: groups.groups.party.leaderId,
       expectedCommandRevision: 0,
       objective: "hold",
       formation: "line",

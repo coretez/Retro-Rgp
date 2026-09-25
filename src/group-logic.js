@@ -1,4 +1,5 @@
 import { requireRule as check } from "./dice.js";
+import { isUuid } from "./identity.js";
 
 export const GROUP_FORMATIONS = ["column", "line", "wedge", "scatter"];
 export const GROUP_OBJECTIVES = [
@@ -14,30 +15,49 @@ const living = (actor) => actor && actor.hp > 0 && !actor.dead;
 
 export function createGroup({
   id,
+  definitionId,
   name,
   side,
-  members,
+  memberIds,
+  assignments = [],
   leaderId,
   formation = "column",
   objective = "explore",
   resourcePolicy = "balanced",
   retreatThreshold = 25,
 }) {
-  check(id && name, "INVALID_GROUP", "A group requires an id and name.");
+  check(
+    isUuid(id) && isUuid(definitionId) && name,
+    "INVALID_GROUP",
+    "A group requires UUID instance and definition identifiers plus a name.",
+  );
   check(
     ["party", "enemy"].includes(side),
     "INVALID_GROUP_SIDE",
     "A group side must be party or enemy.",
   );
   check(
-    members?.length,
+    memberIds?.length && memberIds.every(isUuid),
     "EMPTY_GROUP",
-    "A group requires at least one member.",
+    "A group requires member UUIDs.",
   );
   check(
-    members.some((member) => member.actorId === leaderId),
+    new Set(memberIds).size === memberIds.length,
+    "DUPLICATE_GROUP_MEMBER",
+    "A group cannot contain the same actor UUID twice.",
+  );
+  check(
+    memberIds.includes(leaderId),
     "INVALID_GROUP_LEADER",
     "The leader must be a member of the group.",
+  );
+  check(
+    assignments.every(
+      (assignment) =>
+        isUuid(assignment.actorId) && memberIds.includes(assignment.actorId),
+    ),
+    "INVALID_GROUP_ASSIGNMENT",
+    "Every role assignment must reference a member UUID.",
   );
   check(
     GROUP_FORMATIONS.includes(formation),
@@ -63,12 +83,15 @@ export function createGroup({
   );
   return {
     id,
+    definitionId,
+    entityType: "group",
     name,
     side,
-    members: members.map((member) => ({
-      actorId: member.actorId,
-      role: member.role ?? "member",
-      commandScore: member.commandScore ?? 0,
+    memberIds: [...memberIds],
+    assignments: assignments.map((assignment) => ({
+      actorId: assignment.actorId,
+      role: assignment.role ?? "member",
+      commandScore: assignment.commandScore ?? 0,
     })),
     leaderId,
     leadershipRevision: 0,
@@ -88,16 +111,27 @@ export function createGroup({
 
 export function reconcileGroupLeadership(group, actors) {
   const byId = new Map(actors.map((actor) => [actor.id, actor]));
-  if (!group.members.some((member) => byId.has(member.actorId))) return null;
+  if (!group.memberIds.some((actorId) => byId.has(actorId))) return null;
   if (living(byId.get(group.leaderId))) return null;
-  const successor = group.members
-    .filter((member) => living(byId.get(member.actorId)))
-    .sort(
-      (a, b) =>
-        b.commandScore - a.commandScore || a.actorId.localeCompare(b.actorId),
-    )[0];
-  const previousLeaderId = group.leaderId;
-  const leaderId = successor?.actorId ?? null;
+  const assignments = new Map(
+      group.assignments.map((assignment) => [assignment.actorId, assignment]),
+    ),
+    successor = group.memberIds
+      .filter((actorId) => living(byId.get(actorId)))
+      .map(
+        (actorId) =>
+          assignments.get(actorId) ?? {
+            actorId,
+            role: "member",
+            commandScore: 0,
+          },
+      )
+      .sort(
+        (a, b) =>
+          b.commandScore - a.commandScore || a.actorId.localeCompare(b.actorId),
+      )[0],
+    previousLeaderId = group.leaderId,
+    leaderId = successor?.actorId ?? null;
   if (previousLeaderId === leaderId) return null;
   group.leaderId = leaderId;
   group.leadershipRevision += 1;
@@ -117,6 +151,11 @@ export function issueGroupOrder(group, command, tick) {
     group.leaderId,
     "GROUP_HAS_NO_LEADER",
     "The group has no living leader.",
+  );
+  check(
+    isUuid(command.issuerId) && (!command.targetId || isUuid(command.targetId)),
+    "INVALID_INSTANCE_ID",
+    "Group commands must reference actor UUIDs.",
   );
   check(
     command.issuerId === group.leaderId,
@@ -182,20 +221,32 @@ export function issueGroupOrder(group, command, tick) {
 }
 
 export function groupView(group, actors) {
-  const byId = new Map(actors.map((actor) => [actor.id, actor]));
+  const byId = new Map(actors.map((actor) => [actor.id, actor])),
+    assignments = new Map(
+      group.assignments.map((assignment) => [assignment.actorId, assignment]),
+    );
   return {
     id: group.id,
+    definitionId: group.definitionId,
+    entityType: group.entityType,
     name: group.name,
     side: group.side,
+    memberIds: [...group.memberIds],
     leaderId: group.leaderId,
     leadershipRevision: group.leadershipRevision,
     commandRevision: group.commandRevision,
     order: structuredClone(group.order),
-    members: group.members.map((member) => {
-      const actor = byId.get(member.actorId);
+    memberStatus: group.memberIds.map((actorId) => {
+      const actor = byId.get(actorId),
+        assignment = assignments.get(actorId) ?? {
+          role: "member",
+          commandScore: 0,
+        };
       return {
-        ...member,
-        name: actor?.name ?? member.actorId,
+        actorId,
+        role: assignment.role,
+        commandScore: assignment.commandScore,
+        name: actor?.name ?? actorId,
         alive: living(actor),
         hp: actor?.hp ?? null,
         maxHp: actor?.maxHp ?? null,

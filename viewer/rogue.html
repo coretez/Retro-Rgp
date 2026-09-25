@@ -1120,9 +1120,9 @@
         $("character").textContent =
           `Level ${state.hero.level} ${state.hero.class} · ${state.hero.weapon.replaceAll("_", " ")} · ${state.hero.armor.replaceAll("_", " ")} · AC ${state.hero.ac}`;
         const powerKey =
-          state.hero.classPower.id === "magic_missile"
+          state.hero.classPower.key === "magic_missile"
             ? "M"
-            : state.hero.classPower.id === "healing_word"
+            : state.hero.classPower.key === "healing_word"
               ? "L"
               : "F";
         $("power-key").textContent = powerKey;
@@ -1437,12 +1437,12 @@
           busy || state.status !== "active" || !state.rest.available;
         $("rest").title =
           state.rest.reason ?? "Spend one Hit Die to recover health.";
-        const needsTarget = state.hero.classPower.id === "magic_missile",
+        const needsTarget = state.hero.classPower.key === "magic_missile",
           hasTarget = state.map.cells.some(
             (cell) => cell.enemy && cell.visibility === "visible",
           ),
           needsHealing = ["second_wind", "healing_word"].includes(
-            state.hero.classPower.id,
+            state.hero.classPower.key,
           );
         $("class-power").disabled =
           busy ||
@@ -1455,7 +1455,7 @@
         if (!bestiary) return;
         const selected =
           bestiary.creatures.find(
-            (entry) => entry.id === $("monster-select").value,
+            (entry) => entry.key === $("monster-select").value,
           ) || bestiary.creatures[0];
         const root = $("manual");
         root.replaceChildren();
@@ -1530,9 +1530,13 @@
         );
       $("wait").addEventListener("click", () => act({ kind: "wait" }));
       $("rest").addEventListener("click", () => act({ kind: "short_rest" }));
-      $("potion").addEventListener("click", () =>
-        act({ kind: "use_item", itemKind: "healing_potion" }),
-      );
+      const usePotion = () => {
+        const potion = state.hero.inventory.find(
+          (item) => item.kind === "healing_potion" && item.quantity > 0,
+        );
+        if (potion) act({ kind: "use_item", itemId: potion.id });
+      };
+      $("potion").addEventListener("click", usePotion);
       $("stairs").addEventListener("click", () => act({ kind: "stairs" }));
       $("death-save").addEventListener("click", () =>
         act({ kind: "death_save" }),
@@ -1559,7 +1563,7 @@
           act({ kind: "wait" });
         } else if (event.key.toLowerCase() === "h") {
           event.preventDefault();
-          act({ kind: "use_item", itemKind: "healing_potion" });
+          usePotion();
         } else if (
           event.key.toLowerCase() === "r" &&
           state.status === "dying"
@@ -1580,11 +1584,11 @@
           $("equipment-weapon")?.focus();
         } else if (
           (event.key.toLowerCase() === "f" &&
-            state.hero.classPower.id === "second_wind") ||
+            state.hero.classPower.key === "second_wind") ||
           (event.key.toLowerCase() === "m" &&
-            state.hero.classPower.id === "magic_missile") ||
+            state.hero.classPower.key === "magic_missile") ||
           (event.key.toLowerCase() === "l" &&
-            state.hero.classPower.id === "healing_word")
+            state.hero.classPower.key === "healing_word")
         ) {
           event.preventDefault();
           act({ kind: "class_power" });
@@ -1651,7 +1655,7 @@
           $("monster-select").replaceChildren(
             ...value.creatures.map((entry) => {
               const option = document.createElement("option");
-              option.value = entry.id;
+              option.value = entry.key;
               option.textContent = `${entry.name} — ${entry.role}`;
               return option;
             }),
