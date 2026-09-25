@@ -7,6 +7,7 @@ import {
   applyRogueTurn,
   newRogueRun,
   parseRogueState,
+  rogueGroupsView,
   rogueRunView,
   serializeRogueState,
 } from "./rogue-engine.js";
@@ -152,6 +153,16 @@ export class RogueStore {
       )
       .get(runId);
     return rogueRunView(state, latest ? JSON.parse(latest.result).events : []);
+  }
+
+  groups(runId) {
+    const state = this.get(runId);
+    return {
+      runId: state.id,
+      revision: state.revision,
+      tick: state.tick,
+      groups: rogueGroupsView(state),
+    };
   }
 
   log(runId, afterRevision = 0, limit = 50) {

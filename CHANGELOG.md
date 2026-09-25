@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0-alpha.1 — MCP-native group foundation
+
+- Persist player and creature groups with leaders/alphas, member roles,
+  formations, objectives, target/destination policy, resource policy and
+  casualty-based retreat thresholds.
+- Add leader-only revisioned command intents to the replay-safe turn stream.
+- Add deterministic leadership succession and connect group hold/retreat policy
+  to creature decisions.
+- Add `rogue_groups_get` without exposing hidden groups, membership or alphas.
+- Preserve the frozen one-character v0.1 behavior while the companion action and
+  formation-execution layer remains under development.
+
 ## 0.1.0 — 2026-09-25 (frozen solo baseline)
 
 - Add a dedicated `dungeon-rogue` MCP with persistent replay-safe runs.

@@ -7,6 +7,11 @@ import { z } from "zod";
 import { DUNGEON_FORMS } from "./dungeon-generator.js";
 import { bestiaryView } from "./rogue-bestiary.js";
 import { RogueStore, rogueError } from "./rogue-store.js";
+import {
+  GROUP_FORMATIONS,
+  GROUP_OBJECTIVES,
+  GROUP_RESOURCE_POLICIES,
+} from "./group-logic.js";
 
 const text = () => z.string().trim().min(1).max(200);
 const id = z.string().uuid();
@@ -28,10 +33,10 @@ const wrap = (handler) => async (args) => {
 
 export function buildRogueServer(store) {
   const server = new McpServer(
-    { name: "dungeon-rogue", version: "0.1.0" },
+    { name: "dungeon-rogue", version: "0.2.0-alpha.1" },
     {
       instructions:
-        "A solo, turn-based dungeon server using the SRD 5.1 compatibility profile returned by rogue_run_get. Preserve D&D combat semantics except for the response's explicit roguelike overrides. Read rogue_run_get, then submit exactly one rogue_act intent with the current revision and a fresh requestId. One accepted intent atomically resolves the hero action and all enemy responses. A dying hero must submit death_save. Retry an uncertain response with the same requestId and identical intent. Never infer hidden cells or entities.",
+        "A turn-based dungeon server using the SRD 5.1 compatibility profile returned by rogue_run_get. Version 0.1 play remains one-character, while the experimental group contract persists the party, creature groups, leaders, formations and revisioned orders. Read rogue_run_get and rogue_groups_get before issuing a command. Only the current leader may command its group. Submit exactly one rogue_act intent with the current run revision and a fresh requestId. One accepted intent atomically resolves the hero action or command and all enemy responses. A dying hero must submit death_save. Retry an uncertain response with the same requestId and identical intent. Never infer hidden cells, entities or group membership.",
     },
   );
   server.registerTool(
@@ -108,6 +113,26 @@ export function buildRogueServer(store) {
               })
               .strict(),
             z.object({ kind: z.literal("wait") }).strict(),
+            z
+              .object({
+                kind: z.literal("command"),
+                groupId: text(),
+                issuerId: text(),
+                expectedCommandRevision: z.number().int().min(0),
+                objective: z.enum(GROUP_OBJECTIVES),
+                formation: z.enum(GROUP_FORMATIONS),
+                targetId: text().optional(),
+                destination: z
+                  .object({
+                    x: z.number().int().min(0),
+                    y: z.number().int().min(0),
+                  })
+                  .strict()
+                  .optional(),
+                resourcePolicy: z.enum(GROUP_RESOURCE_POLICIES),
+                retreatThreshold: z.number().int().min(0).max(100),
+              })
+              .strict(),
             z.object({ kind: z.literal("search") }).strict(),
             z.object({ kind: z.literal("stairs") }).strict(),
             z.object({ kind: z.literal("death_save") }).strict(),
@@ -164,6 +189,23 @@ export function buildRogueServer(store) {
       },
     },
     wrap((args) => store.act(args)),
+  );
+  server.registerTool(
+    "rogue_groups_get",
+    {
+      title: "Read party and known creature groups",
+      description:
+        "Read the persisted player-party leadership, formation and order plus only enemy groups with currently visible members. Hidden membership and undiscovered groups are not exposed. Group orders are issued as revisioned command intents through rogue_act.",
+      inputSchema: z.object({ runId: id }).strict(),
+      outputSchema,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        idempotentHint: true,
+        openWorldHint: false,
+      },
+    },
+    wrap(({ runId }) => store.groups(runId)),
   );
   server.registerTool(
     "rogue_bestiary_get",

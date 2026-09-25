@@ -44,6 +44,7 @@ test("real rogue MCP creates, advances, retries and resumes a solo run", async (
   assert.deepEqual(tools.tools.map((tool) => tool.name).sort(), [
     "rogue_act",
     "rogue_bestiary_get",
+    "rogue_groups_get",
     "rogue_log",
     "rogue_run_create",
     "rogue_run_export",
@@ -80,25 +81,45 @@ test("real rogue MCP creates, advances, retries and resumes a solo run", async (
     form: "natural_caves",
     size: "small",
   });
-  const action = {
+  const groups = await call("rogue_groups_get", { runId: created.runId });
+  assert.equal(groups.groups.party.leaderId, "hero");
+  assert.equal(groups.groups.party.commandRevision, 0);
+  const commanded = await call("rogue_act", {
     runId: created.runId,
     expectedRevision: 0,
+    requestId: "mcp-command-1",
+    intent: {
+      kind: "command",
+      groupId: "party",
+      issuerId: "hero",
+      expectedCommandRevision: 0,
+      objective: "hold",
+      formation: "line",
+      resourcePolicy: "conserve",
+      retreatThreshold: 30,
+    },
+  });
+  assert.equal(commanded.revision, 1);
+  assert.equal(commanded.view.groups.party.commandRevision, 1);
+  const action = {
+    runId: created.runId,
+    expectedRevision: 1,
     requestId: "mcp-turn-1",
     intent: { kind: "wait" },
   };
   const first = await call("rogue_act", action);
-  assert.equal(first.revision, 1);
+  assert.equal(first.revision, 2);
   assert.deepEqual(await call("rogue_act", action), {
     ...first,
     replayed: true,
   });
   assert.equal(
     (await call("rogue_log", { runId: created.runId })).turns.length,
-    1,
+    2,
   );
   await client.close();
   await connect();
   const resumed = await call("rogue_run_get", { runId: created.runId });
-  assert.equal(resumed.revision, 1);
-  assert.equal(resumed.tick, 1);
+  assert.equal(resumed.revision, 2);
+  assert.equal(resumed.tick, 2);
 });

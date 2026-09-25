@@ -8,11 +8,14 @@ import {
   applyRogueTurn,
   DIRECTIONS,
   newRogueRun,
+  parseRogueState,
   rogueRunView,
+  serializeRogueState,
 } from "../src/rogue-engine.js";
 import { RogueStore } from "../src/rogue-store.js";
 import { applyTypedDamage, resolveDeathSave } from "../src/rogue-rules.js";
 import { route } from "../src/spatial.js";
+import { createGroup } from "../src/group-logic.js";
 
 const input = {
   requestId: "create-demo",
@@ -131,6 +134,94 @@ test("one accepted intent advances one tick and resolves an adjacent enemy respo
     outcome.events.map((event) => event.type),
     ["hero_wait", "attack"],
   );
+});
+
+test("party orders are authoritative, revisioned roguelike turns", () => {
+  const state = newRogueRun(input);
+  state.enemies = [];
+  const outcome = applyRogueTurn(state, {
+    kind: "command",
+    groupId: "party",
+    issuerId: "hero",
+    expectedCommandRevision: 0,
+    objective: "hold",
+    formation: "line",
+    resourcePolicy: "conserve",
+    retreatThreshold: 35,
+  });
+  assert.equal(state.partyGroup.commandRevision, 1);
+  assert.equal(state.partyGroup.order.objective, "hold");
+  assert.equal(state.partyGroup.order.formation, "line");
+  assert.ok(
+    outcome.events.some((event) => event.type === "group_order_issued"),
+  );
+  const view = rogueRunView(state);
+  assert.equal(view.groups.party.order.resourcePolicy, "conserve");
+  assert.ok(view.legalIntents.includes("command"));
+});
+
+test("v0.1 run snapshots acquire group state when loaded", () => {
+  const legacy = serializeRogueState(newRogueRun(input));
+  legacy.schemaVersion = 2;
+  delete legacy.partyGroup;
+  for (const level of legacy.levels) {
+    delete level.enemyGroups;
+    for (const enemy of level.enemies) delete enemy.groupId;
+  }
+  const migrated = parseRogueState(legacy);
+  assert.equal(migrated.partyGroup.leaderId, "hero");
+  assert.ok(migrated.enemyGroups.length > 0);
+  assert.ok(migrated.enemies.every((enemy) => enemy.groupId));
+});
+
+test("enemy members execute their persisted group retreat policy", () => {
+  const state = newRogueRun(input);
+  const level = state.levels[0];
+  level.map = {
+    grid: "square",
+    width: 10,
+    height: 10,
+    blocked: [],
+    difficult: [],
+  };
+  state.map = level.map;
+  state.hero.x = 5;
+  state.hero.y = 5;
+  const enemy = {
+    id: "ordered-enemy",
+    template: "goblin_skulk",
+    name: "Ordered enemy",
+    x: 7,
+    y: 5,
+    hp: 8,
+    maxHp: 8,
+    ac: 12,
+    attackBonus: 3,
+    damage: "1d4+1",
+    damageType: "piercing",
+    aware: true,
+    lastKnown: { x: 5, y: 5 },
+    homeRoomId: "none",
+    conditions: [],
+  };
+  state.enemies = level.enemies = [enemy];
+  const group = createGroup({
+    id: "enemy-test-group",
+    name: "Test group",
+    side: "enemy",
+    members: [{ actorId: enemy.id, role: "scout", commandScore: 20 }],
+    leaderId: enemy.id,
+    objective: "retreat",
+  });
+  state.enemyGroups = level.enemyGroups = [group];
+  const outcome = applyRogueTurn(state, { kind: "wait" });
+  assert.ok(
+    outcome.events.some(
+      (event) =>
+        event.type === "enemy_move" && event.reason === "retreat_group_order",
+    ),
+  );
+  assert.ok(Math.max(Math.abs(enemy.x - 5), Math.abs(enemy.y - 5)) > 2);
 });
 
 test("treasure is collected once by entering its cell and is hidden until visible", () => {

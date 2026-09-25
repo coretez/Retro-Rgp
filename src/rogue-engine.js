@@ -15,6 +15,12 @@ import {
   neighbors,
   paths,
 } from "./spatial.js";
+import {
+  createGroup,
+  groupView,
+  issueGroupOrder,
+  reconcileGroupLeadership,
+} from "./group-logic.js";
 
 export const ROGUE_RULESET = "solo-roguelike-v2";
 export const DIRECTIONS = {
@@ -201,6 +207,44 @@ const center = (room) => ({
 const same = (a, b) => a.x === b.x && a.y === b.y;
 const active = (state) => state.levels[state.depth - 1];
 const aliveEnemies = (state) => state.enemies.filter((enemy) => enemy.hp > 0);
+const commandScore = (role) =>
+  ({ boss: 100, sentinel: 70, guardian: 60, support: 50, brute: 40 })[role] ??
+  20;
+
+function buildEnemyGroups(enemies, depth) {
+  const factions = Map.groupBy(
+    enemies,
+    (enemy) => ROGUE_BESTIARY[enemy.template].faction,
+  );
+  return [...factions.entries()].map(([faction, actors]) => {
+    const members = actors
+      .map((enemy) => ({
+        actorId: enemy.id,
+        role: ROGUE_BESTIARY[enemy.template].role,
+        commandScore: commandScore(ROGUE_BESTIARY[enemy.template].role),
+      }))
+      .sort(
+        (a, b) =>
+          b.commandScore - a.commandScore || a.actorId.localeCompare(b.actorId),
+      );
+    return createGroup({
+      id: `enemy-group-${depth}-${faction}`,
+      name: faction.replaceAll("_", " "),
+      side: "enemy",
+      members,
+      leaderId: members[0].actorId,
+      formation: faction === "wildclaw" ? "wedge" : "scatter",
+      objective: members.some((member) =>
+        ["guardian", "sentinel", "boss"].includes(member.role),
+      )
+        ? "hold"
+        : "advance",
+      retreatThreshold: members.some((member) => member.role === "coward")
+        ? 50
+        : 20,
+    });
+  });
+}
 const roomAt = (level, p) =>
   level.rooms.find(
     (r) =>
@@ -219,6 +263,7 @@ function attachActive(state) {
     "doors",
     "features",
     "remembered",
+    "enemyGroups",
   ])
     state[field] = level[field];
   state.theme = level.theme;
@@ -487,8 +532,49 @@ function enemyStep(state, enemy, retreat = false) {
   return path[1] ?? null;
 }
 
+function enemyGroupPolicy(state, enemy) {
+  const group = (state.enemyGroups ?? []).find((candidate) =>
+    candidate.members.some((member) => member.actorId === enemy.id),
+  );
+  if (!group) return { group: null, hold: false, retreat: false, reason: null };
+  const actors = group.members
+      .map((member) =>
+        state.enemies.find((actor) => actor.id === member.actorId),
+      )
+      .filter(Boolean),
+    maximum = actors.reduce((total, actor) => total + actor.maxHp, 0),
+    current = actors.reduce((total, actor) => total + Math.max(0, actor.hp), 0),
+    healthPercent = maximum ? Math.floor((current / maximum) * 100) : 0,
+    orderedRetreat = group.order.objective === "retreat",
+    thresholdRetreat = healthPercent <= group.order.retreatThreshold;
+  return {
+    group,
+    hold: group.order.objective === "hold",
+    retreat: orderedRetreat || thresholdRetreat,
+    reason: orderedRetreat
+      ? "retreat_group_order"
+      : thresholdRetreat
+        ? "retreat_group_threshold"
+        : null,
+  };
+}
+
 function resolveEnemies(state, dice, events) {
   const level = active(state);
+  for (const group of state.enemyGroups ?? []) {
+    const change = reconcileGroupLeadership(group, state.enemies);
+    if (change) {
+      const actor = state.enemies.find(
+        (enemy) =>
+          enemy.id === change.leaderId || enemy.id === change.previousLeaderId,
+      );
+      events.push({
+        type: "group_leader_changed",
+        ...change,
+        position: actor ? { x: actor.x, y: actor.y } : null,
+      });
+    }
+  }
   for (const enemy of aliveEnemies(state).sort((a, b) =>
     a.id.localeCompare(b.id),
   )) {
@@ -506,10 +592,11 @@ function resolveEnemies(state, dice, events) {
       continue;
     }
     if (!enemy.aware) continue;
-    const home = level.rooms.find((r) => r.id === enemy.homeRoomId),
-      territorial = ["guardian", "sentinel", "brute", "boss"].includes(
-        template.role,
-      );
+    const policy = enemyGroupPolicy(state, enemy),
+      home = level.rooms.find((r) => r.id === enemy.homeRoomId),
+      territorial =
+        policy.hold ||
+        ["guardian", "sentinel", "brute", "boss"].includes(template.role);
     if (
       territorial &&
       home &&
@@ -520,8 +607,9 @@ function resolveEnemies(state, dice, events) {
       continue;
     }
     const retreat =
-        ["coward", "skirmisher"].includes(template.role) &&
-        enemy.hp <= Math.ceil(enemy.maxHp / 2),
+        policy.retreat ||
+        (["coward", "skirmisher"].includes(template.role) &&
+          enemy.hp <= Math.ceil(enemy.maxHp / 2)),
       step = enemyStep(state, enemy, retreat);
     if (!step) continue;
     const from = { x: enemy.x, y: enemy.y };
@@ -535,7 +623,7 @@ function resolveEnemies(state, dice, events) {
       to: { x: enemy.x, y: enemy.y },
       position: { x: enemy.x, y: enemy.y },
       reason: retreat
-        ? "retreat_wounded"
+        ? (policy.reason ?? "retreat_wounded")
         : seesHero
           ? "approach_visible_hero"
           : "investigate_noise",
@@ -694,6 +782,14 @@ function buildLevel(input, depth, maxDepth) {
       homeRoomId: room.id,
     });
   }
+  const enemyGroups = buildEnemyGroups(enemies, depth);
+  for (const group of enemyGroups)
+    for (const member of group.members) {
+      const enemy = enemies.find(
+        (candidate) => candidate.id === member.actorId,
+      );
+      if (enemy) enemy.groupId = group.id;
+    }
   const ordinaryConnections = dungeon.connections.filter(
       (connection) => connection.kind !== "alternate_route",
     ),
@@ -795,6 +891,7 @@ function buildLevel(input, depth, maxDepth) {
     exit,
     stairs: depth < maxDepth ? "down" : "surface_exit",
     enemies,
+    enemyGroups,
     doors,
     features,
     treasures: candidates
@@ -815,7 +912,7 @@ export function newRogueRun(input) {
       : null,
     startingAc = startingArmor.ac + (startingOffhand?.acBonus ?? 0);
   const state = {
-    schemaVersion: 2,
+    schemaVersion: 3,
     ruleset: ROGUE_RULESET,
     id: randomUUID(),
     revision: 0,
@@ -886,8 +983,20 @@ export function newRogueRun(input) {
       },
       inventoryCapacity: 10,
     },
+    partyGroup: null,
     visionRadius: 6,
   };
+  state.partyGroup = createGroup({
+    id: "party",
+    name: `${state.hero.name}'s company`,
+    side: "party",
+    members: [{ actorId: state.hero.id, role: "leader", commandScore: 100 }],
+    leaderId: state.hero.id,
+    formation: "column",
+    objective: "explore",
+    resourcePolicy: "balanced",
+    retreatThreshold: 25,
+  });
   attachActive(state);
   Object.assign(state.hero, state.entrance);
   visibility(state);
@@ -1340,6 +1449,21 @@ export function applyRogueTurn(state, intent, dice = new Dice()) {
     if (outcome.result === "revived") state.status = "active";
     else if (outcome.result === "dead") state.status = "dead";
     else if (outcome.result === "stable") state.status = "stable";
+  } else if (intent.kind === "command") {
+    check(
+      intent.groupId === state.partyGroup.id,
+      "GROUP_NOT_COMMANDABLE",
+      "Only the player's party may receive player commands.",
+    );
+    const order = issueGroupOrder(state.partyGroup, intent, state.tick);
+    events.push({
+      type: "group_order_issued",
+      groupId: state.partyGroup.id,
+      actorId: intent.issuerId,
+      actorName: state.hero.name,
+      order,
+      position: { x: state.hero.x, y: state.hero.y },
+    });
   } else if (intent.kind === "wait")
     events.push({
       type: "hero_wait",
@@ -1544,6 +1668,7 @@ export function rogueRunView(state, recentEvents = []) {
       : null,
     map: { width: level.map.width, height: level.map.height, cells },
     hero: structuredClone(state.hero),
+    groups: rogueGroupsView(state, currentVisible),
     enemyCount: aliveEnemies(state).length,
     treasureRemaining: level.treasures.filter((item) => !item.collected).length,
     factions: [
@@ -1558,6 +1683,7 @@ export function rogueRunView(state, recentEvents = []) {
         : state.status === "active"
           ? [
               "move",
+              "command",
               "open",
               "wait",
               "search",
@@ -1587,6 +1713,7 @@ export function serializeRogueState(state) {
     doors,
     features,
     remembered,
+    enemyGroups,
     theme,
     ...core
   } = state;
@@ -1601,10 +1728,53 @@ export function serializeRogueState(state) {
 }
 
 export function parseRogueState(value) {
+  value.schemaVersion = Math.max(value.schemaVersion ?? 1, 3);
   value.levels = value.levels.map((level) => ({
     ...level,
     remembered: new Set(level.remembered),
     searched: new Set(level.searched),
   }));
+  value.partyGroup ??= createGroup({
+    id: "party",
+    name: `${value.hero.name}'s company`,
+    side: "party",
+    members: [{ actorId: value.hero.id, role: "leader", commandScore: 100 }],
+    leaderId: value.hero.id,
+  });
+  for (const level of value.levels) {
+    level.enemyGroups ??= buildEnemyGroups(level.enemies, level.depth);
+    for (const group of level.enemyGroups)
+      for (const member of group.members) {
+        const enemy = level.enemies.find(
+          (candidate) => candidate.id === member.actorId,
+        );
+        if (enemy) enemy.groupId = group.id;
+      }
+  }
   return attachActive(value);
+}
+
+export function rogueGroupsView(state, currentVisible = visibility(state)) {
+  const party = groupView(state.partyGroup, [state.hero]);
+  const visibleEnemyIds = new Set(
+    aliveEnemies(state)
+      .filter((enemy) => currentVisible.has(key(enemy)))
+      .map((enemy) => enemy.id),
+  );
+  const enemies = (state.enemyGroups ?? [])
+    .filter((group) =>
+      group.members.some((member) => visibleEnemyIds.has(member.actorId)),
+    )
+    .map((group) => {
+      const view = groupView(group, state.enemies);
+      view.members = view.members.filter((member) =>
+        visibleEnemyIds.has(member.actorId),
+      );
+      view.knownMemberCount = view.members.length;
+      view.totalMemberCount = null;
+      if (!view.members.some((member) => member.actorId === view.leaderId))
+        view.leaderId = null;
+      return view;
+    });
+  return { party, enemies };
 }

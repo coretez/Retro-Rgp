@@ -208,7 +208,11 @@ Keep the player-facing surface narrow:
 | `rogue_act`          | Submit one typed intent and atomically resolve the complete turn batch                                          |
 | `rogue_log`          | Page immutable turn receipts and events for replay/debugging                                                    |
 | `rogue_run_export`   | Export definition, initial snapshot, current state and hashes for reproducibility                               |
-| `rogue_bestiary_get` | Read the authoritative eight-creature manual, behavior roles, factions, ecology, mechanics and provenance       |
+| `rogue_bestiary_get` | Read the authoritative 25-creature manual, behavior roles, factions, ecology, mechanics and provenance          |
+
+The post-v0.1 experimental branch also exposes `rogue_groups_get` and accepts a
+revisioned `command` intent through `rogue_act`; see
+[MCP-native group logic](group-logic.md).
 
 `rogue_act` uses a tagged union rather than separate move/attack/open/search
 tools so that one request always means one world-advancing player turn. Example:

@@ -49,6 +49,16 @@ See [the frozen v0.1 record](docs/solo-roguelike-v0.1.md),
 [the design](docs/solo-roguelike-mode.md), and
 [the D&D compatibility profile](docs/rogue-dnd-compatibility.md).
 
+## Experimental group branch
+
+The `codex/multi-character-experiment` branch begins the MCP-native group layer.
+It persists leaders and monster alphas, role assignments, formations, objectives,
+resource policy, retreat thresholds, command revisions and deterministic
+succession. Group orders are replay-safe `rogue_act` intents, and
+`rogue_groups_get` exposes the party plus only currently known enemy groups. See
+[MCP-native group logic](docs/group-logic.md) for implemented behavior and the
+remaining companion-play work.
+
 ## Public source and restricted rights
 
 This public repository is **source-available for inspection, not open source**.

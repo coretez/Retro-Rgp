@@ -1,6 +1,6 @@
 {
   "name": "retro-rgp",
-  "version": "0.1.0",
+  "version": "0.2.0-alpha.1",
   "description": "A persistent solo dungeon roguelike with a dedicated MCP rules server and HTML client",
   "type": "module",
   "private": true,
@@ -23,4 +23,3 @@
     "prettier": "^3.9.8"
   }
 }
-
