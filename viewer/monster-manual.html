@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Monster Manual · Retro RPG</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d1110;
+        --panel: #171d1a;
+        --panel2: #202822;
+        --line: #3b473e;
+        --ink: #eee9d9;
+        --muted: #a6aa9c;
+        --gold: #d7ba6d;
+        --moss: #86a581;
+        --blood: #d47b6d;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 70% 0%, #1c2820 0, transparent 34%),
+          var(--bg);
+        color: var(--ink);
+        font:
+          15px/1.55 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      }
+      header {
+        padding: 22px 28px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        align-items: end;
+        justify-content: space-between;
+        gap: 20px;
+      }
+      .eyebrow {
+        color: var(--moss);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        font-size: 11px;
+      }
+      h1,
+      h2 {
+        font-family: Georgia, serif;
+        font-weight: 400;
+      }
+      h1 {
+        margin: 3px 0 0;
+        font-size: 34px;
+      }
+      h2 {
+        margin: 0 0 8px;
+        font-size: 28px;
+      }
+      a,
+      button,
+      input,
+      select {
+        font: inherit;
+        color: var(--ink);
+        background: var(--panel2);
+        border: 1px solid #526056;
+        border-radius: 5px;
+        padding: 9px 11px;
+      }
+      a {
+        text-decoration: none;
+      }
+      button {
+        text-align: left;
+        cursor: pointer;
+      }
+      button:hover,
+      button.active,
+      a:hover {
+        border-color: var(--gold);
+      }
+      main {
+        max-width: 1500px;
+        margin: auto;
+        padding: 20px;
+        display: grid;
+        grid-template-columns: minmax(310px, 380px) minmax(0, 1fr);
+        gap: 20px;
+      }
+      aside,
+      article {
+        background: color-mix(in srgb, var(--panel) 96%, transparent);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+      aside {
+        padding: 14px;
+        align-self: start;
+      }
+      .filters {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+        margin-bottom: 12px;
+      }
+      .filters input {
+        grid-column: 1 / -1;
+        width: 100%;
+      }
+      #count {
+        color: var(--muted);
+        margin: 6px 0 10px;
+        font-size: 12px;
+      }
+      #creature-list {
+        display: grid;
+        gap: 6px;
+        max-height: calc(100vh - 235px);
+        overflow: auto;
+      }
+      .creature-button {
+        display: grid;
+        grid-template-columns: 30px 1fr;
+        align-items: center;
+        gap: 8px;
+        width: 100%;
+      }
+      .glyph {
+        color: var(--gold);
+        font-size: 20px;
+        text-align: center;
+        font-family: "Hiragino Sans", "PingFang SC", "Yu Gothic", sans-serif;
+      }
+      .small {
+        display: block;
+        color: var(--muted);
+        font-size: 11px;
+        text-transform: uppercase;
+      }
+      article {
+        padding: 26px 30px;
+        min-height: 620px;
+      }
+      .statline {
+        color: var(--moss);
+        text-transform: uppercase;
+        margin-bottom: 20px;
+      }
+      .stat-grid {
+        display: grid;
+        grid-template-columns: repeat(5, minmax(100px, 1fr));
+        gap: 1px;
+        background: var(--line);
+        margin: 20px 0;
+        border: 1px solid var(--line);
+      }
+      .stat {
+        background: var(--panel2);
+        padding: 12px;
+      }
+      .stat span {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      .stat strong {
+        color: var(--gold);
+        font-size: 17px;
+      }
+      .interpretation {
+        color: #ddd1ab;
+        border-left: 3px solid var(--gold);
+        padding-left: 14px;
+      }
+      .ecology {
+        border-top: 1px solid var(--line);
+        margin-top: 22px;
+        padding-top: 16px;
+      }
+      .traits {
+        color: var(--muted);
+      }
+      #error {
+        color: var(--blood);
+      }
+      @media (max-width: 850px) {
+        header {
+          display: block;
+        }
+        header a {
+          display: inline-block;
+          margin-top: 12px;
+        }
+        main {
+          grid-template-columns: 1fr;
+        }
+        #creature-list {
+          max-height: 360px;
+        }
+        .stat-grid {
+          grid-template-columns: repeat(2, 1fr);
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <div class="eyebrow">Retro RPG · Authoritative creature catalog</div>
+        <h1>Monster Manual</h1>
+      </div>
+      <a href="/">Return to dungeon</a>
+    </header>
+    <main>
+      <aside>
+        <div class="filters">
+          <input
+            id="search"
+            type="search"
+            placeholder="Search monsters…"
+            aria-label="Search monsters"
+          />
+          <select id="role" aria-label="Filter by role">
+            <option value="">All roles</option>
+          </select>
+          <select id="faction" aria-label="Filter by faction">
+            <option value="">All factions</option>
+          </select>
+        </div>
+        <div id="count">Loading bestiary…</div>
+        <div id="creature-list"></div>
+      </aside>
+      <article id="entry" aria-live="polite"><div id="error"></div></article>
+    </main>
+    <script>
+      let manual = [],
+        selectedId = null;
+      const $ = (id) => document.getElementById(id);
+      const title = (value) =>
+        value
+          .replaceAll("_", " ")
+          .replace(/\b\w/g, (letter) => letter.toUpperCase());
+      function options(id, values) {
+        const select = $(id);
+        for (const value of [...new Set(values)].sort()) {
+          const option = document.createElement("option");
+          option.value = value;
+          option.textContent = title(value);
+          select.append(option);
+        }
+      }
+      function filtered() {
+        const query = $("search").value.trim().toLowerCase(),
+          role = $("role").value,
+          faction = $("faction").value;
+        return manual.filter(
+          (entry) =>
+            (!query ||
+              `${entry.name} ${entry.role} ${entry.faction} ${entry.ecology}`
+                .toLowerCase()
+                .includes(query)) &&
+            (!role || entry.role === role) &&
+            (!faction || entry.faction === faction),
+        );
+      }
+      function renderList() {
+        const entries = filtered();
+        if (!entries.some((entry) => entry.id === selectedId))
+          selectedId = entries[0]?.id ?? null;
+        $("count").textContent =
+          `${entries.length} of ${manual.length} creatures`;
+        $("creature-list").replaceChildren(
+          ...entries.map((entry) => {
+            const button = document.createElement("button");
+            button.type = "button";
+            button.className = `creature-button${entry.id === selectedId ? " active" : ""}`;
+            const glyph = document.createElement("span");
+            glyph.className = "glyph";
+            glyph.textContent = entry.glyph;
+            const label = document.createElement("span");
+            label.textContent = entry.name;
+            const detail = document.createElement("span");
+            detail.className = "small";
+            detail.textContent = `${entry.role} · ${title(entry.faction)} · ${entry.glyphReading}`;
+            label.append(detail);
+            button.append(glyph, label);
+            button.addEventListener("click", () => {
+              selectedId = entry.id;
+              renderList();
+              renderEntry();
+            });
+            return button;
+          }),
+        );
+        renderEntry();
+      }
+      function renderEntry() {
+        const entry = manual.find((candidate) => candidate.id === selectedId),
+          root = $("entry");
+        root.replaceChildren();
+        if (!entry) {
+          root.textContent = "No creatures match these filters.";
+          return;
+        }
+        const heading = document.createElement("h2");
+        heading.textContent = `${entry.glyph} · ${entry.name}`;
+        const line = document.createElement("div");
+        line.className = "statline";
+        line.textContent = `${entry.role} · ${title(entry.faction)} · ${entry.glyphLanguage} ${entry.glyphReading} · “${entry.glyphMeaning}”`;
+        const stats = document.createElement("div");
+        stats.className = "stat-grid";
+        for (const [label, value] of [
+          ["Armor class", entry.ac],
+          ["Hit points", entry.hp],
+          ["Attack", `+${entry.attackBonus}`],
+          ["Damage", entry.damage],
+          ["Type", entry.damageType],
+        ]) {
+          const box = document.createElement("div");
+          box.className = "stat";
+          const name = document.createElement("span");
+          name.textContent = label;
+          const strong = document.createElement("strong");
+          strong.textContent = value;
+          box.append(name, strong);
+          stats.append(box);
+        }
+        root.append(heading, line, stats);
+        for (const text of entry.lore) {
+          const p = document.createElement("p");
+          p.textContent = text;
+          root.append(p);
+        }
+        const interpretation = document.createElement("p");
+        interpretation.className = "interpretation";
+        const em = document.createElement("em");
+        em.textContent = entry.interpretation;
+        interpretation.append(em);
+        root.append(interpretation);
+        const ecology = document.createElement("div");
+        ecology.className = "ecology";
+        ecology.innerHTML = `<strong>Ecology</strong><p></p>`;
+        ecology.querySelector("p").textContent = entry.ecology;
+        root.append(ecology);
+        const traits = [
+          ...(entry.resistances ?? []).map((v) => `Resistance: ${v}`),
+          ...(entry.vulnerabilities ?? []).map((v) => `Vulnerability: ${v}`),
+          ...(entry.immunities ?? []).map((v) => `Immunity: ${v}`),
+        ];
+        if (traits.length) {
+          const p = document.createElement("p");
+          p.className = "traits";
+          p.textContent = traits.join(" · ");
+          root.append(p);
+        }
+      }
+      for (const id of ["search", "role", "faction"])
+        $(id).addEventListener(
+          id === "search" ? "input" : "change",
+          renderList,
+        );
+      fetch("/api/bestiary")
+        .then((response) => response.json())
+        .then((data) => {
+          manual = data.creatures;
+          selectedId = manual[0]?.id;
+          options(
+            "role",
+            manual.map((entry) => entry.role),
+          );
+          options(
+            "faction",
+            manual.map((entry) => entry.faction),
+          );
+          renderList();
+        })
+        .catch((error) => {
+          $("error").textContent = error.message;
+        });
+    </script>
+  </body>
+</html>

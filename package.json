@@ -1,0 +1,26 @@
+{
+  "name": "retro-rgp",
+  "version": "0.1.0",
+  "description": "A persistent solo dungeon roguelike with a dedicated MCP rules server and HTML client",
+  "type": "module",
+  "private": true,
+  "license": "SEE LICENSE IN LICENSE.md",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "start": "node scripts/rogue-viewer.js",
+    "rogue": "node scripts/rogue-viewer.js",
+    "test": "node --test test/*.test.js",
+    "format": "prettier --write src scripts test viewer docs README.md CHANGELOG.md LICENSE.md NOTICE.md",
+    "format:check": "prettier --check src scripts test viewer docs README.md CHANGELOG.md LICENSE.md NOTICE.md"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "1.30.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.8"
+  }
+}
+

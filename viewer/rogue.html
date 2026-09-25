@@ -1,0 +1,1665 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Dungeon Rogue · Retro RPG</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        --bg: #0d1110;
+        --panel: #171d1a;
+        --panel2: #202822;
+        --line: #3b473e;
+        --ink: #eee9d9;
+        --muted: #a6aa9c;
+        --gold: #d7ba6d;
+        --blood: #d06f62;
+        --moss: #7fa17b;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background:
+          radial-gradient(circle at 35% 20%, #19231d 0, transparent 35%),
+          var(--bg);
+        color: var(--ink);
+        font:
+          14px/1.45 ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace;
+      }
+      header {
+        padding: 10px 18px;
+        border-bottom: 1px solid var(--line);
+        display: flex;
+        gap: 18px;
+        align-items: center;
+        justify-content: space-between;
+      }
+      .eyebrow {
+        color: var(--moss);
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        font-size: 10px;
+      }
+      h1 {
+        margin: 3px 0 0;
+        font:
+          24px/1.1 Georgia,
+          serif;
+      }
+      #subtitle {
+        margin-top: 5px;
+        color: var(--muted);
+        max-width: 720px;
+      }
+      button,
+      input,
+      select,
+      .game-menu summary {
+        font: inherit;
+        color: var(--ink);
+        background: var(--panel2);
+        border: 1px solid #526056;
+        border-radius: 5px;
+        padding: 8px 10px;
+      }
+      button {
+        cursor: pointer;
+      }
+      button:hover:not(:disabled) {
+        border-color: var(--gold);
+      }
+      button:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .new-run {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        z-index: 100;
+        display: grid;
+        grid-template-columns: repeat(2, minmax(150px, 1fr));
+        gap: 8px;
+        width: min(520px, calc(100vw - 24px));
+        padding: 14px;
+        background: #171d1af5;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        box-shadow: 0 18px 45px #000b;
+      }
+      .new-run input {
+        width: 100%;
+      }
+      .new-run button {
+        grid-column: 1 / -1;
+      }
+      .game-menu {
+        position: relative;
+      }
+      .game-menu summary {
+        list-style: none;
+        cursor: pointer;
+        color: var(--gold);
+      }
+      .game-menu summary::-webkit-details-marker {
+        display: none;
+      }
+      .game-menu[open] summary {
+        border-color: var(--gold);
+      }
+      main {
+        display: grid;
+        grid-template-columns: minmax(900px, 1fr) minmax(300px, 380px);
+        gap: 18px;
+        padding: 18px;
+        max-width: 1680px;
+        margin: auto;
+      }
+      .card {
+        background: color-mix(in srgb, var(--panel) 94%, transparent);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      .stats {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        border-bottom: 1px solid var(--line);
+      }
+      .stat {
+        padding: 10px 12px;
+        border-right: 1px solid var(--line);
+      }
+      .stat:last-child {
+        border: 0;
+      }
+      .stat label {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      .stat strong {
+        color: var(--gold);
+        font-size: 16px;
+      }
+      .stat.hurt strong {
+        color: #ff5d4f;
+        animation: health-hit 520ms ease-out;
+      }
+      .stat.healed strong {
+        color: #91d78e;
+        animation: health-heal 520ms ease-out;
+      }
+      .stat.low strong {
+        color: #ff6b5e;
+      }
+      .map-wrap {
+        padding: 15px;
+        overflow: auto;
+        display: grid;
+        place-items: center;
+        min-height: 820px;
+        position: relative;
+      }
+      .map-wrap.hero-hurt {
+        animation: hurt-wash 440ms ease-out;
+      }
+      .map-wrap.combat-hit #map {
+        animation: combat-ring 380ms ease-out;
+      }
+      #map {
+        display: grid;
+        gap: 1px;
+        background: #0a0d0c;
+        border: 1px solid #2b342e;
+        width: max-content;
+      }
+      .cell {
+        width: 20px;
+        height: 20px;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        display: grid;
+        place-items: center;
+        color: #d9d4c4;
+        background: #111613;
+        font-weight: 700;
+        font-family: "Hiragino Sans", "PingFang SC", "Yu Gothic", sans-serif;
+        font-size: 15px;
+        position: relative;
+        overflow: visible;
+      }
+      .cell.unknown {
+        background: #080b09;
+        color: transparent;
+      }
+      .cell.remembered {
+        opacity: 0.42;
+      }
+      .cell.wall {
+        background: #232a25;
+        color: #59645b;
+      }
+      .cell.floor {
+        background: #171d19;
+      }
+      .cell.difficult {
+        background: #283129;
+        color: #789479;
+      }
+      .cell.exit {
+        color: var(--gold);
+      }
+      .cell.door_closed,
+      .cell.secret_door_closed {
+        color: #d49b60;
+        background: #32271d;
+      }
+      .cell.door_open,
+      .cell.secret_door_open {
+        color: #8b7154;
+      }
+      .cell.trap {
+        color: var(--blood);
+      }
+      .cell.item {
+        color: #9fd6d0;
+      }
+      .cell.hero {
+        color: #fff4c7;
+        background: #3b513e;
+        text-shadow: 0 0 7px #d8efb9;
+      }
+      .cell.enemy {
+        color: #ff9b82;
+        background: #3a2420;
+      }
+      .cell.hit-flash {
+        animation: target-hit 420ms ease-out;
+        z-index: 5;
+      }
+      .cell.treasure {
+        color: #ffe07b;
+      }
+      .cell.adjacent:hover {
+        outline: 1px solid var(--gold);
+        z-index: 2;
+      }
+      aside {
+        display: grid;
+        gap: 14px;
+        align-content: start;
+        position: sticky;
+        top: 18px;
+        max-height: calc(100vh - 36px);
+        overflow-y: auto;
+        padding-right: 3px;
+      }
+      .side-tabs {
+        position: sticky;
+        top: 0;
+        z-index: 30;
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 5px;
+        padding: 5px;
+        background: #0d1110ee;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        backdrop-filter: blur(8px);
+      }
+      .side-tabs button {
+        padding: 8px 3px;
+        font-size: 11px;
+      }
+      .side-tabs button[aria-selected="true"] {
+        border-color: var(--gold);
+        background: #343323;
+        color: #fff0b7;
+      }
+      .side-panel {
+        display: grid;
+        gap: 14px;
+      }
+      .side-panel[hidden] {
+        display: none;
+      }
+      .side-card {
+        padding: 14px;
+      }
+      h2 {
+        font:
+          19px/1.2 Georgia,
+          serif;
+        margin: 0 0 10px;
+      }
+      .controls {
+        display: grid;
+        grid-template-columns: repeat(3, 42px);
+        gap: 5px;
+        justify-content: center;
+        margin: 12px 0;
+      }
+      .controls button {
+        height: 38px;
+        padding: 0;
+      }
+      .help,
+      .theme {
+        color: var(--muted);
+        font-size: 12px;
+      }
+      #events {
+        display: grid;
+        align-content: start;
+        gap: 9px;
+        min-height: 330px;
+        max-height: 520px;
+        overflow: auto;
+      }
+      .event {
+        border-left: 2px solid #59685d;
+        padding-left: 9px;
+        color: #cecbbb;
+      }
+      .event-turn {
+        display: block;
+        margin-bottom: 2px;
+        color: #788379;
+        font-size: 9px;
+        letter-spacing: 0.12em;
+        text-transform: uppercase;
+      }
+      .event.treasure_collected,
+      .event.exit_reached {
+        border-color: var(--gold);
+        color: #f1d98f;
+      }
+      .event.attack,
+      .event.hero_defeated {
+        border-color: var(--blood);
+      }
+      .damage-number {
+        color: #ff5d4f;
+        font-size: 16px;
+      }
+      .healing-number {
+        color: #91d78e;
+        font-size: 16px;
+      }
+      .event-value {
+        color: #ffe07b;
+        font-size: 16px;
+      }
+      .event-name {
+        color: #f2dfaa;
+        font-weight: 700;
+      }
+      #combat-float {
+        position: absolute;
+        top: 22px;
+        left: 50%;
+        z-index: 20;
+        transform: translateX(-50%);
+        min-height: 32px;
+        pointer-events: none;
+        font:
+          700 24px/1 Georgia,
+          serif;
+        text-shadow: 0 2px 8px #000;
+      }
+      #combat-float.damage {
+        color: #ff5d4f;
+        animation: float-number 650ms ease-out;
+      }
+      #combat-float.hit {
+        color: #ffd278;
+        animation: float-number 650ms ease-out;
+      }
+      #combat-float.heal {
+        color: #91d78e;
+        animation: float-number 650ms ease-out;
+      }
+      #scene-card {
+        border-color: #65765f;
+        background: linear-gradient(145deg, #20291f, var(--panel));
+      }
+      #scene-card h2 {
+        color: var(--gold);
+        font-size: 23px;
+      }
+      .lore-section {
+        padding: 10px 0;
+        border-top: 1px solid var(--line);
+      }
+      .lore-section:first-of-type {
+        padding-top: 0;
+        border-top: 0;
+      }
+      .lore-section h3 {
+        margin: 0 0 5px;
+        color: var(--gold);
+        font:
+          16px/1.2 Georgia,
+          serif;
+      }
+      .lore-section p {
+        margin: 0;
+        color: #d5d1c2;
+      }
+      #lore-history {
+        display: grid;
+        gap: 6px;
+      }
+      #room {
+        margin-top: 8px;
+        color: var(--ink);
+        font:
+          16px/1.45 Georgia,
+          serif;
+      }
+      #events-card h2 {
+        color: #e7d49d;
+      }
+      #engagement-label {
+        margin: -4px 0 8px;
+        color: var(--blood);
+        font-size: 11px;
+        letter-spacing: 0.1em;
+        text-transform: uppercase;
+      }
+      #banner {
+        display: none;
+        margin: 12px 0;
+        padding: 12px;
+        text-align: center;
+        border: 1px solid var(--gold);
+        color: var(--gold);
+      }
+      #banner.show {
+        display: block;
+      }
+      #error {
+        color: #ff9d8c;
+        min-height: 1.5em;
+      }
+      .actions {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 6px;
+      }
+      .quick-items {
+        display: grid;
+        gap: 7px;
+        margin-top: 10px;
+        padding-top: 10px;
+        border-top: 1px solid var(--line);
+      }
+      .quick-item {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: center;
+      }
+      kbd {
+        display: inline-block;
+        min-width: 22px;
+        margin-right: 5px;
+        padding: 1px 4px;
+        border: 1px solid #657065;
+        border-radius: 3px;
+        background: #111713;
+        color: var(--gold);
+        font: inherit;
+        text-align: center;
+      }
+      details.card summary {
+        padding: 12px 14px;
+        color: var(--gold);
+        font:
+          18px/1.2 Georgia,
+          serif;
+        cursor: pointer;
+      }
+      details.card[open] summary {
+        border-bottom: 1px solid var(--line);
+      }
+      .collapsible-body {
+        padding: 0 14px 14px;
+      }
+      .inventory {
+        display: grid;
+        gap: 8px;
+      }
+      .inventory-row,
+      .equipment-slot {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: center;
+        padding-bottom: 7px;
+        border-bottom: 1px solid #303a32;
+      }
+      .inventory-row:last-child,
+      .equipment-slot:last-child {
+        border-bottom: 0;
+      }
+      .item-detail {
+        display: block;
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      #equipped {
+        display: grid;
+        gap: 6px;
+        margin-bottom: 12px;
+      }
+      .equipment-slot {
+        grid-template-columns: 72px minmax(0, 1fr);
+      }
+      .equipment-slot select {
+        min-width: 0;
+        width: 100%;
+      }
+      .equipment-note {
+        margin: -2px 0 12px;
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .slot-label {
+        color: var(--muted);
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      .manual-entry {
+        border-top: 1px solid var(--line);
+        padding: 11px 0;
+      }
+      .manual-entry:first-child {
+        border-top: 0;
+      }
+      .manual-entry h3 {
+        margin: 0 0 4px;
+        color: var(--gold);
+      }
+      .manual-entry p {
+        margin: 6px 0;
+      }
+      .tags {
+        color: var(--moss);
+        font-size: 11px;
+        text-transform: uppercase;
+      }
+      @keyframes health-hit {
+        35% {
+          transform: scale(1.28);
+          text-shadow: 0 0 12px #ff4b3c;
+        }
+      }
+      @keyframes health-heal {
+        35% {
+          transform: scale(1.2);
+          text-shadow: 0 0 12px #77d878;
+        }
+      }
+      @keyframes hurt-wash {
+        25% {
+          box-shadow: inset 0 0 95px 28px #9f211eaa;
+        }
+      }
+      @keyframes combat-ring {
+        30% {
+          border-color: #ffb05d;
+          box-shadow: 0 0 24px #d14d32aa;
+        }
+      }
+      @keyframes target-hit {
+        30% {
+          color: #fff;
+          background: #c64031;
+          transform: scale(1.45);
+        }
+      }
+      @keyframes float-number {
+        from {
+          opacity: 1;
+          transform: translate(-50%, 8px) scale(1.2);
+        }
+        to {
+          opacity: 0;
+          transform: translate(-50%, -18px) scale(0.95);
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .stat.hurt strong,
+        .stat.healed strong,
+        .map-wrap.hero-hurt,
+        .map-wrap.combat-hit #map,
+        .cell.hit-flash,
+        #combat-float {
+          animation: none;
+        }
+      }
+      @media (max-width: 900px) {
+        main {
+          grid-template-columns: 1fr;
+        }
+        aside {
+          order: -1;
+          position: static;
+          max-height: none;
+          overflow: visible;
+          padding-right: 0;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div>
+        <div class="eyebrow">Retro RPG · Solo turn engine</div>
+        <h1 id="title">Dungeon Rogue</h1>
+        <div id="subtitle">Loading the dungeon…</div>
+      </div>
+      <details class="game-menu" id="new-game-panel">
+        <summary>New game</summary>
+        <form class="new-run" id="new-run">
+          <input name="heroName" value="The Delver" aria-label="Hero name" />
+          <select name="heroClass" aria-label="Hero class">
+            <option value="fighter" selected>Fighter</option>
+            <option value="mage">Mage</option>
+            <option value="cleric">Cleric</option>
+          </select>
+          <input
+            name="seed"
+            value="the-river-below"
+            aria-label="Dungeon seed"
+          />
+          <select name="form" aria-label="Dungeon form">
+            <option value="auto">Auto theme</option>
+            <option value="fortress">Fortress</option>
+            <option value="temple">Temple</option>
+            <option value="crypt">Crypt</option>
+            <option value="rooms">Room complex</option>
+            <option value="natural_caves">Natural caves</option>
+            <option value="mine">Mine</option>
+            <option value="flooded_underways">Underground river</option>
+            <option value="hybrid" selected>Hybrid ruin</option>
+          </select>
+          <select name="size" aria-label="Floor size">
+            <option value="small" selected>Expansive · 56×40</option>
+            <option value="medium">Vast · 72×52</option>
+          </select>
+          <select name="levels" aria-label="Run length">
+            <option value="3">Delve · 3 levels</option>
+            <option value="5" selected>Expedition · 5 levels</option>
+            <option value="8">Campaign · 8 levels</option>
+          </select>
+          <button type="submit">Start new game</button>
+        </form>
+      </details>
+    </header>
+    <main>
+      <section class="card">
+        <div class="stats">
+          <div class="stat" id="health-stat">
+            <label>Health</label><strong id="hp">—</strong>
+          </div>
+          <div class="stat"><label>Armor</label><strong id="ac">—</strong></div>
+          <div class="stat">
+            <label>Treasure</label><strong id="gold">—</strong>
+          </div>
+          <div class="stat">
+            <label>Enemies</label><strong id="enemies">—</strong>
+          </div>
+          <div class="stat">
+            <label>Turn</label><strong id="turn">—</strong>
+          </div>
+          <div class="stat">
+            <label>Depth</label><strong id="depth">—</strong>
+          </div>
+          <div class="stat">
+            <label>Experience</label><strong id="xp">—</strong>
+          </div>
+        </div>
+        <div class="map-wrap">
+          <div id="combat-float" aria-live="assertive"></div>
+          <div id="map" aria-label="Dungeon map"></div>
+        </div>
+      </section>
+      <aside>
+        <nav class="side-tabs" aria-label="Game information">
+          <button type="button" data-side-tab="character" aria-selected="true">
+            Character
+          </button>
+          <button type="button" data-side-tab="events" aria-selected="false">
+            Events
+          </button>
+          <button type="button" data-side-tab="lore" aria-selected="false">
+            Lore
+          </button>
+          <button type="button" data-side-tab="manual" aria-selected="false">
+            Creatures
+          </button>
+        </nav>
+        <div class="side-panel" id="side-character">
+          <section class="card side-card">
+            <h2>Actions</h2>
+            <div class="theme" id="character"></div>
+            <div class="actions">
+              <button id="potion"><kbd>H</kbd>Drink potion</button>
+              <button id="stairs"><kbd>&gt;</kbd>Descend</button>
+              <button id="death-save"><kbd>R</kbd>Death save</button>
+              <button id="wait"><kbd>.</kbd>Wait</button>
+              <button id="rest">
+                <kbd>R</kbd><span id="rest-name">Short rest</span>
+              </button>
+              <button id="class-power">
+                <kbd id="power-key">F</kbd
+                ><span id="power-name">Class power</span>
+              </button>
+            </div>
+            <div class="quick-items" id="quick-items"></div>
+            <div id="banner"></div>
+            <div id="error"></div>
+          </section>
+          <section class="card side-card" id="equipment-panel">
+            <h2><kbd>I</kbd>Inventory &amp; Equipment</h2>
+            <div class="equipment-note">
+              Choose equipped gear below. Switching gear uses one turn.
+            </div>
+            <div id="equipped"></div>
+            <div class="slot-label">Carried equipment</div>
+            <div class="inventory" id="inventory"></div>
+          </section>
+          <details class="card" id="move-panel">
+            <summary>Movement &amp; help</summary>
+            <div class="collapsible-body">
+              <div class="controls">
+                <button data-direction="northwest">↖</button>
+                <button data-direction="north">↑</button>
+                <button data-direction="northeast">↗</button>
+                <button data-direction="west">←</button>
+                <span></span>
+                <button data-direction="east">→</button>
+                <button data-direction="southwest">↙</button>
+                <button data-direction="south">↓</button>
+                <button data-direction="southeast">↘</button>
+              </div>
+              <div class="help">
+                Arrow keys, WASD, QEZC diagonals, or numpad move. Walk into an
+                enemy to attack. Walking toward a closed door opens it. Hidden
+                features are noticed automatically while exploring.
+              </div>
+            </div>
+          </details>
+        </div>
+        <div class="side-panel" id="side-events" hidden>
+          <section class="card side-card" id="events-card">
+            <h2>What happens</h2>
+            <div id="events" aria-live="polite"></div>
+          </section>
+        </div>
+        <div class="side-panel" id="side-lore" hidden>
+          <section class="card side-card" id="scene-card">
+            <h2>Dungeon Lore</h2>
+            <div class="lore-section">
+              <h3>History</h3>
+              <div id="lore-history"></div>
+            </div>
+            <div class="lore-section">
+              <h3>Structure &amp; present condition</h3>
+              <p id="lore-condition"></p>
+            </div>
+            <div class="lore-section">
+              <h3 id="scene-title">Where you are</h3>
+              <div class="theme" id="theme"></div>
+              <div id="room"></div>
+            </div>
+            <div class="lore-section">
+              <h3>Dungeon pressures</h3>
+              <p id="factions"></p>
+            </div>
+            <div class="lore-section">
+              <h3>What you have learned</h3>
+              <p id="lore-discovery"></p>
+            </div>
+          </section>
+        </div>
+        <div class="side-panel" id="side-manual" hidden>
+          <section class="card side-card">
+            <h2>Monster manual</h2>
+            <div id="engagement-label">Nearest visible creature</div>
+            <select
+              id="monster-select"
+              aria-label="Monster manual entry"
+            ></select>
+            <div id="manual"></div>
+          </section>
+        </div>
+      </aside>
+    </main>
+    <script>
+      let state = null;
+      let busy = false;
+      let bestiary = null;
+      let lastFeedbackKey = null;
+      let feedbackTimer = null;
+      let eventHistory = [];
+      let historyRunId = null;
+      let lastHistoryKey = null;
+      const directions = {
+        ArrowUp: "north",
+        w: "north",
+        8: "north",
+        ArrowDown: "south",
+        s: "south",
+        2: "south",
+        ArrowLeft: "west",
+        a: "west",
+        4: "west",
+        ArrowRight: "east",
+        d: "east",
+        6: "east",
+        q: "northwest",
+        7: "northwest",
+        e: "northeast",
+        9: "northeast",
+        z: "southwest",
+        1: "southwest",
+        c: "southeast",
+        3: "southeast",
+      };
+      const deltaToDirection = {
+        "-1,-1": "northwest",
+        "0,-1": "north",
+        "1,-1": "northeast",
+        "-1,0": "west",
+        "1,0": "east",
+        "-1,1": "southwest",
+        "0,1": "south",
+        "1,1": "southeast",
+      };
+      const directionDeltas = Object.fromEntries(
+        Object.entries(deltaToDirection).map(([delta, direction]) => [
+          direction,
+          delta.split(",").map(Number),
+        ]),
+      );
+      const $ = (id) => document.getElementById(id);
+      function selectSideTab(name) {
+        document
+          .querySelectorAll("[data-side-tab]")
+          .forEach((button) =>
+            button.setAttribute(
+              "aria-selected",
+              String(button.dataset.sideTab === name),
+            ),
+          );
+        ["character", "events", "lore", "manual"].forEach((panel) => {
+          $(`side-${panel}`).hidden = panel !== name;
+        });
+      }
+      const eventText = (event) => {
+        if (event.type === "hero_move") return `${state.hero.name} moves.`;
+        if (event.type === "hero_wait") return `${state.hero.name} waits.`;
+        if (event.type === "enemy_move")
+          return `${event.actorName} approaches.`;
+        if (event.type === "attack")
+          return event.hit
+            ? `${event.actorName} hits ${event.targetName} for ${event.appliedDamage.hpDamage} ${event.appliedDamage.damageType} damage.`
+            : `${event.actorName} misses ${event.targetName}.`;
+        if (event.type === "enemy_defeated")
+          return `${event.actorName} is defeated.`;
+        if (event.type === "hero_defeated")
+          return `${event.actorName} falls in the dungeon.`;
+        if (event.type === "hero_unconscious")
+          return `${event.actorName} falls unconscious at 0 HP.`;
+        if (event.type === "death_save")
+          return `Death save ${event.roll.total}: ${event.result} (${event.death.successes} successes, ${event.death.failures} failures).`;
+        if (event.type === "treasure_collected")
+          return `Found ${event.itemName} worth ${event.valueCp} cp.`;
+        if (event.type === "exit_reached")
+          return `The dungeon heart is reached with ${event.treasureCp} cp of treasure.`;
+        if (event.type === "door_opened") return "A door grinds open.";
+        if (event.type === "noise")
+          return `Noise carries ${event.volume} squares.`;
+        if (event.type === "search")
+          return event.found.length
+            ? `Search reveals ${event.found.length} hidden feature${event.found.length === 1 ? "" : "s"}.`
+            : "The search finds nothing new.";
+        if (event.type === "discovery") {
+          const names = event.found.map((item) =>
+            item.kind.replaceAll("_", " "),
+          );
+          return `You notice ${names.join(" and ")}.`;
+        }
+        if (event.type === "item_collected")
+          return `Picked up ${event.itemName}.`;
+        if (event.type === "item_used")
+          return `${event.itemName} restores ${event.healing} HP.`;
+        if (event.type === "short_rest")
+          return `${event.actorName} spends a Hit Die and recovers ${event.healing} HP.`;
+        if (event.type === "trap_triggered")
+          return `${event.trapName} triggers${event.damage ? ` for ${event.damage.total} damage` : ", but you evade it"}.`;
+        if (event.type === "level_changed")
+          return `You descend to dungeon level ${event.depth}.`;
+        if (event.type === "equipment_changed")
+          return `${event.itemName} equipped in the ${event.slot} slot.`;
+        if (event.type === "equipment_removed")
+          return `${event.itemName} removed from the ${event.slot} slot.`;
+        return event.type.replaceAll("_", " ");
+      };
+      const emphasized = (text, className = "event-name") =>
+        Object.assign(document.createElement("strong"), {
+          className,
+          textContent: text,
+        });
+      function createEventRow(event) {
+        const row = document.createElement("div");
+        row.className = `event ${event.type}`;
+        const turn = document.createElement("span");
+        turn.className = "event-turn";
+        turn.textContent = `Turn ${event.turn}`;
+        row.append(turn);
+        if (event.type === "attack" && event.hit) {
+          row.append(
+            emphasized(event.actorName),
+            " hits ",
+            emphasized(event.targetName),
+            " for ",
+            emphasized(
+              event.appliedDamage.hpDamage,
+              event.actorKind === "enemy" ? "damage-number" : "event-value",
+            ),
+            ` ${event.appliedDamage.damageType} damage.`,
+          );
+        } else if (event.type === "trap_triggered" && event.damage) {
+          row.append(
+            `${event.trapName} triggers for `,
+            emphasized(
+              event.damage.applied?.hpDamage ?? event.damage.total,
+              "damage-number",
+            ),
+            " damage.",
+          );
+        } else if (event.type === "item_used") {
+          row.append(
+            `${event.itemName} restores `,
+            emphasized(event.healing, "healing-number"),
+            " HP.",
+          );
+        } else if (event.type === "spell_cast") {
+          row.append(
+            emphasized(event.spellName),
+            " strikes ",
+            emphasized(event.targetName),
+            " for ",
+            emphasized(event.appliedDamage.hpDamage, "event-value"),
+            ` ${event.appliedDamage.damageType} damage.`,
+          );
+        } else if (event.type === "class_power") {
+          row.append(
+            emphasized(event.powerName),
+            " restores ",
+            emphasized(event.healing, "healing-number"),
+            " HP.",
+          );
+        } else if (event.type === "short_rest") {
+          row.append(
+            "Short rest restores ",
+            emphasized(event.healing, "healing-number"),
+            ` HP · ${event.hitDiceRemaining} Hit Dice remain.`,
+          );
+        } else if (event.type === "permanent_gain") {
+          row.append(
+            emphasized(event.itemName),
+            " grants ",
+            emphasized(event.gain, "event-value"),
+            ".",
+          );
+        } else if (event.type === "blessing_received") {
+          row.append(
+            emphasized(event.shrineName),
+            " bestows ",
+            emphasized(event.gain, "event-value"),
+            ". Class power restored.",
+          );
+        } else if (event.type === "xp_gained") {
+          row.append(
+            emphasized(`+${event.amount} XP`, "event-value"),
+            ` for defeating ${event.defeatedName}.`,
+          );
+        } else if (event.type === "level_up") {
+          row.append(
+            "Advanced to ",
+            emphasized(`level ${event.level}`, "event-value"),
+            ` · +${event.hpGain} maximum HP`,
+            event.attackGain ? " · +1 weapon attack" : "",
+            ".",
+          );
+        } else if (event.type === "treasure_collected") {
+          row.append(
+            "Found ",
+            emphasized(event.itemName),
+            " worth ",
+            emphasized(`${event.valueCp} cp`, "event-value"),
+            ".",
+          );
+        } else if (event.type === "item_collected") {
+          row.append("Picked up ", emphasized(event.itemName), ".");
+        } else if (event.type === "equipment_changed") {
+          row.append(
+            emphasized(event.itemName),
+            ` equipped in the ${event.slot} slot.`,
+          );
+        } else if (event.type === "equipment_removed") {
+          row.append(
+            emphasized(event.itemName),
+            ` removed from the ${event.slot} slot.`,
+          );
+        } else if (event.type === "discovery") {
+          row.append(
+            "You notice ",
+            emphasized(
+              event.found
+                .map((item) => item.kind.replaceAll("_", " "))
+                .join(" and "),
+            ),
+            ".",
+          );
+        } else row.append(eventText(event));
+        return row;
+      }
+      function engagedCreature() {
+        const attackEvent = [...state.recentEvents]
+          .reverse()
+          .find((event) => ["attack", "spell_cast"].includes(event.type));
+        const combatTemplate = attackEvent
+          ? attackEvent.type === "spell_cast"
+            ? attackEvent.targetTemplate
+            : attackEvent.actorKind === "enemy"
+              ? attackEvent.actorTemplate
+              : attackEvent.targetTemplate
+          : null;
+        if (combatTemplate)
+          return { template: combatTemplate, status: "Engaged in combat" };
+        const nearby = state.map.cells
+          .filter((cell) => cell.enemy && cell.visibility === "visible")
+          .sort(
+            (a, b) =>
+              Math.max(
+                Math.abs(a.x - state.hero.x),
+                Math.abs(a.y - state.hero.y),
+              ) -
+              Math.max(
+                Math.abs(b.x - state.hero.x),
+                Math.abs(b.y - state.hero.y),
+              ),
+          )[0];
+        return nearby
+          ? {
+              template: nearby.enemy.template,
+              status: "Nearest visible creature",
+            }
+          : null;
+      }
+      function render() {
+        if (!state) return;
+        const feedbackKey = `${state.runId}:${state.revision}`;
+        if (historyRunId !== state.runId) {
+          historyRunId = state.runId;
+          eventHistory = [];
+          lastHistoryKey = null;
+        }
+        if (lastHistoryKey !== feedbackKey) {
+          eventHistory = [
+            ...state.recentEvents.map((event) => ({
+              ...event,
+              turn: state.tick,
+            })),
+            ...eventHistory,
+          ].slice(0, 60);
+          lastHistoryKey = feedbackKey;
+        }
+        const feedbackEvents =
+          feedbackKey === lastFeedbackKey ? [] : state.recentEvents;
+        lastFeedbackKey = feedbackKey;
+        const heroHit = feedbackEvents.find(
+          (event) =>
+            event.type === "attack" && event.actorKind === "enemy" && event.hit,
+        );
+        const heroHeal = feedbackEvents.find(
+          (event) => event.type === "item_used" && event.healing > 0,
+        );
+        const combatHit = feedbackEvents.find(
+          (event) =>
+            (event.type === "attack" && event.hit) ||
+            event.type === "spell_cast",
+        );
+        $("title").textContent = state.title;
+        $("subtitle").textContent = state.theme.dominantFeature;
+        $("hp").textContent = `${state.hero.hp}/${state.hero.maxHp}`;
+        $("ac").textContent = state.hero.ac;
+        $("gold").textContent = `${state.hero.goldCp} cp`;
+        $("enemies").textContent = state.enemyCount;
+        $("turn").textContent = state.tick;
+        $("depth").textContent = `${state.depth}/${state.maxDepth}`;
+        $("xp").textContent = `${state.hero.xp}/${state.hero.xpToNext}`;
+        $("scene-title").textContent = state.currentRoom?.name ?? "Passage";
+        $("character").textContent =
+          `Level ${state.hero.level} ${state.hero.class} · ${state.hero.weapon.replaceAll("_", " ")} · ${state.hero.armor.replaceAll("_", " ")} · AC ${state.hero.ac}`;
+        const powerKey =
+          state.hero.classPower.id === "magic_missile"
+            ? "M"
+            : state.hero.classPower.id === "healing_word"
+              ? "L"
+              : "F";
+        $("power-key").textContent = powerKey;
+        $("power-name").textContent =
+          `${state.hero.classPower.name} · ${state.hero.classPower.remaining}/${state.hero.classPower.uses}`;
+        $("theme").textContent = state.currentRoom
+          ? `Original purpose: ${state.currentRoom.purpose.replaceAll("_", " ")}.`
+          : "A passage connecting the dungeon's larger spaces.";
+        if (state.currentRoom) {
+          const feature = state.currentRoom.description.split(".")[0];
+          $("room").textContent =
+            `${feature.charAt(0).toUpperCase()}${feature.slice(1)} defines this area. ${state.theme.atmosphere}.`;
+        } else $("room").textContent = state.theme.atmosphere;
+        $("factions").textContent = state.factions.length
+          ? `${state.factions.map((name) => name.replaceAll("_", " ")).join(", ")} now compete for territory, food, relics, or control of the passages.`
+          : "No organized presence has revealed itself yet.";
+        $("lore-history").replaceChildren(
+          ...(state.theme.history ?? []).map((entry) =>
+            Object.assign(document.createElement("p"), {
+              textContent: entry,
+            }),
+          ),
+        );
+        $("lore-condition").textContent =
+          `${state.theme.construction}. It is now ${state.theme.state}. ${state.theme.dominantFeature}.`;
+        const explored = state.map.cells.length,
+          totalCells = state.map.width * state.map.height,
+          exploredPercent = Math.round((explored / totalCells) * 100);
+        $("lore-discovery").textContent =
+          `You have mapped ${exploredPercent}% of this level. ${state.treasureRemaining} treasure cache${state.treasureRemaining === 1 ? "" : "s"} remain, and ${state.enemyCount} living threat${state.enemyCount === 1 ? "" : "s"} ${state.enemyCount === 1 ? "is" : "are"} still active.`;
+        const healthStat = $("health-stat");
+        healthStat.classList.toggle("hurt", Boolean(heroHit));
+        healthStat.classList.toggle("healed", Boolean(heroHeal));
+        healthStat.classList.toggle(
+          "low",
+          state.hero.hp <= Math.ceil(state.hero.maxHp / 2),
+        );
+        const equippedIds = state.hero.equipment ?? {};
+        $("equipped").replaceChildren(
+          ...["weapon", "armor", "offhand"].map((slot) => {
+            const row = document.createElement("div");
+            row.className = "equipment-slot";
+            const label = document.createElement("span");
+            label.className = "slot-label";
+            label.textContent = slot;
+            const selector = document.createElement("select");
+            selector.id = `equipment-${slot}`;
+            selector.setAttribute("aria-label", `Equipped ${slot}`);
+            const choices = state.hero.inventory.filter(
+              (item) =>
+                item.itemType === "equipment" &&
+                item.slot === slot &&
+                item.quantity > 0,
+            );
+            if (slot === "offhand")
+              selector.append(new Option("Empty · no offhand", ""));
+            choices.forEach((item) => {
+              const detail =
+                slot === "weapon"
+                  ? `${item.damage} ${item.damageType}`
+                  : slot === "armor"
+                    ? `AC ${item.ac}`
+                    : `+${item.acBonus} AC`;
+              selector.append(new Option(`${item.name} · ${detail}`, item.id));
+            });
+            selector.value = equippedIds[slot] ?? "";
+            selector.disabled =
+              busy || state.status !== "active" || choices.length === 0;
+            selector.addEventListener("change", () => {
+              if (selector.value)
+                act({ kind: "equip", itemId: selector.value });
+              else act({ kind: "unequip", slot: "offhand" });
+            });
+            row.append(label, selector);
+            return row;
+          }),
+        );
+        $("inventory").replaceChildren(
+          ...state.hero.inventory
+            .filter(
+              (item) => item.itemType === "equipment" && item.quantity > 0,
+            )
+            .map((item) => {
+              const row = document.createElement("div");
+              row.className = "inventory-row";
+              const copy = document.createElement("span");
+              copy.textContent = item.name;
+              const detail = document.createElement("span");
+              detail.className = "item-detail";
+              detail.textContent = item.itemType
+                ? item.itemType === "equipment" && item.slot === "weapon"
+                  ? `${item.damage} ${item.damageType}`
+                  : item.itemType === "equipment" && item.slot === "armor"
+                    ? `AC ${item.ac}`
+                    : item.itemType === "equipment"
+                      ? `+${item.acBonus} AC`
+                      : item.effect
+                : `Consumable × ${item.quantity}`;
+              copy.append(detail);
+              row.append(copy);
+              if (item.itemType === "equipment") {
+                const equip = document.createElement("button");
+                equip.textContent = item.equipped ? "Equipped" : "Equip";
+                equip.disabled =
+                  busy || item.equipped || state.status !== "active";
+                equip.addEventListener("click", () =>
+                  act({ kind: "equip", itemId: item.id }),
+                );
+                row.append(equip);
+              }
+              return row;
+            }),
+        );
+        const visibleTarget = state.map.cells.some(
+          (cell) => cell.enemy && cell.visibility === "visible",
+        );
+        $("quick-items").replaceChildren(
+          ...state.hero.inventory
+            .filter(
+              (item) =>
+                ["relic", "scroll", "wand"].includes(item.itemType) &&
+                ((item.quantity ?? 0) > 0 || (item.charges ?? 0) > 0),
+            )
+            .map((item) => {
+              const row = document.createElement("div");
+              row.className = "quick-item";
+              const copy = document.createElement("span");
+              copy.textContent = item.name;
+              const detail = document.createElement("span");
+              detail.className = "item-detail";
+              const needsTarget = ["scroll", "wand"].includes(item.itemType);
+              detail.textContent = `${item.effect}${item.charges != null ? ` · ${item.charges} charges` : ""}${needsTarget && !visibleTarget ? " · needs a visible enemy" : ""}`;
+              copy.append(detail);
+              const use = document.createElement("button");
+              const shortcut =
+                item.itemType === "relic"
+                  ? "T"
+                  : item.itemType === "wand"
+                    ? "G"
+                    : "V";
+              const key = document.createElement("kbd");
+              key.textContent = shortcut;
+              use.append(
+                key,
+                item.itemType === "relic"
+                  ? "Read"
+                  : item.itemType === "wand"
+                    ? "Use"
+                    : "Cast",
+              );
+              use.disabled =
+                busy ||
+                state.status !== "active" ||
+                (needsTarget && !visibleTarget);
+              use.title =
+                needsTarget && !visibleTarget
+                  ? "Move until an enemy is visible, then use this item."
+                  : item.effect;
+              use.addEventListener("click", () =>
+                act({ kind: "invoke_item", itemId: item.id }),
+              );
+              row.append(copy, use);
+              return row;
+            }),
+        );
+        const known = new Map(
+          state.map.cells.map((cell) => [`${cell.x},${cell.y}`, cell]),
+        );
+        const map = $("map");
+        const mapWrap = map.parentElement;
+        mapWrap.classList.toggle("hero-hurt", Boolean(heroHit));
+        mapWrap.classList.toggle("combat-hit", Boolean(combatHit));
+        const combatFloat = $("combat-float");
+        combatFloat.className = "";
+        combatFloat.textContent = "";
+        if (heroHit) {
+          combatFloat.className = "damage";
+          combatFloat.textContent = `−${heroHit.appliedDamage.hpDamage} HP`;
+        } else if (heroHeal) {
+          combatFloat.className = "heal";
+          combatFloat.textContent = `+${heroHeal.healing} HP`;
+        } else if (combatHit) {
+          combatFloat.className = "hit";
+          combatFloat.textContent = `${combatHit.targetName} −${combatHit.appliedDamage.hpDamage}`;
+        }
+        clearTimeout(feedbackTimer);
+        feedbackTimer = setTimeout(() => {
+          mapWrap.classList.remove("hero-hurt", "combat-hit");
+          healthStat.classList.remove("hurt", "healed");
+          combatFloat.className = "";
+          combatFloat.textContent = "";
+        }, 700);
+        map.style.gridTemplateColumns = `repeat(${state.map.width}, 20px)`;
+        map.replaceChildren();
+        for (let y = 0; y < state.map.height; y++)
+          for (let x = 0; x < state.map.width; x++) {
+            const cell = known.get(`${x},${y}`);
+            const button = document.createElement("button");
+            button.className = `cell ${cell ? `${cell.visibility} ${cell.tile}` : "unknown"}`;
+            button.tabIndex = -1;
+            let symbol =
+              cell?.tile === "wall"
+                ? "#"
+                : cell?.tile === "exit"
+                  ? ">"
+                  : cell?.tile === "stairs_down"
+                    ? ">"
+                    : cell?.tile.includes("door_closed")
+                      ? "+"
+                      : cell?.tile.includes("door_open")
+                        ? "'"
+                        : cell?.tile === "difficult"
+                          ? "~"
+                          : "·";
+            if (cell?.treasure) {
+              symbol = "$";
+              button.classList.add("treasure");
+              button.title = `${cell.treasure.name} · ${cell.treasure.valueCp} cp`;
+            }
+            if (cell?.enemy) {
+              symbol = cell.enemy.glyph;
+              button.classList.add("enemy");
+              button.title = `${cell.enemy.name} · ${cell.enemy.glyphReading} · ${cell.enemy.hp}/${cell.enemy.maxHp} HP`;
+            }
+            if (cell?.feature?.kind === "trap" && !cell.feature.spent) {
+              symbol = "^";
+              button.classList.add("trap");
+              button.title = cell.feature.name;
+            }
+            if (cell?.feature?.kind === "item") {
+              symbol = "!";
+              button.classList.add("item");
+              button.title = cell.feature.name;
+            }
+            if (cell?.feature?.kind === "shrine") {
+              symbol = cell.feature.spent ? "·" : "✦";
+              button.classList.add("item");
+              button.title = cell.feature.spent
+                ? `${cell.feature.name} · blessing received`
+                : `${cell.feature.name} · step here for a blessing`;
+            }
+            if (state.hero.x === x && state.hero.y === y) {
+              symbol = "侠";
+              button.classList.add("hero");
+              button.title = `${state.hero.name} · 侠 (xiá), chivalrous hero`;
+            }
+            const dx = x - state.hero.x,
+              dy = y - state.hero.y;
+            const direction = deltaToDirection[`${dx},${dy}`];
+            if (direction && state.status === "active") {
+              button.classList.add("adjacent");
+              button.addEventListener("click", () =>
+                act({
+                  kind: cell?.tile?.includes("door_closed") ? "open" : "move",
+                  direction,
+                }),
+              );
+            }
+            if (
+              feedbackEvents.some(
+                (event) =>
+                  ((event.type === "attack" && event.hit) ||
+                    event.type === "spell_cast") &&
+                  event.position?.x === x &&
+                  event.position?.y === y,
+              )
+            )
+              button.classList.add("hit-flash");
+            button.textContent = cell ? symbol : "";
+            map.append(button);
+          }
+        $("events").replaceChildren(...eventHistory.map(createEventRow));
+        const engaged = engagedCreature();
+        if (engaged && bestiary) {
+          $("monster-select").value = engaged.template;
+          $("engagement-label").textContent = engaged.status;
+          renderManual();
+        } else {
+          $("engagement-label").textContent = "No creature in sight";
+          if (bestiary && !$("manual").childElementCount) renderManual();
+        }
+        const banner = $("banner");
+        banner.classList.toggle("show", state.status !== "active");
+        banner.textContent =
+          state.status === "won"
+            ? "Dungeon cleared — you found the heart."
+            : state.status === "dying"
+              ? "You are unconscious. Resolve a death saving throw."
+              : state.status === "stable"
+                ? "You are stable but unconscious; this expedition is over."
+                : state.status === "dead"
+                  ? "The dungeon claims another delver."
+                  : "";
+        document
+          .querySelectorAll(
+            "button[data-direction], #wait, #rest, #potion, #stairs, #class-power",
+          )
+          .forEach(
+            (button) => (button.disabled = busy || state.status !== "active"),
+          );
+        $("stairs").disabled = busy || !state.legalIntents.includes("stairs");
+        $("potion").disabled =
+          busy ||
+          state.hero.hp >= state.hero.maxHp ||
+          !state.hero.inventory.some(
+            (item) => item.kind === "healing_potion" && item.quantity > 0,
+          );
+        $("death-save").disabled = busy || state.status !== "dying";
+        $("rest-name").textContent =
+          `Short rest · ${state.rest.remaining} × d${state.rest.die}`;
+        $("rest").disabled =
+          busy || state.status !== "active" || !state.rest.available;
+        $("rest").title =
+          state.rest.reason ?? "Spend one Hit Die to recover health.";
+        const needsTarget = state.hero.classPower.id === "magic_missile",
+          hasTarget = state.map.cells.some(
+            (cell) => cell.enemy && cell.visibility === "visible",
+          ),
+          needsHealing = ["second_wind", "healing_word"].includes(
+            state.hero.classPower.id,
+          );
+        $("class-power").disabled =
+          busy ||
+          state.status !== "active" ||
+          state.hero.classPower.remaining <= 0 ||
+          (needsTarget && !hasTarget) ||
+          (needsHealing && state.hero.hp >= state.hero.maxHp);
+      }
+      function renderManual() {
+        if (!bestiary) return;
+        const selected =
+          bestiary.creatures.find(
+            (entry) => entry.id === $("monster-select").value,
+          ) || bestiary.creatures[0];
+        const root = $("manual");
+        root.replaceChildren();
+        const article = document.createElement("article");
+        article.className = "manual-entry";
+        const heading = document.createElement("h3");
+        heading.textContent = `${selected.glyph} · ${selected.name}`;
+        const tags = document.createElement("div");
+        tags.className = "tags";
+        tags.textContent = `${selected.role} · ${selected.faction} · ${selected.glyphLanguage} ${selected.glyphReading} (“${selected.glyphMeaning}”) · AC ${selected.ac} · HP ${selected.hp} · ${selected.damageType}`;
+        article.append(heading, tags);
+        for (const text of selected.lore) {
+          const p = document.createElement("p");
+          p.textContent = text;
+          article.append(p);
+        }
+        const physical = document.createElement("p");
+        const em = document.createElement("em");
+        em.textContent = selected.interpretation;
+        physical.append(em);
+        article.append(physical);
+        const ecology = document.createElement("p");
+        ecology.textContent = `Ecology: ${selected.ecology}`;
+        article.append(ecology);
+        root.append(article);
+      }
+      async function api(path, options) {
+        const response = await fetch(path, options);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Request failed");
+        return data;
+      }
+      async function act(intent) {
+        if (busy || !["active", "dying"].includes(state?.status)) return;
+        busy = true;
+        $("error").textContent = "";
+        render();
+        try {
+          const result = await api("/api/action", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ intent }),
+          });
+          state = result.view;
+        } catch (error) {
+          $("error").textContent = error.message;
+        } finally {
+          busy = false;
+          render();
+        }
+      }
+      function directionalIntent(direction) {
+        const delta = directionDeltas[direction];
+        const target =
+          delta &&
+          state?.map.cells.find(
+            (cell) =>
+              cell.x === state.hero.x + delta[0] &&
+              cell.y === state.hero.y + delta[1],
+          );
+        return {
+          kind: target?.tile?.includes("door_closed") ? "open" : "move",
+          direction,
+        };
+      }
+      document
+        .querySelectorAll("button[data-direction]")
+        .forEach((button) =>
+          button.addEventListener("click", () =>
+            act(directionalIntent(button.dataset.direction)),
+          ),
+        );
+      $("wait").addEventListener("click", () => act({ kind: "wait" }));
+      $("rest").addEventListener("click", () => act({ kind: "short_rest" }));
+      $("potion").addEventListener("click", () =>
+        act({ kind: "use_item", itemKind: "healing_potion" }),
+      );
+      $("stairs").addEventListener("click", () => act({ kind: "stairs" }));
+      $("death-save").addEventListener("click", () =>
+        act({ kind: "death_save" }),
+      );
+      $("class-power").addEventListener("click", () =>
+        act({ kind: "class_power" }),
+      );
+      document
+        .querySelectorAll("[data-side-tab]")
+        .forEach((button) =>
+          button.addEventListener("click", () =>
+            selectSideTab(button.dataset.sideTab),
+          ),
+        );
+      $("monster-select").addEventListener("change", renderManual);
+      document.addEventListener("keydown", (event) => {
+        if (["INPUT", "SELECT"].includes(document.activeElement.tagName))
+          return;
+        if (directions[event.key] && !event.shiftKey) {
+          event.preventDefault();
+          act(directionalIntent(directions[event.key]));
+        } else if (event.key === "." || event.key === " ") {
+          event.preventDefault();
+          act({ kind: "wait" });
+        } else if (event.key.toLowerCase() === "h") {
+          event.preventDefault();
+          act({ kind: "use_item", itemKind: "healing_potion" });
+        } else if (
+          event.key.toLowerCase() === "r" &&
+          state.status === "dying"
+        ) {
+          event.preventDefault();
+          act({ kind: "death_save" });
+        } else if (event.key.toLowerCase() === "r") {
+          event.preventDefault();
+          if (state.rest.available) act({ kind: "short_rest" });
+          else $("error").textContent = state.rest.reason;
+        } else if (event.key.toLowerCase() === "i") {
+          event.preventDefault();
+          selectSideTab("character");
+          $("equipment-panel").scrollIntoView({
+            behavior: "smooth",
+            block: "nearest",
+          });
+          $("equipment-weapon")?.focus();
+        } else if (
+          (event.key.toLowerCase() === "f" &&
+            state.hero.classPower.id === "second_wind") ||
+          (event.key.toLowerCase() === "m" &&
+            state.hero.classPower.id === "magic_missile") ||
+          (event.key.toLowerCase() === "l" &&
+            state.hero.classPower.id === "healing_word")
+        ) {
+          event.preventDefault();
+          act({ kind: "class_power" });
+        } else if (["t", "v", "g"].includes(event.key.toLowerCase())) {
+          const wantedType = {
+              t: "relic",
+              v: "scroll",
+              g: "wand",
+            }[event.key.toLowerCase()],
+            item = state.hero.inventory.find(
+              (entry) =>
+                entry.itemType === wantedType &&
+                ((entry.quantity ?? 0) > 0 || (entry.charges ?? 0) > 0),
+            );
+          if (item) {
+            event.preventDefault();
+            const needsTarget = ["scroll", "wand"].includes(item.itemType),
+              hasTarget = state.map.cells.some(
+                (cell) => cell.enemy && cell.visibility === "visible",
+              );
+            if (needsTarget && !hasTarget)
+              $("error").textContent =
+                `${item.name} needs a visible enemy target.`;
+            else act({ kind: "invoke_item", itemId: item.id });
+          }
+        } else if (event.key === ">") {
+          event.preventDefault();
+          act({ kind: "stairs" });
+        }
+      });
+      $("new-run").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        if (busy) return;
+        busy = true;
+        const values = Object.fromEntries(new FormData(event.currentTarget));
+        try {
+          state = await api("/api/new", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(values),
+          });
+          $("new-game-panel").open = false;
+          selectSideTab("character");
+          $("error").textContent = "";
+        } catch (error) {
+          $("error").textContent = error.message;
+        } finally {
+          busy = false;
+          render();
+        }
+      });
+      const requestedPanel = new URLSearchParams(location.search).get("panel");
+      if (["character", "events", "lore", "manual"].includes(requestedPanel))
+        selectSideTab(requestedPanel);
+      api("/api/state")
+        .then((value) => {
+          state = value;
+          render();
+        })
+        .catch((error) => ($("error").textContent = error.message));
+      api("/api/bestiary")
+        .then((value) => {
+          bestiary = value;
+          $("monster-select").replaceChildren(
+            ...value.creatures.map((entry) => {
+              const option = document.createElement("option");
+              option.value = entry.id;
+              option.textContent = `${entry.name} — ${entry.role}`;
+              return option;
+            }),
+          );
+          if (state) render();
+          else renderManual();
+        })
+        .catch((error) => ($("error").textContent = error.message));
+    </script>
+  </body>
+</html>
