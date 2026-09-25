@@ -870,30 +870,40 @@
           $(`side-${panel}`).hidden = panel !== name;
         });
       }
-      const eventText = (event) => {
-        if (event.type === "hero_move") return `${state.hero.name} moves.`;
-        if (event.type === "hero_wait") return `${state.hero.name} waits.`;
-        if (event.type === "enemy_move")
-          return `${event.actorName} approaches.`;
-        if (event.type === "attack")
-          return event.hit
+      const simpleEventText = {
+        hero_move: () => `${state.hero.name} moves.`,
+        hero_wait: () => `${state.hero.name} waits.`,
+        enemy_move: (event) => `${event.actorName} approaches.`,
+        attack: (event) =>
+          event.hit
             ? `${event.actorName} hits ${event.targetName} for ${event.appliedDamage.hpDamage} ${event.appliedDamage.damageType} damage.`
-            : `${event.actorName} misses ${event.targetName}.`;
-        if (event.type === "enemy_defeated")
-          return `${event.actorName} is defeated.`;
-        if (event.type === "hero_defeated")
-          return `${event.actorName} falls in the dungeon.`;
-        if (event.type === "hero_unconscious")
-          return `${event.actorName} falls unconscious at 0 HP.`;
-        if (event.type === "death_save")
-          return `Death save ${event.roll.total}: ${event.result} (${event.death.successes} successes, ${event.death.failures} failures).`;
-        if (event.type === "treasure_collected")
-          return `Found ${event.itemName} worth ${event.valueCp} cp.`;
-        if (event.type === "exit_reached")
-          return `The dungeon heart is reached with ${event.treasureCp} cp of treasure.`;
-        if (event.type === "door_opened") return "A door grinds open.";
-        if (event.type === "noise")
-          return `Noise carries ${event.volume} squares.`;
+            : `${event.actorName} misses ${event.targetName}.`,
+        enemy_defeated: (event) => `${event.actorName} is defeated.`,
+        hero_defeated: (event) => `${event.actorName} falls in the dungeon.`,
+        hero_unconscious: (event) =>
+          `${event.actorName} falls unconscious at 0 HP.`,
+        death_save: (event) =>
+          `Death save ${event.roll.total}: ${event.result} (${event.death.successes} successes, ${event.death.failures} failures).`,
+        treasure_collected: (event) =>
+          `Found ${event.itemName} worth ${event.valueCp} cp.`,
+        exit_reached: (event) =>
+          `The dungeon heart is reached with ${event.treasureCp} cp of treasure.`,
+        door_opened: () => "A door grinds open.",
+        noise: (event) => `Noise carries ${event.volume} squares.`,
+        item_collected: (event) => `Picked up ${event.itemName}.`,
+        item_used: (event) => `${event.itemName} restores ${event.healing} HP.`,
+        short_rest: (event) =>
+          `${event.actorName} spends a Hit Die and recovers ${event.healing} HP.`,
+        trap_triggered: (event) =>
+          `${event.trapName} triggers${event.damage ? ` for ${event.damage.total} damage` : ", but you evade it"}.`,
+        level_changed: (event) =>
+          `You descend to dungeon level ${event.depth}.`,
+        equipment_changed: (event) =>
+          `${event.itemName} equipped in the ${event.slot} slot.`,
+        equipment_removed: (event) =>
+          `${event.itemName} removed from the ${event.slot} slot.`,
+      };
+      function eventText(event) {
         if (event.type === "search")
           return event.found.length
             ? `Search reveals ${event.found.length} hidden feature${event.found.length === 1 ? "" : "s"}.`
@@ -904,141 +914,129 @@
           );
           return `You notice ${names.join(" and ")}.`;
         }
-        if (event.type === "item_collected")
-          return `Picked up ${event.itemName}.`;
-        if (event.type === "item_used")
-          return `${event.itemName} restores ${event.healing} HP.`;
-        if (event.type === "short_rest")
-          return `${event.actorName} spends a Hit Die and recovers ${event.healing} HP.`;
-        if (event.type === "trap_triggered")
-          return `${event.trapName} triggers${event.damage ? ` for ${event.damage.total} damage` : ", but you evade it"}.`;
-        if (event.type === "level_changed")
-          return `You descend to dungeon level ${event.depth}.`;
-        if (event.type === "equipment_changed")
-          return `${event.itemName} equipped in the ${event.slot} slot.`;
-        if (event.type === "equipment_removed")
-          return `${event.itemName} removed from the ${event.slot} slot.`;
-        return event.type.replaceAll("_", " ");
-      };
+        return (
+          simpleEventText[event.type]?.(event) ??
+          event.type.replaceAll("_", " ")
+        );
+      }
       const emphasized = (text, className = "event-name") =>
         Object.assign(document.createElement("strong"), {
           className,
           textContent: text,
         });
+      const richEventParts = {
+        attack: (event) =>
+          event.hit
+            ? [
+                emphasized(event.actorName),
+                " hits ",
+                emphasized(event.targetName),
+                " for ",
+                emphasized(
+                  event.appliedDamage.hpDamage,
+                  event.actorKind === "enemy" ? "damage-number" : "event-value",
+                ),
+                ` ${event.appliedDamage.damageType} damage.`,
+              ]
+            : [eventText(event)],
+        trap_triggered: (event) =>
+          event.damage
+            ? [
+                `${event.trapName} triggers for `,
+                emphasized(
+                  event.damage.applied?.hpDamage ?? event.damage.total,
+                  "damage-number",
+                ),
+                " damage.",
+              ]
+            : [eventText(event)],
+        item_used: (event) => [
+          `${event.itemName} restores `,
+          emphasized(event.healing, "healing-number"),
+          " HP.",
+        ],
+        spell_cast: (event) => [
+          emphasized(event.spellName),
+          " strikes ",
+          emphasized(event.targetName),
+          " for ",
+          emphasized(event.appliedDamage.hpDamage, "event-value"),
+          ` ${event.appliedDamage.damageType} damage.`,
+        ],
+        class_power: (event) => [
+          emphasized(event.powerName),
+          " restores ",
+          emphasized(event.healing, "healing-number"),
+          " HP.",
+        ],
+        short_rest: (event) => [
+          "Short rest restores ",
+          emphasized(event.healing, "healing-number"),
+          ` HP · ${event.hitDiceRemaining} Hit Dice remain.`,
+        ],
+        permanent_gain: (event) => [
+          emphasized(event.itemName),
+          " grants ",
+          emphasized(event.gain, "event-value"),
+          ".",
+        ],
+        blessing_received: (event) => [
+          emphasized(event.shrineName),
+          " bestows ",
+          emphasized(event.gain, "event-value"),
+          ". Class power restored.",
+        ],
+        xp_gained: (event) => [
+          emphasized(`+${event.amount} XP`, "event-value"),
+          ` for defeating ${event.defeatedName}.`,
+        ],
+        level_up: (event) => [
+          "Advanced to ",
+          emphasized(`level ${event.level}`, "event-value"),
+          ` · +${event.hpGain} maximum HP`,
+          event.attackGain ? " · +1 weapon attack" : "",
+          ".",
+        ],
+        treasure_collected: (event) => [
+          "Found ",
+          emphasized(event.itemName),
+          " worth ",
+          emphasized(`${event.valueCp} cp`, "event-value"),
+          ".",
+        ],
+        item_collected: (event) => [
+          "Picked up ",
+          emphasized(event.itemName),
+          ".",
+        ],
+        equipment_changed: (event) => [
+          emphasized(event.itemName),
+          ` equipped in the ${event.slot} slot.`,
+        ],
+        equipment_removed: (event) => [
+          emphasized(event.itemName),
+          ` removed from the ${event.slot} slot.`,
+        ],
+        discovery: (event) => [
+          "You notice ",
+          emphasized(
+            event.found
+              .map((item) => item.kind.replaceAll("_", " "))
+              .join(" and "),
+          ),
+          ".",
+        ],
+      };
       function createEventRow(event) {
         const row = document.createElement("div");
         row.className = `event ${event.type}`;
         const turn = document.createElement("span");
         turn.className = "event-turn";
         turn.textContent = `Turn ${event.turn}`;
-        row.append(turn);
-        if (event.type === "attack" && event.hit) {
-          row.append(
-            emphasized(event.actorName),
-            " hits ",
-            emphasized(event.targetName),
-            " for ",
-            emphasized(
-              event.appliedDamage.hpDamage,
-              event.actorKind === "enemy" ? "damage-number" : "event-value",
-            ),
-            ` ${event.appliedDamage.damageType} damage.`,
-          );
-        } else if (event.type === "trap_triggered" && event.damage) {
-          row.append(
-            `${event.trapName} triggers for `,
-            emphasized(
-              event.damage.applied?.hpDamage ?? event.damage.total,
-              "damage-number",
-            ),
-            " damage.",
-          );
-        } else if (event.type === "item_used") {
-          row.append(
-            `${event.itemName} restores `,
-            emphasized(event.healing, "healing-number"),
-            " HP.",
-          );
-        } else if (event.type === "spell_cast") {
-          row.append(
-            emphasized(event.spellName),
-            " strikes ",
-            emphasized(event.targetName),
-            " for ",
-            emphasized(event.appliedDamage.hpDamage, "event-value"),
-            ` ${event.appliedDamage.damageType} damage.`,
-          );
-        } else if (event.type === "class_power") {
-          row.append(
-            emphasized(event.powerName),
-            " restores ",
-            emphasized(event.healing, "healing-number"),
-            " HP.",
-          );
-        } else if (event.type === "short_rest") {
-          row.append(
-            "Short rest restores ",
-            emphasized(event.healing, "healing-number"),
-            ` HP · ${event.hitDiceRemaining} Hit Dice remain.`,
-          );
-        } else if (event.type === "permanent_gain") {
-          row.append(
-            emphasized(event.itemName),
-            " grants ",
-            emphasized(event.gain, "event-value"),
-            ".",
-          );
-        } else if (event.type === "blessing_received") {
-          row.append(
-            emphasized(event.shrineName),
-            " bestows ",
-            emphasized(event.gain, "event-value"),
-            ". Class power restored.",
-          );
-        } else if (event.type === "xp_gained") {
-          row.append(
-            emphasized(`+${event.amount} XP`, "event-value"),
-            ` for defeating ${event.defeatedName}.`,
-          );
-        } else if (event.type === "level_up") {
-          row.append(
-            "Advanced to ",
-            emphasized(`level ${event.level}`, "event-value"),
-            ` · +${event.hpGain} maximum HP`,
-            event.attackGain ? " · +1 weapon attack" : "",
-            ".",
-          );
-        } else if (event.type === "treasure_collected") {
-          row.append(
-            "Found ",
-            emphasized(event.itemName),
-            " worth ",
-            emphasized(`${event.valueCp} cp`, "event-value"),
-            ".",
-          );
-        } else if (event.type === "item_collected") {
-          row.append("Picked up ", emphasized(event.itemName), ".");
-        } else if (event.type === "equipment_changed") {
-          row.append(
-            emphasized(event.itemName),
-            ` equipped in the ${event.slot} slot.`,
-          );
-        } else if (event.type === "equipment_removed") {
-          row.append(
-            emphasized(event.itemName),
-            ` removed from the ${event.slot} slot.`,
-          );
-        } else if (event.type === "discovery") {
-          row.append(
-            "You notice ",
-            emphasized(
-              event.found
-                .map((item) => item.kind.replaceAll("_", " "))
-                .join(" and "),
-            ),
-            ".",
-          );
-        } else row.append(eventText(event));
+        row.append(
+          turn,
+          ...(richEventParts[event.type]?.(event) ?? [eventText(event)]),
+        );
         return row;
       }
       function engagedCreature() {
@@ -1074,8 +1072,7 @@
             }
           : null;
       }
-      function render() {
-        if (!state) return;
+      function updateHistory() {
         const feedbackKey = `${state.runId}:${state.revision}`;
         if (historyRunId !== state.runId) {
           historyRunId = state.runId;
@@ -1107,6 +1104,9 @@
             (event.type === "attack" && event.hit) ||
             event.type === "spell_cast",
         );
+        return { feedbackEvents, heroHit, heroHeal, combatHit };
+      }
+      function renderHeroSummary() {
         $("title").textContent = state.title;
         $("subtitle").textContent = state.theme.dominantFeature;
         $("hp").textContent = `${state.hero.hp}/${state.hero.maxHp}`;
@@ -1128,6 +1128,8 @@
         $("power-key").textContent = powerKey;
         $("power-name").textContent =
           `${state.hero.classPower.name} · ${state.hero.classPower.remaining}/${state.hero.classPower.uses}`;
+      }
+      function renderLore() {
         $("theme").textContent = state.currentRoom
           ? `Original purpose: ${state.currentRoom.purpose.replaceAll("_", " ")}.`
           : "A passage connecting the dungeon's larger spaces.";
@@ -1153,6 +1155,8 @@
           exploredPercent = Math.round((explored / totalCells) * 100);
         $("lore-discovery").textContent =
           `You have mapped ${exploredPercent}% of this level. ${state.treasureRemaining} treasure cache${state.treasureRemaining === 1 ? "" : "s"} remain, and ${state.enemyCount} living threat${state.enemyCount === 1 ? "" : "s"} ${state.enemyCount === 1 ? "is" : "are"} still active.`;
+      }
+      function renderHealth(heroHit, heroHeal) {
         const healthStat = $("health-stat");
         healthStat.classList.toggle("hurt", Boolean(heroHit));
         healthStat.classList.toggle("healed", Boolean(heroHeal));
@@ -1160,6 +1164,8 @@
           "low",
           state.hero.hp <= Math.ceil(state.hero.maxHp / 2),
         );
+      }
+      function renderEquipment() {
         const equippedIds = state.hero.equipment ?? {};
         $("equipped").replaceChildren(
           ...["weapon", "armor", "offhand"].map((slot) => {
@@ -1200,6 +1206,8 @@
             return row;
           }),
         );
+      }
+      function renderInventory() {
         $("inventory").replaceChildren(
           ...state.hero.inventory
             .filter(
@@ -1236,6 +1244,8 @@
               return row;
             }),
         );
+      }
+      function renderQuickItems() {
         const visibleTarget = state.map.cells.some(
           (cell) => cell.enemy && cell.visibility === "visible",
         );
@@ -1288,6 +1298,8 @@
               return row;
             }),
         );
+      }
+      function renderCombatFeedback(heroHit, heroHeal, combatHit) {
         const known = new Map(
           state.map.cells.map((cell) => [`${cell.x},${cell.y}`, cell]),
         );
@@ -1311,89 +1323,96 @@
         clearTimeout(feedbackTimer);
         feedbackTimer = setTimeout(() => {
           mapWrap.classList.remove("hero-hurt", "combat-hit");
-          healthStat.classList.remove("hurt", "healed");
+          $("health-stat").classList.remove("hurt", "healed");
           combatFloat.className = "";
           combatFloat.textContent = "";
         }, 700);
+      }
+      function baseCellSymbol(cell) {
+        if (cell?.tile === "wall") return "#";
+        if (["exit", "stairs_down"].includes(cell?.tile)) return ">";
+        if (cell?.tile.includes("door_closed")) return "+";
+        if (cell?.tile.includes("door_open")) return "'";
+        return cell?.tile === "difficult" ? "~" : "·";
+      }
+      function contentSymbol(cell, button) {
+        if (cell?.treasure) {
+          button.classList.add("treasure");
+          button.title = `${cell.treasure.name} · ${cell.treasure.valueCp} cp`;
+          return "$";
+        }
+        if (cell?.enemy) {
+          button.classList.add("enemy");
+          button.title = `${cell.enemy.name} · ${cell.enemy.glyphReading} · ${cell.enemy.hp}/${cell.enemy.maxHp} HP`;
+          return cell.enemy.glyph;
+        }
+        if (cell?.feature?.kind === "trap" && !cell.feature.spent) {
+          button.classList.add("trap");
+          button.title = cell.feature.name;
+          return "^";
+        }
+        if (cell?.feature?.kind === "item") {
+          button.classList.add("item");
+          button.title = cell.feature.name;
+          return "!";
+        }
+        if (cell?.feature?.kind !== "shrine") return baseCellSymbol(cell);
+        button.classList.add("item");
+        button.title = cell.feature.spent
+          ? `${cell.feature.name} · blessing received`
+          : `${cell.feature.name} · step here for a blessing`;
+        return cell.feature.spent ? "·" : "✦";
+      }
+      function addCellControl(button, cell, x, y) {
+        const direction =
+          deltaToDirection[`${x - state.hero.x},${y - state.hero.y}`];
+        if (!direction || state.status !== "active") return;
+        button.classList.add("adjacent");
+        button.addEventListener("click", () =>
+          act({
+            kind: cell?.tile?.includes("door_closed") ? "open" : "move",
+            direction,
+          }),
+        );
+      }
+      function cellWasHit(x, y, feedbackEvents) {
+        return feedbackEvents.some(
+          (event) =>
+            ((event.type === "attack" && event.hit) ||
+              event.type === "spell_cast") &&
+            event.position?.x === x &&
+            event.position?.y === y,
+        );
+      }
+      function createMapCell(cell, x, y, feedbackEvents) {
+        const button = document.createElement("button");
+        button.className = `cell ${cell ? `${cell.visibility} ${cell.tile}` : "unknown"}`;
+        button.tabIndex = -1;
+        let symbol = contentSymbol(cell, button);
+        if (state.hero.x === x && state.hero.y === y) {
+          symbol = "侠";
+          button.classList.add("hero");
+          button.title = `${state.hero.name} · 侠 (xiá), chivalrous hero`;
+        }
+        addCellControl(button, cell, x, y);
+        if (cellWasHit(x, y, feedbackEvents)) button.classList.add("hit-flash");
+        button.textContent = cell ? symbol : "";
+        return button;
+      }
+      function renderMap(feedbackEvents) {
+        const known = new Map(
+            state.map.cells.map((cell) => [`${cell.x},${cell.y}`, cell]),
+          ),
+          map = $("map");
         map.style.gridTemplateColumns = `repeat(${state.map.width}, 20px)`;
         map.replaceChildren();
         for (let y = 0; y < state.map.height; y++)
-          for (let x = 0; x < state.map.width; x++) {
-            const cell = known.get(`${x},${y}`);
-            const button = document.createElement("button");
-            button.className = `cell ${cell ? `${cell.visibility} ${cell.tile}` : "unknown"}`;
-            button.tabIndex = -1;
-            let symbol =
-              cell?.tile === "wall"
-                ? "#"
-                : cell?.tile === "exit"
-                  ? ">"
-                  : cell?.tile === "stairs_down"
-                    ? ">"
-                    : cell?.tile.includes("door_closed")
-                      ? "+"
-                      : cell?.tile.includes("door_open")
-                        ? "'"
-                        : cell?.tile === "difficult"
-                          ? "~"
-                          : "·";
-            if (cell?.treasure) {
-              symbol = "$";
-              button.classList.add("treasure");
-              button.title = `${cell.treasure.name} · ${cell.treasure.valueCp} cp`;
-            }
-            if (cell?.enemy) {
-              symbol = cell.enemy.glyph;
-              button.classList.add("enemy");
-              button.title = `${cell.enemy.name} · ${cell.enemy.glyphReading} · ${cell.enemy.hp}/${cell.enemy.maxHp} HP`;
-            }
-            if (cell?.feature?.kind === "trap" && !cell.feature.spent) {
-              symbol = "^";
-              button.classList.add("trap");
-              button.title = cell.feature.name;
-            }
-            if (cell?.feature?.kind === "item") {
-              symbol = "!";
-              button.classList.add("item");
-              button.title = cell.feature.name;
-            }
-            if (cell?.feature?.kind === "shrine") {
-              symbol = cell.feature.spent ? "·" : "✦";
-              button.classList.add("item");
-              button.title = cell.feature.spent
-                ? `${cell.feature.name} · blessing received`
-                : `${cell.feature.name} · step here for a blessing`;
-            }
-            if (state.hero.x === x && state.hero.y === y) {
-              symbol = "侠";
-              button.classList.add("hero");
-              button.title = `${state.hero.name} · 侠 (xiá), chivalrous hero`;
-            }
-            const dx = x - state.hero.x,
-              dy = y - state.hero.y;
-            const direction = deltaToDirection[`${dx},${dy}`];
-            if (direction && state.status === "active") {
-              button.classList.add("adjacent");
-              button.addEventListener("click", () =>
-                act({
-                  kind: cell?.tile?.includes("door_closed") ? "open" : "move",
-                  direction,
-                }),
-              );
-            }
-            if (
-              feedbackEvents.some(
-                (event) =>
-                  ((event.type === "attack" && event.hit) ||
-                    event.type === "spell_cast") &&
-                  event.position?.x === x &&
-                  event.position?.y === y,
-              )
-            )
-              button.classList.add("hit-flash");
-            button.textContent = cell ? symbol : "";
-            map.append(button);
-          }
+          for (let x = 0; x < state.map.width; x++)
+            map.append(
+              createMapCell(known.get(`${x},${y}`), x, y, feedbackEvents),
+            );
+      }
+      function renderEngagement() {
         $("events").replaceChildren(...eventHistory.map(createEventRow));
         const engaged = engagedCreature();
         if (engaged && bestiary) {
@@ -1404,6 +1423,8 @@
           $("engagement-label").textContent = "No creature in sight";
           if (bestiary && !$("manual").childElementCount) renderManual();
         }
+      }
+      function renderRunStatus() {
         const banner = $("banner");
         banner.classList.toggle("show", state.status !== "active");
         banner.textContent =
@@ -1416,6 +1437,8 @@
                 : state.status === "dead"
                   ? "The dungeon claims another delver."
                   : "";
+      }
+      function renderActionAvailability() {
         document
           .querySelectorAll(
             "button[data-direction], #wait, #rest, #potion, #stairs, #class-power",
@@ -1450,6 +1473,22 @@
           state.hero.classPower.remaining <= 0 ||
           (needsTarget && !hasTarget) ||
           (needsHealing && state.hero.hp >= state.hero.maxHp);
+      }
+      function render() {
+        if (!state) return;
+        const { feedbackEvents, heroHit, heroHeal, combatHit } =
+          updateHistory();
+        renderHeroSummary();
+        renderLore();
+        renderHealth(heroHit, heroHeal);
+        renderEquipment();
+        renderInventory();
+        renderQuickItems();
+        renderCombatFeedback(heroHit, heroHeal, combatHit);
+        renderMap(feedbackEvents);
+        renderEngagement();
+        renderRunStatus();
+        renderActionAvailability();
       }
       function renderManual() {
         if (!bestiary) return;
@@ -1552,73 +1591,72 @@
           ),
         );
       $("monster-select").addEventListener("change", renderManual);
-      document.addEventListener("keydown", (event) => {
+      function useQuickItem(event, itemType) {
+        const item = state.hero.inventory.find(
+          (entry) =>
+            entry.itemType === itemType &&
+            ((entry.quantity ?? 0) > 0 || (entry.charges ?? 0) > 0),
+        );
+        if (!item) return;
+        event.preventDefault();
+        const needsTarget = ["scroll", "wand"].includes(item.itemType),
+          hasTarget = state.map.cells.some(
+            (cell) => cell.enemy && cell.visibility === "visible",
+          );
+        if (needsTarget && !hasTarget)
+          $("error").textContent = `${item.name} needs a visible enemy target.`;
+        else act({ kind: "invoke_item", itemId: item.id });
+      }
+      function showEquipment(event) {
+        event.preventDefault();
+        selectSideTab("character");
+        $("equipment-panel").scrollIntoView({
+          behavior: "smooth",
+          block: "nearest",
+        });
+        $("equipment-weapon")?.focus();
+      }
+      function useRest(event) {
+        event.preventDefault();
+        if (state.status === "dying") act({ kind: "death_save" });
+        else if (state.rest.available) act({ kind: "short_rest" });
+        else $("error").textContent = state.rest.reason;
+      }
+      function classPowerKey(key) {
+        return (
+          {
+            second_wind: "f",
+            magic_missile: "m",
+            healing_word: "l",
+          }[state.hero.classPower.key] === key
+        );
+      }
+      function handleKeydown(event) {
         if (["INPUT", "SELECT"].includes(document.activeElement.tagName))
           return;
+        const key = event.key.toLowerCase(),
+          quickItems = { t: "relic", v: "scroll", g: "wand" };
         if (directions[event.key] && !event.shiftKey) {
           event.preventDefault();
           act(directionalIntent(directions[event.key]));
         } else if (event.key === "." || event.key === " ") {
           event.preventDefault();
           act({ kind: "wait" });
-        } else if (event.key.toLowerCase() === "h") {
+        } else if (key === "h") {
           event.preventDefault();
           usePotion();
-        } else if (
-          event.key.toLowerCase() === "r" &&
-          state.status === "dying"
-        ) {
-          event.preventDefault();
-          act({ kind: "death_save" });
-        } else if (event.key.toLowerCase() === "r") {
-          event.preventDefault();
-          if (state.rest.available) act({ kind: "short_rest" });
-          else $("error").textContent = state.rest.reason;
-        } else if (event.key.toLowerCase() === "i") {
-          event.preventDefault();
-          selectSideTab("character");
-          $("equipment-panel").scrollIntoView({
-            behavior: "smooth",
-            block: "nearest",
-          });
-          $("equipment-weapon")?.focus();
-        } else if (
-          (event.key.toLowerCase() === "f" &&
-            state.hero.classPower.key === "second_wind") ||
-          (event.key.toLowerCase() === "m" &&
-            state.hero.classPower.key === "magic_missile") ||
-          (event.key.toLowerCase() === "l" &&
-            state.hero.classPower.key === "healing_word")
-        ) {
+        } else if (key === "r") useRest(event);
+        else if (key === "i") showEquipment(event);
+        else if (classPowerKey(key)) {
           event.preventDefault();
           act({ kind: "class_power" });
-        } else if (["t", "v", "g"].includes(event.key.toLowerCase())) {
-          const wantedType = {
-              t: "relic",
-              v: "scroll",
-              g: "wand",
-            }[event.key.toLowerCase()],
-            item = state.hero.inventory.find(
-              (entry) =>
-                entry.itemType === wantedType &&
-                ((entry.quantity ?? 0) > 0 || (entry.charges ?? 0) > 0),
-            );
-          if (item) {
-            event.preventDefault();
-            const needsTarget = ["scroll", "wand"].includes(item.itemType),
-              hasTarget = state.map.cells.some(
-                (cell) => cell.enemy && cell.visibility === "visible",
-              );
-            if (needsTarget && !hasTarget)
-              $("error").textContent =
-                `${item.name} needs a visible enemy target.`;
-            else act({ kind: "invoke_item", itemId: item.id });
-          }
-        } else if (event.key === ">") {
+        } else if (quickItems[key]) useQuickItem(event, quickItems[key]);
+        else if (event.key === ">") {
           event.preventDefault();
           act({ kind: "stairs" });
         }
-      });
+      }
+      document.addEventListener("keydown", handleKeydown);
       $("new-run").addEventListener("submit", async (event) => {
         event.preventDefault();
         if (busy) return;

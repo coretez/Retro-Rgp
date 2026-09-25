@@ -299,38 +299,37 @@
         );
         renderEntry();
       }
-      function renderEntry() {
-        const entry = manual.find((candidate) => candidate.id === selectedId),
-          root = $("entry");
-        root.replaceChildren();
-        if (!entry) {
-          root.textContent = "No creatures match these filters.";
-          return;
-        }
-        const heading = document.createElement("h2");
-        heading.textContent = `${entry.glyph} · ${entry.name}`;
-        const line = document.createElement("div");
-        line.className = "statline";
-        line.textContent = `${entry.role} · ${title(entry.faction)} · ${entry.glyphLanguage} ${entry.glyphReading} · “${entry.glyphMeaning}”`;
+      function statGrid(entry) {
         const stats = document.createElement("div");
         stats.className = "stat-grid";
-        for (const [label, value] of [
+        const values = [
           ["Armor class", entry.ac],
           ["Hit points", entry.hp],
           ["Attack", `+${entry.attackBonus}`],
           ["Damage", entry.damage],
           ["Type", entry.damageType],
-        ]) {
-          const box = document.createElement("div");
+        ];
+        for (const [label, value] of values) {
+          const box = document.createElement("div"),
+            name = document.createElement("span"),
+            strong = document.createElement("strong");
           box.className = "stat";
-          const name = document.createElement("span");
           name.textContent = label;
-          const strong = document.createElement("strong");
           strong.textContent = value;
           box.append(name, strong);
           stats.append(box);
         }
-        root.append(heading, line, stats);
+        return stats;
+      }
+      function entryIntroduction(entry) {
+        const heading = document.createElement("h2");
+        heading.textContent = `${entry.glyph} · ${entry.name}`;
+        const line = document.createElement("div");
+        line.className = "statline";
+        line.textContent = `${entry.role} · ${title(entry.faction)} · ${entry.glyphLanguage} ${entry.glyphReading} · “${entry.glyphMeaning}”`;
+        return [heading, line, statGrid(entry)];
+      }
+      function appendLore(root, entry) {
         for (const text of entry.lore) {
           const p = document.createElement("p");
           p.textContent = text;
@@ -342,11 +341,15 @@
         em.textContent = entry.interpretation;
         interpretation.append(em);
         root.append(interpretation);
+      }
+      function appendEcology(root, entry) {
         const ecology = document.createElement("div");
         ecology.className = "ecology";
         ecology.innerHTML = `<strong>Ecology</strong><p></p>`;
         ecology.querySelector("p").textContent = entry.ecology;
         root.append(ecology);
+      }
+      function appendTraits(root, entry) {
         const traits = [
           ...(entry.resistances ?? []).map((v) => `Resistance: ${v}`),
           ...(entry.vulnerabilities ?? []).map((v) => `Vulnerability: ${v}`),
@@ -358,6 +361,19 @@
           p.textContent = traits.join(" · ");
           root.append(p);
         }
+      }
+      function renderEntry() {
+        const entry = manual.find((candidate) => candidate.id === selectedId),
+          root = $("entry");
+        root.replaceChildren();
+        if (!entry) {
+          root.textContent = "No creatures match these filters.";
+          return;
+        }
+        root.append(...entryIntroduction(entry));
+        appendLore(root, entry);
+        appendEcology(root, entry);
+        appendTraits(root, entry);
       }
       for (const id of ["search", "role", "faction"])
         $(id).addEventListener(

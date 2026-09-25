@@ -430,8 +430,8 @@ function populate(rooms, request, theme, rng) {
   };
 }
 
-export function generateDungeon(campaign, request) {
-  const normalized = {
+function normalizeRequest(request) {
+  return {
     seed: request.seed,
     form: request.form ?? "auto",
     size: request.size ?? "medium",
@@ -442,13 +442,12 @@ export function generateDungeon(campaign, request) {
     difficulty: request.difficulty ?? "standard",
     themeHint: request.themeHint ?? null,
   };
-  const rng = random(
-    `${campaign.id}:${campaign.revision}:${JSON.stringify(normalized)}`,
-  );
-  const form = formFor(normalized, rng);
+}
+
+function buildTheme(normalized, form, rng) {
   const baseTheme = THEMES[form];
   const themeState = resolveDungeonTable("dungeon-state-v1", rng.int(1, 12));
-  const theme = {
+  return {
     title: normalized.themeHint || baseTheme.title,
     archetype: baseTheme.archetype,
     form,
@@ -462,18 +461,9 @@ export function generateDungeon(campaign, request) {
       `Dungeon level ${normalized.dungeonLevel} should feel deeper through access, isolation and consequence, not merely stronger monsters.`,
     ],
   };
-  const { width, height, rooms: count } = dimensions(normalized.size);
-  const rooms = buildRooms({
-    width,
-    height,
-    count,
-    form,
-    theme: baseTheme,
-    rng,
-  });
-  const loopCount =
-    normalized.size === "small" ? 1 : normalized.size === "large" ? 3 : 2;
-  const connections = roomGraph(rooms, rng, loopCount);
+}
+
+function carveMap(width, height, rooms, connections) {
   const floor = new Set();
   for (const room of rooms)
     for (let x = room.x; x < room.x + room.width; x++)
@@ -493,6 +483,10 @@ export function generateDungeon(campaign, request) {
     const [x, y] = key.split(",").map(Number);
     return { x, y };
   });
+  return { floor, floorCells, blocked };
+}
+
+function difficultTerrain(form, width, rooms, floorCells, rng) {
   const difficultRate = [
     "natural_caves",
     "mine",
@@ -507,25 +501,38 @@ export function generateDungeon(campaign, request) {
     cellKey(center(rooms[0])),
     cellKey(center(rooms.at(-1))),
   ]);
-  const difficultCandidates = floorCells.filter(
+  const candidates = floorCells.filter(
     (cell) => !protectedCells.has(cellKey(cell)),
   );
-  const riverCells = difficultCandidates.filter(
+  const river = candidates.filter(
     (cell) => Math.abs(cell.x - Math.floor(width / 2)) <= 1,
   );
-  const difficult =
-    form === "flooded_underways" && riverCells.length >= 3
-      ? riverCells
-      : rng
-          .shuffle(difficultCandidates)
-          .slice(0, Math.floor(floorCells.length * difficultRate));
-  const population = populate(rooms, normalized, baseTheme, rng);
+  if (form === "flooded_underways" && river.length >= 3) return river;
+  return rng
+    .shuffle(candidates)
+    .slice(0, Math.floor(floorCells.length * difficultRate));
+}
+
+function dungeonResult(context) {
+  const {
+    campaign,
+    normalized,
+    form,
+    theme,
+    width,
+    height,
+    rooms,
+    connections,
+    floor,
+    blocked,
+    difficult,
+    population,
+  } = context;
+  const identity = `${campaign.id}:${campaign.revision}:${JSON.stringify(normalized)}`;
   return {
     schemaVersion: 1,
     generatorVersion: DUNGEON_GENERATOR_VERSION,
-    id: stableUuid(
-      `${campaign.id}:${campaign.revision}:${JSON.stringify(normalized)}`,
-    ),
+    id: stableUuid(identity),
     campaignId: campaign.id,
     campaignRevision: campaign.revision,
     seed: normalized.seed,
@@ -556,10 +563,7 @@ export function generateDungeon(campaign, request) {
       profile: "original-table-driven-v1",
       source:
         "Original Retro RPG tables and geometry; inspired by procedural tabletop play, not a reproduction of historical D&D tables.",
-      tables: DUNGEON_TABLES.map((table) => ({
-        id: table.id,
-        key: table.key,
-      })),
+      tables: DUNGEON_TABLES.map((table) => ({ id: table.id, key: table.key })),
     },
     installation: {
       state: "draft",
@@ -573,4 +577,48 @@ export function generateDungeon(campaign, request) {
       ],
     },
   };
+}
+
+export function generateDungeon(campaign, request) {
+  const normalized = normalizeRequest(request);
+  const rng = random(
+    `${campaign.id}:${campaign.revision}:${JSON.stringify(normalized)}`,
+  );
+  const form = formFor(normalized, rng),
+    baseTheme = THEMES[form],
+    theme = buildTheme(normalized, form, rng);
+  const { width, height, rooms: count } = dimensions(normalized.size);
+  const rooms = buildRooms({
+    width,
+    height,
+    count,
+    form,
+    theme: baseTheme,
+    rng,
+  });
+  const loopCount =
+    normalized.size === "small" ? 1 : normalized.size === "large" ? 3 : 2;
+  const connections = roomGraph(rooms, rng, loopCount);
+  const { floor, floorCells, blocked } = carveMap(
+      width,
+      height,
+      rooms,
+      connections,
+    ),
+    difficult = difficultTerrain(form, width, rooms, floorCells, rng);
+  const population = populate(rooms, normalized, baseTheme, rng);
+  return dungeonResult({
+    campaign,
+    normalized,
+    form,
+    theme,
+    width,
+    height,
+    rooms,
+    connections,
+    floor,
+    blocked,
+    difficult,
+    population,
+  });
 }

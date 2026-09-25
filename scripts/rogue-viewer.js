@@ -75,86 +75,95 @@ async function jsonBody(request) {
   return JSON.parse(body);
 }
 
-const server = http.createServer(async (request, response) => {
+function sendJson(response, value) {
+  response.setHeader("Content-Type", "application/json");
+  response.end(JSON.stringify(value));
+}
+
+function sendHtml(response, file) {
+  response.setHeader("Content-Type", "text/html; charset=utf-8");
+  response.end(readFileSync(resolve(root, "viewer", file), "utf8"));
+}
+
+async function handleGet(pathname, response) {
+  if (pathname === "/") return sendHtml(response, "rogue.html");
+  if (pathname === "/manual") return sendHtml(response, "monster-manual.html");
+  if (pathname === "/api/state")
+    return sendJson(response, await call("rogue_run_get", { runId }));
+  if (pathname === "/api/bestiary")
+    return sendJson(response, await call("rogue_bestiary_get", {}));
+  return false;
+}
+
+async function createRun(request, response) {
+  const body = await jsonBody(request);
+  const created = await call("rogue_run_create", {
+    requestId: randomUUID(),
+    seed: String(body.seed ?? "").trim(),
+    heroName: String(body.heroName ?? "").trim(),
+    heroClass: ["fighter", "mage", "cleric"].includes(body.heroClass)
+      ? body.heroClass
+      : "fighter",
+    form: body.form,
+    size: body.size === "medium" ? "medium" : "small",
+    levels: [3, 5, 8].includes(Number(body.levels)) ? Number(body.levels) : 5,
+  });
+  runId = created.runId;
+  writeFileSync(activeRunFile, `${runId}\n`);
+  sendJson(response, created.view);
+}
+
+async function performAction(request, response) {
+  const body = await jsonBody(request);
+  const task = queue.then(async () => {
+    const view = await call("rogue_run_get", { runId });
+    return call("rogue_act", {
+      runId,
+      expectedRevision: view.revision,
+      requestId: randomUUID(),
+      intent: body.intent,
+    });
+  });
+  queue = task.catch(() => {});
+  sendJson(response, await task);
+}
+
+async function handlePost(pathname, request, response) {
+  if (!originAllowed(request)) throw new Error("Same-origin request required");
+  if (pathname === "/api/new") return createRun(request, response);
+  if (pathname === "/api/action") return performAction(request, response);
+  return false;
+}
+
+function validHost(request) {
+  return [`127.0.0.1:${port}`, `localhost:${port}`].includes(
+    request.headers.host,
+  );
+}
+
+async function handleRequest(request, response) {
   response.setHeader("Cache-Control", "no-store");
   response.setHeader("X-Content-Type-Options", "nosniff");
   try {
-    if (
-      request.headers.host !== `127.0.0.1:${port}` &&
-      request.headers.host !== `localhost:${port}`
-    )
-      throw new Error("Invalid host");
-    const url = new URL(request.url, `http://127.0.0.1:${port}`);
-    if (request.method === "GET" && url.pathname === "/") {
-      response.setHeader("Content-Type", "text/html; charset=utf-8");
-      return response.end(
-        readFileSync(resolve(root, "viewer/rogue.html"), "utf8"),
-      );
+    if (!validHost(request)) throw new Error("Invalid host");
+    const { pathname } = new URL(request.url, `http://127.0.0.1:${port}`);
+    const handled =
+      request.method === "GET"
+        ? await handleGet(pathname, response)
+        : request.method === "POST"
+          ? await handlePost(pathname, request, response)
+          : false;
+    if (!handled && !response.writableEnded) {
+      response.statusCode = 404;
+      response.end("Not found");
     }
-    if (request.method === "GET" && url.pathname === "/manual") {
-      response.setHeader("Content-Type", "text/html; charset=utf-8");
-      return response.end(
-        readFileSync(resolve(root, "viewer/monster-manual.html"), "utf8"),
-      );
-    }
-    if (request.method === "GET" && url.pathname === "/api/state") {
-      response.setHeader("Content-Type", "application/json");
-      return response.end(
-        JSON.stringify(await call("rogue_run_get", { runId })),
-      );
-    }
-    if (request.method === "GET" && url.pathname === "/api/bestiary") {
-      response.setHeader("Content-Type", "application/json");
-      return response.end(JSON.stringify(await call("rogue_bestiary_get", {})));
-    }
-    if (request.method === "POST" && url.pathname === "/api/new") {
-      if (!originAllowed(request))
-        throw new Error("Same-origin request required");
-      const body = await jsonBody(request);
-      const created = await call("rogue_run_create", {
-        requestId: randomUUID(),
-        seed: String(body.seed ?? "").trim(),
-        heroName: String(body.heroName ?? "").trim(),
-        heroClass: ["fighter", "mage", "cleric"].includes(body.heroClass)
-          ? body.heroClass
-          : "fighter",
-        form: body.form,
-        size: body.size === "medium" ? "medium" : "small",
-        levels: [3, 5, 8].includes(Number(body.levels))
-          ? Number(body.levels)
-          : 5,
-      });
-      runId = created.runId;
-      writeFileSync(activeRunFile, `${runId}\n`);
-      response.setHeader("Content-Type", "application/json");
-      return response.end(JSON.stringify(created.view));
-    }
-    if (request.method === "POST" && url.pathname === "/api/action") {
-      if (!originAllowed(request))
-        throw new Error("Same-origin request required");
-      const body = await jsonBody(request);
-      const task = queue.then(async () => {
-        const view = await call("rogue_run_get", { runId });
-        return call("rogue_act", {
-          runId,
-          expectedRevision: view.revision,
-          requestId: randomUUID(),
-          intent: body.intent,
-        });
-      });
-      queue = task.catch(() => {});
-      const result = await task;
-      response.setHeader("Content-Type", "application/json");
-      return response.end(JSON.stringify(result));
-    }
-    response.statusCode = 404;
-    response.end("Not found");
   } catch (error) {
     response.statusCode = 400;
-    response.setHeader("Content-Type", "application/json");
-    response.end(JSON.stringify({ error: error.message }));
+    sendJson(response, { error: error.message });
   }
-});
+}
+
+const server = http.createServer(handleRequest);
 
 server.listen(port, "127.0.0.1", () => {
   console.log(`Solo roguelike ready: http://127.0.0.1:${port}`);

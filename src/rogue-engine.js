@@ -578,75 +578,84 @@ function enemyGroupPolicy(state, enemy) {
   };
 }
 
-function resolveEnemies(state, dice, events) {
-  const level = active(state);
+function reconcileEnemyLeaders(state, events) {
   for (const group of state.enemyGroups ?? []) {
     const change = reconcileGroupLeadership(group, state.enemies);
-    if (change) {
-      const actor = state.enemies.find(
-        (enemy) =>
-          enemy.id === change.leaderId || enemy.id === change.previousLeaderId,
-      );
-      events.push({
-        type: "group_leader_changed",
-        ...change,
-        position: actor ? { x: actor.x, y: actor.y } : null,
-      });
-    }
-  }
-  for (const enemy of aliveEnemies(state).sort((a, b) =>
-    a.id.localeCompare(b.id),
-  )) {
-    if (state.hero.hp <= 0 || state.status !== "active") break;
-    const template = ROGUE_BESTIARY[enemy.template];
-    if ((template.cadence ?? 1) > 1 && state.tick % template.cadence !== 0)
-      continue;
-    const seesHero = enemyCanSeeHero(state, enemy);
-    if (seesHero) {
-      enemy.aware = true;
-      enemy.lastKnown = { x: state.hero.x, y: state.hero.y };
-    }
-    if (gridDistance("square", enemy, state.hero) === 1) {
-      attack(enemy, state.hero, dice, events, "enemy");
-      continue;
-    }
-    if (!enemy.aware) continue;
-    const policy = enemyGroupPolicy(state, enemy),
-      home = level.rooms.find((r) => r.id === enemy.homeRoomId),
-      territorial =
-        policy.hold ||
-        ["guardian", "sentinel", "brute", "boss"].includes(template.role);
-    if (
-      territorial &&
-      home &&
-      roomAt(level, state.hero)?.id !== home.id &&
-      gridDistance("square", center(home), enemy) >= 4
-    ) {
-      enemy.aware = false;
-      continue;
-    }
-    const retreat =
-        policy.retreat ||
-        (["coward", "skirmisher"].includes(template.role) &&
-          enemy.hp <= Math.ceil(enemy.maxHp / 2)),
-      step = enemyStep(state, enemy, retreat);
-    if (!step) continue;
-    const from = { x: enemy.x, y: enemy.y };
-    enemy.x = step.x;
-    enemy.y = step.y;
+    if (!change) continue;
+    const actor = state.enemies.find(
+      (enemy) =>
+        enemy.id === change.leaderId || enemy.id === change.previousLeaderId,
+    );
     events.push({
-      type: "enemy_move",
-      actorId: enemy.id,
-      actorName: enemy.name,
-      from,
-      to: { x: enemy.x, y: enemy.y },
-      position: { x: enemy.x, y: enemy.y },
-      reason: retreat
-        ? (policy.reason ?? "retreat_wounded")
-        : seesHero
-          ? "approach_visible_hero"
-          : "investigate_noise",
+      type: "group_leader_changed",
+      ...change,
+      position: actor ? { x: actor.x, y: actor.y } : null,
     });
+  }
+}
+
+function enemyLeavesTerritory(state, enemy, template, policy) {
+  const home = active(state).rooms.find((room) => room.id === enemy.homeRoomId),
+    territorial =
+      policy.hold ||
+      ["guardian", "sentinel", "brute", "boss"].includes(template.role);
+  return (
+    territorial &&
+    home &&
+    roomAt(active(state), state.hero)?.id !== home.id &&
+    gridDistance("square", center(home), enemy) >= 4
+  );
+}
+
+function moveEnemy(state, enemy, template, seesHero, events) {
+  const policy = enemyGroupPolicy(state, enemy);
+  if (enemyLeavesTerritory(state, enemy, template, policy)) {
+    enemy.aware = false;
+    return;
+  }
+  const retreat =
+      policy.retreat ||
+      (["coward", "skirmisher"].includes(template.role) &&
+        enemy.hp <= Math.ceil(enemy.maxHp / 2)),
+    step = enemyStep(state, enemy, retreat);
+  if (!step) return;
+  const from = { x: enemy.x, y: enemy.y };
+  Object.assign(enemy, step);
+  events.push({
+    type: "enemy_move",
+    actorId: enemy.id,
+    actorName: enemy.name,
+    from,
+    to: { x: enemy.x, y: enemy.y },
+    position: { x: enemy.x, y: enemy.y },
+    reason: retreat
+      ? (policy.reason ?? "retreat_wounded")
+      : seesHero
+        ? "approach_visible_hero"
+        : "investigate_noise",
+  });
+}
+
+function resolveEnemy(state, enemy, dice, events) {
+  const template = ROGUE_BESTIARY[enemy.template];
+  if ((template.cadence ?? 1) > 1 && state.tick % template.cadence !== 0)
+    return;
+  const seesHero = enemyCanSeeHero(state, enemy);
+  if (seesHero) {
+    enemy.aware = true;
+    enemy.lastKnown = { x: state.hero.x, y: state.hero.y };
+  }
+  if (gridDistance("square", enemy, state.hero) === 1)
+    return attack(enemy, state.hero, dice, events, "enemy");
+  if (enemy.aware) moveEnemy(state, enemy, template, seesHero, events);
+}
+
+function resolveEnemies(state, dice, events) {
+  reconcileEnemyLeaders(state, events);
+  const enemies = aliveEnemies(state).sort((a, b) => a.id.localeCompare(b.id));
+  for (const enemy of enemies) {
+    if (state.hero.hp <= 0 || state.status !== "active") break;
+    resolveEnemy(state, enemy, dice, events);
   }
   if (state.hero.hp <= 0) {
     state.status = state.hero.dead ? "dead" : "dying";
@@ -1505,6 +1514,148 @@ function descend(state, events) {
   });
 }
 
+function resolveDyingTurn(state, intent, dice, events) {
+  check(
+    intent.kind === "death_save",
+    "DEATH_SAVE_REQUIRED",
+    "Resolve the hero's death saving throw.",
+  );
+  const outcome = resolveDeathSave(state.hero, dice);
+  events.push({
+    type: "death_save",
+    actorId: state.hero.id,
+    actorName: state.hero.name,
+    ...outcome,
+    position: { x: state.hero.x, y: state.hero.y },
+  });
+  const statuses = { revived: "active", dead: "dead", stable: "stable" };
+  state.status = statuses[outcome.result] ?? state.status;
+}
+
+function commandGroup(state, intent, events) {
+  check(
+    intent.groupId === state.partyGroup.id,
+    "GROUP_NOT_COMMANDABLE",
+    "Only the player's party may receive player commands.",
+  );
+  const order = issueGroupOrder(state.partyGroup, intent, state.tick);
+  events.push({
+    type: "group_order_issued",
+    groupId: state.partyGroup.id,
+    actorId: intent.issuerId,
+    actorName: state.hero.name,
+    order,
+    position: { x: state.hero.x, y: state.hero.y },
+  });
+}
+
+function openDoor(state, intent, events) {
+  const delta = DIRECTIONS[intent.direction];
+  check(delta, "INVALID_DIRECTION", "Unknown direction.");
+  const target = { x: state.hero.x + delta[0], y: state.hero.y + delta[1] },
+    door = active(state).doors.find(
+      (entry) => same(entry, target) && entry.revealed,
+    );
+  check(door, "NO_DOOR", "There is no known door there.");
+  check(door.state === "closed", "DOOR_OPEN", "That door is already open.");
+  door.state = "open";
+  events.push({ type: "door_opened", doorId: door.id, position: target });
+  addNoise(state, events, 5, target, "door");
+}
+
+function completeDungeon(state, events) {
+  if (!same(state.hero, active(state).exit) || state.depth !== state.maxDepth)
+    return;
+  const bossAlive = aliveEnemies(state).some(
+    (enemy) => ROGUE_BESTIARY[enemy.template].role === "boss",
+  );
+  if (bossAlive) return;
+  state.status = "won";
+  events.push({
+    type: "exit_reached",
+    actorId: state.hero.id,
+    actorName: state.hero.name,
+    position: { x: state.hero.x, y: state.hero.y },
+    treasureCp: state.hero.goldCp,
+  });
+}
+
+function enterCell(state, to, dice, events) {
+  const from = { x: state.hero.x, y: state.hero.y };
+  Object.assign(state.hero, to);
+  events.push({
+    type: "hero_move",
+    actorId: state.hero.id,
+    actorName: state.hero.name,
+    from,
+    to,
+    position: to,
+  });
+  search(state, dice, events, { passive: true });
+  collectGround(state, events);
+  triggerShrine(state, events);
+  triggerTrap(state, dice, events);
+  completeDungeon(state, events);
+}
+
+function moveHero(state, intent, dice, events) {
+  const delta = DIRECTIONS[intent.direction];
+  check(delta, "INVALID_DIRECTION", "Unknown movement direction.");
+  const to = { x: state.hero.x + delta[0], y: state.hero.y + delta[1] };
+  check(
+    neighbors(effectiveMap(state), state.hero).some((position) =>
+      same(position, to),
+    ),
+    "MOVE_BLOCKED",
+    "That adjacent step is blocked.",
+    { to },
+  );
+  const enemy = aliveEnemies(state).find((candidate) => same(candidate, to));
+  if (!enemy) return enterCell(state, to, dice, events);
+  attack(state.hero, enemy, dice, events, "hero");
+  addNoise(state, events, 6, state.hero, "combat");
+}
+
+function waitTurn(state, events) {
+  events.push({
+    type: "hero_wait",
+    actorId: state.hero.id,
+    actorName: state.hero.name,
+    position: { x: state.hero.x, y: state.hero.y },
+  });
+}
+
+function resolveActiveTurn(state, intent, dice, events) {
+  switch (intent.kind) {
+    case "command":
+      return commandGroup(state, intent, events);
+    case "wait":
+      return waitTurn(state, events);
+    case "search":
+      return search(state, dice, events);
+    case "use_item":
+      return useItem(state, intent, dice, events);
+    case "invoke_item":
+      return invokeItem(state, intent, dice, events);
+    case "class_power":
+      return useClassPower(state, dice, events);
+    case "short_rest":
+      return shortRest(state, dice, events);
+    case "equip":
+      return equipItem(state, intent, events);
+    case "unequip":
+      return unequipItem(state, intent, events);
+    case "stairs":
+      return descend(state, events);
+    case "open":
+      return openDoor(state, intent, events);
+    case "move":
+      return moveHero(state, intent, dice, events);
+    default:
+      throw new RuleError("INVALID_INTENT", "Unsupported player intent.");
+  }
+}
+
 export function applyRogueTurn(state, intent, dice = new Dice()) {
   check(
     ["active", "dying"].includes(state.status),
@@ -1512,116 +1663,9 @@ export function applyRogueTurn(state, intent, dice = new Dice()) {
     "This run has ended.",
     { status: state.status },
   );
-  const events = [],
-    level = active(state);
-  if (state.status === "dying") {
-    check(
-      intent.kind === "death_save",
-      "DEATH_SAVE_REQUIRED",
-      "Resolve the hero's death saving throw.",
-    );
-    const outcome = resolveDeathSave(state.hero, dice);
-    events.push({
-      type: "death_save",
-      actorId: state.hero.id,
-      actorName: state.hero.name,
-      ...outcome,
-      position: { x: state.hero.x, y: state.hero.y },
-    });
-    if (outcome.result === "revived") state.status = "active";
-    else if (outcome.result === "dead") state.status = "dead";
-    else if (outcome.result === "stable") state.status = "stable";
-  } else if (intent.kind === "command") {
-    check(
-      intent.groupId === state.partyGroup.id,
-      "GROUP_NOT_COMMANDABLE",
-      "Only the player's party may receive player commands.",
-    );
-    const order = issueGroupOrder(state.partyGroup, intent, state.tick);
-    events.push({
-      type: "group_order_issued",
-      groupId: state.partyGroup.id,
-      actorId: intent.issuerId,
-      actorName: state.hero.name,
-      order,
-      position: { x: state.hero.x, y: state.hero.y },
-    });
-  } else if (intent.kind === "wait")
-    events.push({
-      type: "hero_wait",
-      actorId: state.hero.id,
-      actorName: state.hero.name,
-      position: { x: state.hero.x, y: state.hero.y },
-    });
-  else if (intent.kind === "search") search(state, dice, events);
-  else if (intent.kind === "use_item") useItem(state, intent, dice, events);
-  else if (intent.kind === "invoke_item")
-    invokeItem(state, intent, dice, events);
-  else if (intent.kind === "class_power") useClassPower(state, dice, events);
-  else if (intent.kind === "short_rest") shortRest(state, dice, events);
-  else if (intent.kind === "equip") equipItem(state, intent, events);
-  else if (intent.kind === "unequip") unequipItem(state, intent, events);
-  else if (intent.kind === "stairs") descend(state, events);
-  else if (intent.kind === "open") {
-    const delta = DIRECTIONS[intent.direction];
-    check(delta, "INVALID_DIRECTION", "Unknown direction.");
-    const target = { x: state.hero.x + delta[0], y: state.hero.y + delta[1] },
-      door = level.doors.find((d) => same(d, target) && d.revealed);
-    check(door, "NO_DOOR", "There is no known door there.");
-    check(door.state === "closed", "DOOR_OPEN", "That door is already open.");
-    door.state = "open";
-    events.push({ type: "door_opened", doorId: door.id, position: target });
-    addNoise(state, events, 5, target, "door");
-  } else if (intent.kind === "move") {
-    const delta = DIRECTIONS[intent.direction];
-    check(delta, "INVALID_DIRECTION", "Unknown movement direction.");
-    const to = { x: state.hero.x + delta[0], y: state.hero.y + delta[1] };
-    check(
-      neighbors(effectiveMap(state), state.hero).some((p) => same(p, to)),
-      "MOVE_BLOCKED",
-      "That adjacent step is blocked.",
-      { to },
-    );
-    const enemy = aliveEnemies(state).find((e) => same(e, to));
-    if (enemy) {
-      attack(state.hero, enemy, dice, events, "hero");
-      addNoise(state, events, 6, state.hero, "combat");
-    } else {
-      const from = { x: state.hero.x, y: state.hero.y };
-      state.hero.x = to.x;
-      state.hero.y = to.y;
-      events.push({
-        type: "hero_move",
-        actorId: state.hero.id,
-        actorName: state.hero.name,
-        from,
-        to,
-        position: to,
-      });
-      search(state, dice, events, { passive: true });
-      collectGround(state, events);
-      triggerShrine(state, events);
-      triggerTrap(state, dice, events);
-      if (
-        same(state.hero, active(state).exit) &&
-        state.depth === state.maxDepth
-      ) {
-        const bossAlive = aliveEnemies(state).some(
-          (e) => ROGUE_BESTIARY[e.template].role === "boss",
-        );
-        if (!bossAlive) {
-          state.status = "won";
-          events.push({
-            type: "exit_reached",
-            actorId: state.hero.id,
-            actorName: state.hero.name,
-            position: { x: state.hero.x, y: state.hero.y },
-            treasureCp: state.hero.goldCp,
-          });
-        }
-      }
-    }
-  } else throw new RuleError("INVALID_INTENT", "Unsupported player intent.");
+  const events = [];
+  if (state.status === "dying") resolveDyingTurn(state, intent, dice, events);
+  else resolveActiveTurn(state, intent, dice, events);
   grantExperience(state, events);
   if (state.status === "active") resolveEnemies(state, dice, events);
   state.tick += 1;
@@ -1863,7 +1907,7 @@ function migrateGroup(group, value, actorIds, side, fallbackName) {
   return migrated;
 }
 
-function migrateIdentity(value) {
+function identityMigration(value) {
   const actorIds = new Map(),
     objectIds = new Map(),
     actorId = (legacyId) => {
@@ -1880,7 +1924,10 @@ function migrateIdentity(value) {
       objectIds.set(legacyId, id);
       return id;
     };
+  return { actorIds, objectIds, actorId, objectId };
+}
 
+function migrateHeroIdentity(value, actorId) {
   const legacyHeroId = value.hero.id;
   value.hero.id = actorId(legacyHeroId);
   value.hero.definitionId ??= definitionId("actor-archetype", value.hero.class);
@@ -1893,69 +1940,86 @@ function migrateIdentity(value) {
     "feature",
     value.hero.classPower.key,
   );
+}
 
-  for (const level of value.levels) {
-    level.id = objectId("dungeon-level", level.id ?? `level-${level.depth}`);
-    level.definitionId ??= definitionId(
-      "dungeon-level",
-      level.theme?.archetype ?? "dungeon",
-    );
-    level.entityType = "dungeon-level";
-    const roomIds = new Map();
-    for (const room of level.rooms) {
-      const legacyId = room.id;
-      room.id = objectId("room", legacyId);
-      roomIds.set(legacyId, room.id);
-      room.definitionId ??= definitionId("room", room.purpose ?? "room");
-      room.entityType = "room";
-    }
-    for (const connection of level.connections ?? []) {
-      connection.id = objectId("connection", connection.id);
-      connection.definitionId ??= definitionId("connection", connection.kind);
-      connection.entityType = "connection";
-      connection.from = roomIds.get(connection.from) ?? connection.from;
-      connection.to = roomIds.get(connection.to) ?? connection.to;
-    }
-    for (const enemy of level.enemies) {
-      const legacyId = enemy.id;
-      enemy.id = actorId(legacyId);
-      enemy.definitionId ??= definitionId(
-        "actor",
-        `creature:${enemy.template}`,
-      );
-      enemy.entityType = "actor";
-      enemy.homeRoomId = roomIds.get(enemy.homeRoomId) ?? enemy.homeRoomId;
-    }
-    for (const treasure of level.treasures) {
-      treasure.id = objectId("treasure", treasure.id);
-      treasure.definitionId ??= definitionId(
-        "treasure",
-        treasure.name.toLowerCase(),
-      );
-      treasure.entityType = "treasure";
-    }
-    for (const door of level.doors) {
-      door.id = objectId("door", door.id);
-      door.definitionId ??= definitionId(
-        "door",
-        door.secret ? "secret" : "ordinary",
-      );
-      door.entityType = "door";
-      door.connectionId = objectIds.get(door.connectionId) ?? door.connectionId;
-    }
-    for (const feature of level.features) {
-      feature.id = objectId(
-        feature.kind === "item" ? "item" : "feature",
-        feature.id,
-      );
-      feature.definitionId ??= definitionId(
-        feature.kind === "item" ? "item" : "feature",
-        feature.itemKind ?? feature.kind,
-      );
-      feature.entityType = feature.kind === "item" ? "item" : "feature";
-    }
+function migrateRooms(level, objectId) {
+  const roomIds = new Map();
+  for (const room of level.rooms) {
+    const legacyId = room.id;
+    room.id = objectId("room", legacyId);
+    roomIds.set(legacyId, room.id);
+    room.definitionId ??= definitionId("room", room.purpose ?? "room");
+    room.entityType = "room";
   }
+  return roomIds;
+}
 
+function migrateConnections(level, roomIds, objectId) {
+  for (const connection of level.connections ?? []) {
+    connection.id = objectId("connection", connection.id);
+    connection.definitionId ??= definitionId("connection", connection.kind);
+    connection.entityType = "connection";
+    connection.from = roomIds.get(connection.from) ?? connection.from;
+    connection.to = roomIds.get(connection.to) ?? connection.to;
+  }
+}
+
+function migrateEnemies(level, roomIds, actorId) {
+  for (const enemy of level.enemies) {
+    const legacyId = enemy.id;
+    enemy.id = actorId(legacyId);
+    enemy.definitionId ??= definitionId("actor", `creature:${enemy.template}`);
+    enemy.entityType = "actor";
+    enemy.homeRoomId = roomIds.get(enemy.homeRoomId) ?? enemy.homeRoomId;
+  }
+}
+
+function migrateLevelObjects(level, objectIds, objectId) {
+  for (const treasure of level.treasures) {
+    treasure.id = objectId("treasure", treasure.id);
+    treasure.definitionId ??= definitionId(
+      "treasure",
+      treasure.name.toLowerCase(),
+    );
+    treasure.entityType = "treasure";
+  }
+  for (const door of level.doors) {
+    door.id = objectId("door", door.id);
+    door.definitionId ??= definitionId(
+      "door",
+      door.secret ? "secret" : "ordinary",
+    );
+    door.entityType = "door";
+    door.connectionId = objectIds.get(door.connectionId) ?? door.connectionId;
+  }
+  for (const feature of level.features) {
+    const kind = feature.kind === "item" ? "item" : "feature";
+    feature.id = objectId(kind, feature.id);
+    feature.definitionId ??= definitionId(
+      kind,
+      feature.itemKind ?? feature.kind,
+    );
+    feature.entityType = kind;
+  }
+}
+
+function migrateLevelIdentity(level, migration) {
+  level.id = migration.objectId(
+    "dungeon-level",
+    level.id ?? `level-${level.depth}`,
+  );
+  level.definitionId ??= definitionId(
+    "dungeon-level",
+    level.theme?.archetype ?? "dungeon",
+  );
+  level.entityType = "dungeon-level";
+  const roomIds = migrateRooms(level, migration.objectId);
+  migrateConnections(level, roomIds, migration.objectId);
+  migrateEnemies(level, roomIds, migration.actorId);
+  migrateLevelObjects(level, migration.objectIds, migration.objectId);
+}
+
+function migrateHeroItems(value, objectIds, objectId) {
   for (const item of value.hero.inventory) {
     item.id = objectIds.get(item.id) ?? objectId("item", item.id);
     item.definitionId ??= definitionId("item", item.kind);
@@ -1974,7 +2038,9 @@ function migrateIdentity(value) {
     if (value.hero.equipment[slot])
       value.hero.equipment[slot] =
         objectIds.get(value.hero.equipment[slot]) ?? value.hero.equipment[slot];
+}
 
+function migratePartyGroup(value, actorIds) {
   value.partyGroup ??= {
     id: "party",
     name: `${value.hero.name}'s company`,
@@ -1989,26 +2055,36 @@ function migrateIdentity(value) {
     "party",
     `${value.hero.name}'s company`,
   );
+}
+
+function assignEnemyGroups(level, value, actorIds) {
+  level.enemyGroups ??= buildEnemyGroups(level.enemies, level.depth);
+  level.enemyGroups = level.enemyGroups.map((group) =>
+    migrateGroup(group, value, actorIds, "enemy", group.name),
+  );
+  const groupIds = new Map(
+    level.enemyGroups.map((group) => [group.name, group.id]),
+  );
+  for (const group of level.enemyGroups)
+    for (const actorId of group.memberIds) {
+      const enemy = level.enemies.find((candidate) => candidate.id === actorId);
+      if (enemy) enemy.groupId = group.id;
+    }
+  for (const enemy of level.enemies)
+    if (!isUuid(enemy.groupId))
+      enemy.groupId = groupIds.get(
+        ROGUE_BESTIARY[enemy.template].faction.replaceAll("_", " "),
+      );
+}
+
+function migrateIdentity(value) {
+  const migration = identityMigration(value);
+  migrateHeroIdentity(value, migration.actorId);
+  for (const level of value.levels) migrateLevelIdentity(level, migration);
+  migrateHeroItems(value, migration.objectIds, migration.objectId);
+  migratePartyGroup(value, migration.actorIds);
   for (const level of value.levels) {
-    level.enemyGroups ??= buildEnemyGroups(level.enemies, level.depth);
-    level.enemyGroups = level.enemyGroups.map((group) =>
-      migrateGroup(group, value, actorIds, "enemy", group.name),
-    );
-    const groupIds = new Map(
-      level.enemyGroups.map((group) => [group.name, group.id]),
-    );
-    for (const group of level.enemyGroups)
-      for (const actorId of group.memberIds) {
-        const enemy = level.enemies.find(
-          (candidate) => candidate.id === actorId,
-        );
-        if (enemy) enemy.groupId = group.id;
-      }
-    for (const enemy of level.enemies)
-      if (!isUuid(enemy.groupId))
-        enemy.groupId = groupIds.get(
-          ROGUE_BESTIARY[enemy.template].faction.replaceAll("_", " "),
-        );
+    assignEnemyGroups(level, value, migration.actorIds);
   }
   value.schemaVersion = 4;
   return value;
