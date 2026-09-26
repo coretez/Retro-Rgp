@@ -35,8 +35,9 @@ The public engine contracts remain stable while the internals change:
 | M-2 · Navigation and credible roads  | Complete |
 | M-3 · Smart objects and interactions | Complete |
 | M-4 · Job board and reservations     | Complete |
-| M-5 · Carter delivery                | Next     |
-| M-6 through M-10                     | Planned  |
+| M-5 · Carter delivery                | Complete |
+| M-6 · Reactive guard work            | Next     |
+| M-7 through M-10                     | Planned  |
 
 ## Target architecture
 
@@ -346,6 +347,26 @@ stage and decision.
 
 Other professions, general needs, or companion autonomy.
 
+### Completion evidence
+
+- Stable-cart cargo and smithy stock are persistent UUID-backed stockpiles.
+  Save schema 13 adds them to existing runs without discarding village state.
+- A smithy stock threshold posts one deterministic `deliver_goods` job. Bram
+  Eder is the only current resident with both the hauling capability and
+  delivery permission, so assignment follows the M-4 eligibility contract.
+- The job reserves its source, cargo, destination, and work position; Bram
+  walks every route one legal orthogonal cell at a time, loads one unit, opens
+  the shared M-3 smithy door when needed, unloads once, and releases all claims.
+- Cargo remains conserved across delivery, cancellation, missing targets, and
+  save/load while in transit. Locked access blocks the plan truthfully;
+  restoring access resumes the saved plan and completes it deterministically.
+- Meaningful job, cargo, access, and completion events replace movement noise.
+  The Unity inspector exposes an actor's current action and objective, and the
+  bottom strip presents recent meaningful simulation activity.
+- The full regression suite passes with 85 tests. Focused M-5 coverage verifies
+  a complete delivery, legal movement, conservation, blocked save/resume,
+  cancellation recovery, stock-threshold posting, and schema migration.
+
 ## M-6 — Reactive guard work
 
 ### Player-visible result
@@ -531,6 +552,7 @@ The first smart-world release is complete when all of the following are true:
 
 ## Immediate next objective
 
-Implement **M-5 only**: the first multi-step living-world job. Extend the M-4
-contracts with cargo and stock state plus a `deliver_goods` plan; do not add
-other professions, needs, or continuous time yet.
+Implement **M-6 only**: convert guard patrol and investigation into competing
+jobs, then prove that danger can interrupt routine work and that the guard can
+resume appropriate work afterward. Do not add the broader economy, companion
+autonomy, needs, or continuous time yet.

@@ -1,5 +1,18 @@
 # Changelog
 
+## Interactive Version 1 · M-5
+
+- Added persistent UUID-backed stable cargo and smithy stock with deterministic
+  low-stock delivery requests.
+- Added Bram Eder's multi-step `deliver_goods` work plan: reserve, travel, load,
+  travel, open access when permitted, unload, complete, and release claims.
+- Conserved cargo through delivery, cancellation, invalid targets, and
+  save/load while in transit; locked access now blocks truthfully and resumes
+  when restored.
+- Added meaningful delivery activity plus actor action and objective details to
+  the Unity HUD without reducing the map viewport.
+- Migrated saves to schema 13 and expanded the regression suite to 85 tests.
+
 ## Interactive Version 1 · Unity client foundation
 
 - Added a Unity 6000.5 client while preserving the retro ASCII visual language.

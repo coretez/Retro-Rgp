@@ -13,6 +13,7 @@ namespace RetroRpg
         public string location;
         public string title;
         public string message;
+        public string activity;
         public HeroView hero;
         public MapView map;
         public JobView[] jobs;
@@ -57,6 +58,8 @@ namespace RetroRpg
         public string entityId;
         public string entityKind;
         public string entityName;
+        public string entityObjective;
+        public string entityAction;
     }
 
     [Serializable]
@@ -68,6 +71,8 @@ namespace RetroRpg
         public string assignedActorName;
         public string blockingReason;
         public ProgressView progress;
+        public JobPlanView plan;
+        public PositionView destination;
     }
 
     [Serializable]
@@ -76,6 +81,13 @@ namespace RetroRpg
         public int completed;
         public int total;
         public string unit;
+    }
+
+    [Serializable]
+    public sealed class JobPlanView
+    {
+        public string template;
+        public string step;
     }
 
     [Serializable]

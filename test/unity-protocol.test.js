@@ -55,3 +55,18 @@ test("Unity protocol preserves stable coordinates and lightweight identity", () 
     ),
   );
 });
+
+test("Unity activity selects the newest meaningful delivery message", () => {
+  const state = newRogueRun(input);
+  state.location = "village";
+  const view = rogueUnityView(state, [
+    { type: "job_posted", jobName: "Deliver smithy supplies" },
+    {
+      type: "job_reserved",
+      jobName: "Deliver smithy supplies",
+      actorName: "Bram Eder",
+    },
+    { type: "npc_move" },
+  ]);
+  assert.equal(view.activity, "Bram Eder accepted Deliver smithy supplies.");
+});

@@ -152,12 +152,16 @@ namespace RetroRpg
         {
             var cell = SelectedCell();
             if (cell == null) return;
-            var panel = new Rect(12f, Screen.height - 172f, 270f, 108f);
+            var panel = new Rect(12f, Screen.height - 208f, 300f, 144f);
             DrawPanel(panel);
             GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, 238f, 18f), "SELECTED", headingStyle);
             GUI.Label(new Rect(panel.x + 14f, panel.y + 32f, 238f, 24f), SelectionName(cell), titleStyle);
             GUI.Label(new Rect(panel.x + 14f, panel.y + 60f, 238f, 18f), $"{Readable(cell.objectKind)}  ·  {Readable(cell.tile)}", bodyStyle);
             GUI.Label(new Rect(panel.x + 14f, panel.y + 82f, 238f, 18f), $"POSITION  {cell.x}, {cell.y}", subtleStyle);
+            if (!string.IsNullOrEmpty(cell.entityAction))
+                GUI.Label(new Rect(panel.x + 14f, panel.y + 104f, 272f, 18f), cell.entityAction, bodyStyle);
+            if (!string.IsNullOrEmpty(cell.entityObjective))
+                GUI.Label(new Rect(panel.x + 14f, panel.y + 124f, 272f, 16f), Readable(cell.entityObjective), subtleStyle);
         }
 
         private void DrawCommandBar()
@@ -165,8 +169,10 @@ namespace RetroRpg
             var width = Mathf.Min(680f, Screen.width - 24f);
             var panel = new Rect((Screen.width - width) * 0.5f, Screen.height - 52f, width, 40f);
             DrawPanel(panel);
-            var status = error ?? (busy ? "Resolving turn…" : "WASD / ARROWS  Move     CLICK  Select or move adjacent     WHEEL  Zoom");
-            GUI.Label(new Rect(panel.x + 18f, panel.y + 9f, panel.width - 36f, 24f), status, bodyStyle);
+            var status = error ?? (busy ? "Resolving turn…" : view.activity);
+            if (!string.IsNullOrEmpty(status))
+                GUI.Label(new Rect(panel.x + 18f, panel.y + 9f, panel.width * 0.48f, 24f), status, bodyStyle);
+            GUI.Label(new Rect(panel.x + panel.width * 0.5f, panel.y + 10f, panel.width * 0.47f, 22f), "WASD Move  ·  Click Select  ·  Wheel Zoom", subtleStyle);
         }
 
         private CellView SelectedCell()

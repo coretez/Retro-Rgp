@@ -1627,7 +1627,7 @@ export function newRogueRun(input) {
     heroId = newInstanceId(),
     companions = createCompanions();
   const state = {
-    schemaVersion: 12,
+    schemaVersion: 13,
     ruleset: ROGUE_RULESET,
     id: runId,
     revision: 0,
@@ -1655,6 +1655,7 @@ export function newRogueRun(input) {
       wantedLevel: 0,
       jobs: [],
       reservations: [],
+      stockpiles: createVillageStockpiles(runId),
       npcStates: createVillageNpcStates(runId),
       doors: VILLAGE_BUILDINGS.map((building) => ({
         id: newInstanceId(),
@@ -3486,8 +3487,8 @@ const VILLAGE_FURNITURE = [
     description: "Fresh straw and a leather halter fill the timber stall.",
   },
   {
-    x: 36,
-    y: 20,
+    x: 38,
+    y: 23,
     glyph: "W",
     name: "Stable supply cart",
     description:
@@ -3495,13 +3496,47 @@ const VILLAGE_FURNITURE = [
   },
 ];
 
+const VILLAGE_LOGISTICS = Object.freeze({
+  stableCargo: {
+    key: "stable_smithy_supplies",
+    name: "Smithy supply crates",
+    itemKind: "smithy_supplies",
+    quantity: 3,
+    position: { x: 38, y: 23 },
+    containerKind: "cart",
+  },
+  smithyStock: {
+    key: "smithy_supplies",
+    name: "Smithy working stock",
+    itemKind: "smithy_supplies",
+    quantity: 0,
+    threshold: 2,
+    capacity: 6,
+    position: { x: 11, y: 3 },
+    containerKind: "forge",
+  },
+});
+
+function createVillageStockpiles(runId) {
+  return Object.values(VILLAGE_LOGISTICS).map((definition) => ({
+    id: namedUuid(runId, `stockpile:${definition.key}`),
+    definitionId: definitionId("stockpile", definition.key),
+    entityType: "stockpile",
+    ...structuredClone(definition),
+    containerId: namedUuid(
+      runId,
+      `village-object:${definition.containerKind}:${definition.position.x},${definition.position.y}`,
+    ),
+  }));
+}
+
 const VILLAGE_PEOPLE = [
   ["miller", "Greta Voll", "miller", 14, 11],
   ["baker", "Oskar Mertens", "baker", 22, 11],
   ["porter", "Lina Roth", "porter", 19, 14],
   ["watchman", "Friedel Koch", "watchman", 20, 9],
   ["child", "Anja", "errand runner", 15, 15],
-  ["carter", "Bram Eder", "carter", 37, 11],
+  ["carter", "Bram Eder", "carter", 38, 24],
   ["pilgrim", "Sister Elske", "pilgrim", 41, 12],
   ["fisher", "Tomas Venn", "river fisher", -1, 11],
   ["hostler", "Pavel Dorn", "hostler", 38, 22],
@@ -3566,8 +3601,13 @@ function villageWorkerProfile(personKey) {
       delver: 2,
     }[personKey] ?? 1;
   return {
-    capabilityTags: ["inspect"],
-    workPermissions: { allowedJobTypes: ["inspect_object"] },
+    capabilityTags: personKey === "carter" ? ["inspect", "haul"] : ["inspect"],
+    workPermissions: {
+      allowedJobTypes:
+        personKey === "carter"
+          ? ["inspect_object", "deliver_goods"]
+          : ["inspect_object"],
+    },
     skills: { observation },
     workState: "available",
     lastJobType: null,
@@ -3799,7 +3839,15 @@ function fixtureObject(state, terrain, position) {
       counter: "Review counter",
       cart: "Inspect cargo",
       fixture: `Use ${fixture.name}`,
-    };
+    },
+    stockpiles = state.village.stockpiles.filter(
+      (stockpile) =>
+        stockpile.position.x === position.x &&
+        stockpile.position.y === position.y,
+    ),
+    stockDetail = stockpiles.length
+      ? ` Stock: ${stockpiles.map((stockpile) => `${stockpile.quantity} ${stockpile.name.toLowerCase()}`).join(", ")}.`
+      : "";
   return villageObject(
     state,
     fixtureKind,
@@ -3807,7 +3855,8 @@ function fixtureObject(state, terrain, position) {
     position,
     {
       name: fixture.name,
-      description: fixture.description,
+      description: fixture.description + stockDetail,
+      stockpiles: stockpiles.map((stockpile) => ({ ...stockpile })),
       affordanceKeys:
         fixtureKind === "cart"
           ? ["examine", "use", "request_stocktake"]
@@ -4156,6 +4205,9 @@ function villageView(state) {
     partyMovement: state.village.partyMovement,
     heroPosition: { ...state.village.heroPosition },
     entityCount: entityIndex.size,
+    stockpiles: state.village.stockpiles.map((stockpile) => ({
+      ...stockpile,
+    })),
     jobs: state.village.jobs.map((job) =>
       jobView(job, state.village.reservations, jobActors),
     ),
@@ -4372,6 +4424,8 @@ function unityCellActor(state, cell) {
       entityId: cell.person.id,
       entityKind: cell.person.category,
       entityName: cell.person.name,
+      entityObjective: cell.person.objective,
+      entityAction: cell.person.currentAction,
     };
   return null;
 }
@@ -4395,9 +4449,17 @@ function unityCell(state, cell) {
     tile: cell.tile,
     glyph: unityGlyph(cell, actor),
     objectKind: unityObjectKind(cell),
-    entityId: actor?.entityId ?? null,
-    entityKind: actor?.entityKind ?? null,
-    entityName: actor?.entityName ?? null,
+    ...(actor
+      ? {
+          entityId: actor.entityId,
+          entityKind: actor.entityKind,
+          entityName: actor.entityName,
+          ...(actor.entityObjective
+            ? { entityObjective: actor.entityObjective }
+            : {}),
+          ...(actor.entityAction ? { entityAction: actor.entityAction } : {}),
+        }
+      : {}),
   };
 }
 
@@ -4428,6 +4490,29 @@ function unityVillageMap(state) {
   return { ...UNITY_VILLAGE_VIEWPORT, origin, cells };
 }
 
+function unityActivityMessage(event) {
+  if (event.type === "job_started") return `Work started: ${event.jobName}.`;
+  if (event.type === "job_reserved")
+    return `${event.actorName} accepted ${event.jobName}.`;
+  if (event.type === "cargo_loaded")
+    return `${event.actorName} loaded ${event.quantity} ${event.cargoName}.`;
+  if (event.type === "cargo_delivered")
+    return `${event.actorName} delivered ${event.quantity} ${event.cargoName}.`;
+  if (event.type === "job_blocked")
+    return `Work blocked: ${event.reason?.replaceAll("_", " ") ?? "unknown reason"}.`;
+  if (event.type === "job_completed")
+    return `Work completed: ${event.jobName}.`;
+  if (event.type === "job_posted") return `New work: ${event.jobName}.`;
+  if (event.type === "job_resumed") return `Work resumed: ${event.jobName}.`;
+  if (event.type === "door_opened")
+    return `${event.actorName} opened the way for ${event.jobName}.`;
+  return null;
+}
+
+function unityActivity(recentEvents) {
+  return [...recentEvents].reverse().map(unityActivityMessage).find(Boolean);
+}
+
 export function rogueUnityView(state, recentEvents = []) {
   const jobActors = state.village.npcStates.map((npc) => ({
       ...npc,
@@ -4442,6 +4527,7 @@ export function rogueUnityView(state, recentEvents = []) {
     status: state.status,
     location: state.location,
     title: state.location === "village" ? VILLAGE.name : "Retro RPG",
+    activity: unityActivity(recentEvents),
     message:
       state.location === "village"
         ? VILLAGE.description
@@ -4944,7 +5030,7 @@ function migrateIdentity(value) {
   for (const level of value.levels) {
     assignEnemyGroups(level, value, migration.actorIds);
   }
-  value.schemaVersion = 12;
+  value.schemaVersion = 13;
   value.location ??= "dungeon";
   value.villageVisits ??= 0;
   value.world ??= {
@@ -4971,6 +5057,15 @@ function migrateIdentity(value) {
   value.village.wantedLevel ??= 0;
   value.village.jobs ??= [];
   value.village.reservations ??= [];
+  const stockpileDefaults = createVillageStockpiles(value.id);
+  value.village.stockpiles = stockpileDefaults.map((fallback) => {
+    const existing = value.village.stockpiles?.find(
+      (stockpile) =>
+        stockpile.itemKind === fallback.itemKind &&
+        stockpile.containerKind === fallback.containerKind,
+    );
+    return existing ? { ...fallback, ...existing } : fallback;
+  });
   value.village.npcStates ??= createVillageNpcStates(value.id);
   for (const npc of value.village.npcStates) {
     npc.id ??= namedUuid(value.id, `townsperson:${npc.personKey}`);
@@ -4979,6 +5074,15 @@ function migrateIdentity(value) {
     const profile = villageWorkerProfile(npc.personKey);
     npc.capabilityTags ??= profile.capabilityTags;
     npc.workPermissions ??= profile.workPermissions;
+    npc.capabilityTags = [
+      ...new Set([...npc.capabilityTags, ...profile.capabilityTags]),
+    ];
+    npc.workPermissions.allowedJobTypes = [
+      ...new Set([
+        ...npc.workPermissions.allowedJobTypes,
+        ...profile.workPermissions.allowedJobTypes,
+      ]),
+    ];
     npc.skills ??= profile.skills;
     npc.workState ??= profile.workState;
     npc.lastJobType ??= profile.lastJobType;

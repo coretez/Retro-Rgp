@@ -30,12 +30,12 @@ const input = {
 function villageState() {
   const state = newRogueRun(input);
   state.location = "village";
-  state.village.heroPosition = { x: 35, y: 20 };
+  state.village.heroPosition = { x: 37, y: 23 };
   return state;
 }
 
 function stocktakeJob(state) {
-  const cart = villageWorldObjectAt(state, 36, 20);
+  const cart = villageWorldObjectAt(state, 38, 23);
   return createJob(state, {
     jobType: "inspect_object",
     name: "Stocktake stable supply cart",
@@ -66,7 +66,7 @@ test("M-4 reservations are atomic, exclusive, and released together", () => {
       jobType: "inspect_object",
       name: "Competing inspection",
       targetId: "4b563e06-b963-4d9c-b899-797ab5572aef",
-      targetPosition: { x: 36, y: 20 },
+      targetPosition: { x: 38, y: 23 },
       requiredCapabilities: ["inspect"],
     }).job,
     claims = [
@@ -74,7 +74,7 @@ test("M-4 reservations are atomic, exclusive, and released together", () => {
       {
         kind: "position",
         locationKey: "stonebridge",
-        position: { x: 35, y: 20 },
+        position: { x: 37, y: 23 },
       },
     ];
   assert.equal(reserveAll(state, first, claims).ok, true);
@@ -124,7 +124,7 @@ test("M-4 assignment ties resolve by actor UUID", () => {
 
 test("M-4 stocktake runs through real navigation and object interaction", () => {
   const state = villageState(),
-    cart = villageWorldObjectAt(state, 36, 20),
+    cart = villageWorldObjectAt(state, 38, 23),
     request = {
       kind: "world_interact",
       objectId: cart.id,
@@ -146,7 +146,9 @@ test("M-4 stocktake runs through real navigation and object interaction", () => 
   assert.equal(job.progress.completed, 1);
   assert.ok(isUuid(job.id));
   assert.ok(
-    state.village.reservations.every((claim) => claim.state === "released"),
+    state.village.reservations
+      .filter((claim) => claim.jobId === job.id)
+      .every((claim) => claim.state === "released"),
   );
   assert.equal(
     state.village.npcStates.find((actor) => actor.id === job.assignedActorId)
@@ -157,7 +159,7 @@ test("M-4 stocktake runs through real navigation and object interaction", () => 
 
 test("M-4 invalid job targets release every claim deterministically", () => {
   const state = villageState(),
-    cart = villageWorldObjectAt(state, 36, 20),
+    cart = villageWorldObjectAt(state, 38, 23),
     request = {
       kind: "world_interact",
       objectId: cart.id,
@@ -190,7 +192,7 @@ test("M-4 invalid job targets release every claim deterministically", () => {
 
 test("M-4 posting the same open job is idempotent", () => {
   const state = villageState(),
-    cart = villageWorldObjectAt(state, 36, 20),
+    cart = villageWorldObjectAt(state, 38, 23),
     request = {
       kind: "world_interact",
       objectId: cart.id,
@@ -211,7 +213,7 @@ test("M-4 save migration preserves jobs, claims, and actor work data", () => {
   reserveAll(state, job, [{ kind: "job", targetId: job.id }]);
   const restored = parseRogueState(serializeRogueState(state)),
     view = rogueRunView(restored).village.jobs[0];
-  assert.equal(restored.schemaVersion, 12);
+  assert.equal(restored.schemaVersion, 13);
   assert.equal(restored.village.jobs[0].assignedActorId, actor.id);
   assert.equal(restored.village.reservations[0].jobId, job.id);
   assert.deepEqual(restored.village.npcStates[0].capabilityTags, ["inspect"]);
@@ -232,7 +234,7 @@ test("M-4 schema-11 saves acquire empty work state and actor profiles", () => {
     delete actor.risk;
   }
   const migrated = parseRogueState(legacy);
-  assert.equal(migrated.schemaVersion, 12);
+  assert.equal(migrated.schemaVersion, 13);
   assert.deepEqual(migrated.village.jobs, []);
   assert.deepEqual(migrated.village.reservations, []);
   assert.ok(

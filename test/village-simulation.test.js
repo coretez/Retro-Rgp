@@ -54,6 +54,7 @@ function publicSimulationEvents(events) {
       objectId: _objectId,
       materialId: _materialId,
       toolId: _toolId,
+      jobId: _jobId,
       ...event
     }) => event,
   );

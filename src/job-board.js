@@ -41,7 +41,7 @@ export function createJob(state, input) {
   );
   if (duplicate) return { job: duplicate, created: false };
   const job = {
-    id: newInstanceId(),
+    id: input.id ?? newInstanceId(),
     definitionId: definitionId("job", input.jobType),
     entityType: "job",
     jobType: input.jobType,
@@ -50,10 +50,18 @@ export function createJob(state, input) {
     priority: input.priority ?? 50,
     targetId: input.targetId,
     targetPosition: { ...input.targetPosition },
+    sourceId: input.sourceId ?? null,
+    sourcePosition: input.sourcePosition ? { ...input.sourcePosition } : null,
     destination: null,
     assignedActorId: null,
     requiredCapabilities: [...(input.requiredCapabilities ?? [])],
-    progress: { completed: 0, total: 1, unit: input.progressUnit ?? "task" },
+    progress: {
+      completed: 0,
+      total: input.progressTotal ?? 1,
+      unit: input.progressUnit ?? "task",
+    },
+    plan: input.plan ? structuredClone(input.plan) : null,
+    transfer: input.transfer ? structuredClone(input.transfer) : null,
     reason: input.reason ?? "world_condition",
     blockingReason: null,
     createdAtTick: state.tick,
@@ -158,8 +166,22 @@ export function jobView(job, reservations, actors) {
 
 export function cancelJob(state, job, reason = "cancelled") {
   if (TERMINAL_STATES.has(job.status)) return false;
+  restoreJobTransfer(state, job);
   transitionJob(job, "cancelled", state.tick, reason);
   releaseJobReservations(state, job.id, reason);
   job.assignedActorId = null;
   return true;
+}
+
+export function restoreJobTransfer(state, job) {
+  const transfer = job.transfer;
+  if (!transfer?.carriedQuantity) return 0;
+  const source = state.village.stockpiles?.find(
+    (stockpile) => stockpile.id === transfer.sourceStockpileId,
+  );
+  if (!source) return 0;
+  source.quantity += transfer.carriedQuantity;
+  const restored = transfer.carriedQuantity;
+  transfer.carriedQuantity = 0;
+  return restored;
 }
