@@ -4512,7 +4512,7 @@ function migrateIdentity(value) {
     state: "closed",
   }));
   for (const door of value.village.doors) {
-    door.shopKey ??= door.shopId;
+    if (door.shopKey == null && door.shopId != null) door.shopKey = door.shopId;
     delete door.shopId;
   }
   value.village.doors = VILLAGE_BUILDINGS.map((building) => {

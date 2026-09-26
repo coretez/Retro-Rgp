@@ -116,6 +116,17 @@ No intended gameplay change. The current game behaves exactly as it does now.
 
 Weighted pathfinding, jobs, smart objects, new routines, or UI redesign.
 
+### Completion evidence
+
+- The full regression suite passes with 50 tests, including complete semantic
+  determinism checks, every accepted village intent category, rejected intents,
+  UUID coverage, in-memory serialization, and a real SQLite save/load round trip.
+- The manual gate passed: town movement, shop entry, resident inspection,
+  regional-map travel, and return to Stonebridge all worked without a browser
+  console error.
+- One legacy relationship remains explicitly documented: companion positions
+  are array-aligned until M-8 migrates them to actor-UUID-keyed records.
+
 ## M-2 — Navigation and credible roads
 
 ### Player-visible result

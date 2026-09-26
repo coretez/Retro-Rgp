@@ -74,8 +74,12 @@ Runtime instances use UUIDs. This includes:
 - Loose materials
 - Persistent terrain modifications
 
-Definitions and instances have separate identities. Relationships store UUIDs
-rather than array indexes or display names.
+Definitions and instances have separate identities. Identity-bearing
+relationships should store UUIDs rather than display names.
+
+M-1 records one legacy exception: local companion positions are aligned with
+`state.companions` by array index. M-8 must migrate those positions to
+actor-UUID-keyed records before autonomous companion work is introduced.
 
 Fresh runs intentionally receive new instance UUIDs. Determinism tests compare
 semantic simulation results—positions, objectives, actions, route state, and
