@@ -53,8 +53,7 @@ namespace RetroRpg
             if (Mathf.Max(Mathf.Abs(cell.x - view.hero.x), Mathf.Abs(cell.y - view.hero.y)) == 1)
             {
                 var selectedCell = SelectedCell();
-                if (view.location == "dungeon" && selectedCell?.objectKind == "door")
-                    StartCoroutine(DungeonAction("open", cell));
+                if (view.location == "dungeon") TryDungeonStep(cell, selectedCell);
                 else StartCoroutine(Move(cell));
             }
         }
@@ -67,7 +66,34 @@ namespace RetroRpg
             if (Input.GetKeyDown(KeyCode.UpArrow) || Input.GetKeyDown(KeyCode.W)) delta = Vector2Int.up;
             if (Input.GetKeyDown(KeyCode.DownArrow) || Input.GetKeyDown(KeyCode.S)) delta = Vector2Int.down;
             if (delta != Vector2Int.zero)
-                StartCoroutine(Move(new Vector2Int(view.hero.x + delta.x, view.hero.y - delta.y)));
+            {
+                var target = new Vector2Int(view.hero.x + delta.x, view.hero.y - delta.y);
+                if (view.location == "dungeon") TryDungeonStep(target, CellAt(target));
+                else StartCoroutine(Move(target));
+            }
+        }
+
+        private void TryDungeonStep(Vector2Int target, CellView cell)
+        {
+            if (IsClosedDoor(cell)) StartCoroutine(DungeonAction("open", target));
+            else StartCoroutine(Move(target));
+        }
+
+        private static bool IsClosedDoor(CellView cell) =>
+            cell?.objectKind == "door" && cell.tile != null && cell.tile.Contains("closed");
+
+        private bool SelectedDoorIsAdjacent()
+        {
+            if (!selected.HasValue || !IsClosedDoor(SelectedCell())) return false;
+            return Mathf.Max(
+                Mathf.Abs(selected.Value.x - view.hero.x),
+                Mathf.Abs(selected.Value.y - view.hero.y)) == 1;
+        }
+
+        private void OpenSelectedDoor()
+        {
+            if (SelectedDoorIsAdjacent()) StartCoroutine(DungeonAction("open", selected.Value));
+            else error = "Select an adjacent closed door first.";
         }
 
         private IEnumerator Move(Vector2Int target)
@@ -275,6 +301,8 @@ namespace RetroRpg
         private void DrawDungeonCommands(Rect panel)
         {
             var x = panel.x + 322f;
+            if (SelectedDoorIsAdjacent())
+                CommandButton(ref x, panel, "Open", "open", OpenSelectedDoor);
             CommandButton(ref x, panel, "Search [Q]", "search", () => SendIntent(new MoveIntent { kind = "search" }));
             CommandButton(ref x, panel, "Wait", "wait", () => SendIntent(new MoveIntent { kind = "wait" }));
             CommandButton(ref x, panel, "Potion [H]", "use_item", UseFirstPotion);
@@ -384,8 +412,13 @@ namespace RetroRpg
         private CellView SelectedCell()
         {
             if (!selected.HasValue) return null;
+            return CellAt(selected.Value);
+        }
+
+        private CellView CellAt(Vector2Int position)
+        {
             foreach (var cell in view.map.cells)
-                if (cell.x == selected.Value.x && cell.y == selected.Value.y) return cell;
+                if (cell.x == position.x && cell.y == position.y) return cell;
             return null;
         }
 

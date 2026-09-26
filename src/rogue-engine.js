@@ -4796,7 +4796,9 @@ function unityActivityMessage(event) {
   if (event.type === "job_posted") return `New work: ${event.jobName}.`;
   if (event.type === "job_resumed") return `Work resumed: ${event.jobName}.`;
   if (event.type === "door_opened")
-    return `${event.actorName} opened the way for ${event.jobName}.`;
+    return event.jobName
+      ? `${event.actorName} opened the way for ${event.jobName}.`
+      : `${event.actorName ?? "The party"} opened a door.`;
   return null;
 }
 

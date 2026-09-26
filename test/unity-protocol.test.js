@@ -71,6 +71,14 @@ test("Unity activity selects the newest meaningful delivery message", () => {
   assert.equal(view.activity, "Bram Eder accepted Deliver smithy supplies.");
 });
 
+test("Unity activity describes a player-opened dungeon door", () => {
+  const state = newRogueRun(input);
+  const view = rogueUnityView(state, [
+    { type: "door_opened", actorName: "Mara" },
+  ]);
+  assert.equal(view.activity, "Mara opened a door.");
+});
+
 test("Unity protocol projects the active dungeon instead of Stonebridge", () => {
   const state = newRogueRun(input),
     view = rogueUnityView(state);
