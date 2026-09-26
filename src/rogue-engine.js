@@ -1821,12 +1821,14 @@ function search(state, dice, events, { passive = false } = {}) {
   const level = active(state),
     searchKey = key(state.hero);
   if (passive && level.searched.has(searchKey)) return;
-  check(
-    !level.searched.has(searchKey),
-    "ALREADY_SEARCHED",
-    "This position has already been searched.",
-  );
-  level.searched.add(searchKey);
+  if (!passive) {
+    check(
+      !level.searched.has(searchKey),
+      "ALREADY_SEARCHED",
+      "This position has already been searched.",
+    );
+    level.searched.add(searchKey);
+  }
   const roll = dice.d20(state.hero.searchBonus),
     found = [],
     near = (p) => gridDistance("square", p, state.hero) <= 1;

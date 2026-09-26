@@ -38,8 +38,8 @@ The public engine contracts remain stable while the internals change:
 | M-5 · Carter delivery                | Complete |
 | D-M1–D-M5 · Dungeon parity           | Complete |
 | D-M5.1 · Unity dungeon playability   | Complete |
-| D-M5.2 · Native dungeon hardening    | Playtest |
-| M-6 · Reactive guard work            | Blocked  |
+| D-M5.2 · Native dungeon hardening    | Complete |
+| M-6 · Reactive guard work            | Next     |
 | M-7 through M-10                     | Planned  |
 
 ## Target architecture
@@ -456,15 +456,22 @@ are usable without leaving the Unity window.
   saves.
 - Inventory is scrollable and can inspect or equip each party member by UUID.
   Victory, death, and stabilization receive explicit terminal overlays.
-- The regression suite passes with 94 tests and the macOS Unity player builds
+- The regression suite passes with 95 tests and the macOS Unity player builds
   successfully. A 255-turn, three-level Unity-protocol dungeon run reached
   victory with all four party members alive after 10 opened doors and 32
   attacks.
+- The native gate passed in a fresh 176-turn, three-level run driven only by
+  visible Unity controls: six doors opened, 23 attacks resolved, three enemies
+  were defeated, treasure and items were collected, two level transitions
+  completed, and all four party members survived the final exit. The run also
+  exposed and fixed passive searching consuming the deliberate Search action.
 
-### Remaining manual gate
+### Accepted interface freeze
 
-- Complete one three-level dungeon using only the visible Unity controls. Until
-  that player-facing run is accepted, M-6 remains blocked.
+- D-M5.2 is accepted. Preserve the native dungeon viewport, contextual command
+  strip, activity feedback, inventory/equipment drawer, party controls, and
+  terminal overlays while M-6 begins. Material redesign belongs to a later,
+  explicitly opened interface milestone.
 
 ## M-6 — Reactive guard work
 
@@ -651,7 +658,7 @@ The first smart-world release is complete when all of the following are true:
 
 ## Immediate next objective
 
-Play and accept the **D-M5.2 native dungeon gate** using only Unity controls.
-After that gate passes, implement **M-6 only**: convert guard patrol and
-investigation into competing jobs, then prove that danger can interrupt routine
-work and that the guard can resume appropriate work afterward.
+Implement **M-6 only**: convert guard patrol and investigation into competing
+jobs, then prove that danger can interrupt routine work and that the guard can
+resume appropriate work afterward. Preserve the accepted D-M5.2 Unity dungeon
+interface unless a later milestone explicitly reopens it.

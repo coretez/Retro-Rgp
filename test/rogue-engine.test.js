@@ -1194,6 +1194,27 @@ test("movement passively notices hidden features without spending a search turn"
   );
 });
 
+test("a failed passive search does not consume a deliberate search", () => {
+  const state = newRogueRun(input);
+  state.enemies = [];
+  const hidden = state.treasures.find((item) => item.hidden);
+  state.hero.x = hidden.x > 0 ? hidden.x - 1 : hidden.x + 1;
+  state.hero.y = hidden.y;
+  applyRogueTurn(
+    state,
+    { kind: "move", direction: direction(state.hero, hidden) },
+    new Dice((sides) => (sides === 20 ? 1 : 4)),
+  );
+  assert.equal(hidden.hidden, true);
+  const outcome = applyRogueTurn(
+    state,
+    { kind: "search" },
+    new Dice((sides) => (sides === 20 ? 20 : 4)),
+  );
+  assert.equal(hidden.hidden, false);
+  assert.ok(outcome.events.some((event) => event.type === "search"));
+});
+
 test("found equipment can be equipped and updates the combat chassis", () => {
   const state = newRogueRun(input);
   state.enemies = [];

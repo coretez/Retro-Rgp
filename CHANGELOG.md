@@ -10,9 +10,15 @@
   and explicit victory, death, and stabilization overlays.
 - Replaced the nine-item hero-only drawer with scrollable UUID-addressed
   inventories and equipment controls for all four party members.
-- Expanded the suite to 94 passing tests, produced a successful macOS Unity
-  build, and completed a 255-turn three-level Unity-protocol victory with all
-  four party members alive.
+- Fixed a native-playtest blocker where a failed passive perception check
+  consumed the square's deliberate Search action, potentially sealing the only
+  route to required stairs behind an undiscovered secret door.
+- Expanded the suite to 95 passing tests, produced a successful macOS Unity
+  build, and completed a 176-turn, three-level victory using only the visible
+  Unity controls. The party opened six doors, resolved 23 attacks, changed
+  level twice, and reached the final exit with all four members alive.
+- Accepted and froze the D-M5.2 Unity dungeon interface. Further interface
+  changes now belong to a later milestone rather than this compatibility gate.
 
 ## Interactive Version 1 · D-M5.1 Unity dungeon playability
 
