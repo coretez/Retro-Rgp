@@ -12,7 +12,11 @@ import {
 } from "../src/rogue-engine.js";
 import { isUuid } from "../src/identity.js";
 import { RogueStore } from "../src/rogue-store.js";
-import { villageIntentAdvancesSimulation } from "../src/village-simulation.js";
+import {
+  villageIntentAdvancesSimulation,
+  villageMovementCost,
+} from "../src/village-simulation.js";
+import { key, weightedRoute } from "../src/spatial.js";
 
 const input = {
   requestId: "smart-world-contracts",
@@ -105,9 +109,11 @@ test("M-1 defines which accepted intents advance the village simulation", () => 
 test("M-1 village advancement emits structured simulation events", () => {
   const state = stonebridgeState(),
     result = applyRogueTurn(state, { kind: "local_move", x: 19, y: 13 }),
-    movements = result.events.filter((event) => event.type === "npc_move");
-  assert.equal(movements.length, 3);
-  for (const event of movements) {
+    simulationEvents = result.events.filter((event) =>
+      ["npc_move", "npc_blocked"].includes(event.type),
+    );
+  assert.equal(simulationEvents.length, 3);
+  for (const event of simulationEvents) {
     assert.equal(event.scope, "village");
     assert.equal(event.tick, 0);
     assert.ok(isUuid(event.actorId));
@@ -261,4 +267,134 @@ test("M-1 SQLite persistence preserves complete village state", () => {
     store.close();
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test("M-2 weighted navigation prefers a cheaper road over direct grass", () => {
+  const result = weightedRoute({
+    from: { x: 0, y: 1 },
+    to: { x: 4, y: 1 },
+    bounds: { minX: 0, maxX: 4, minY: 0, maxY: 1 },
+    isBlocked: () => false,
+    terrainCost: ({ y }) => (y === 0 ? 1 : 4),
+  });
+  assert.equal(result.ok, true);
+  assert.ok(result.path.some(({ y }) => y === 0));
+  assert.ok(result.cost < 16);
+});
+
+test("M-2 blocked destinations return a reason instead of a route", () => {
+  const result = weightedRoute({
+    from: { x: 0, y: 0 },
+    to: { x: 2, y: 0 },
+    bounds: { minX: 0, maxX: 2, minY: 0, maxY: 1 },
+    isBlocked: ({ x, y }) => x === 2 && y === 0,
+    terrainCost: () => 1,
+  });
+  assert.deepEqual(result, {
+    ok: false,
+    reason: "destination_blocked",
+    destination: { x: 2, y: 0 },
+  });
+});
+
+test("M-2 village terrain declares costs and impassable objects", () => {
+  for (const tile of [
+    "outdoor_tree",
+    "village_sign",
+    "village_building",
+    "village_furniture",
+    "village_door_closed",
+    "village_pit",
+  ])
+    assert.equal(villageMovementCost(tile), null);
+  assert.equal(villageMovementCost("road_stone"), 1);
+  assert.equal(villageMovementCost("road_dirt"), 2);
+  assert.equal(villageMovementCost("outdoor_grass"), 4);
+});
+
+test("M-2 Stonebridge principal roads are two cells wide and unobstructed", () => {
+  const state = stonebridgeState();
+  state.village.npcStates.forEach((npc, index) => {
+    npc.position = { x: 70 + index, y: 70 };
+  });
+  const cells = rogueRunView(state).village.map.cells,
+    principalRoad = cells.filter(
+      ({ x, y }) => y === 11 || y === 12 || x === 19 || x === 20,
+    );
+  assert.ok(principalRoad.length > 150);
+  assert.ok(principalRoad.every((cell) => cell.tile === "road_stone"));
+});
+
+test("M-2 moving residents use both road lanes without stacking", () => {
+  const state = stonebridgeState(),
+    guard = state.village.npcStates.find((npc) => npc.personKey === "watchman"),
+    porter = state.village.npcStates.find((npc) => npc.personKey === "porter"),
+    axe = state.hero.inventory.find((item) => item.kind === "hand_axe");
+  let usedPassingLane = false;
+  state.village.heroPosition = { x: 0, y: 30 };
+  state.village.companionPositions = [
+    { x: 1, y: 30 },
+    { x: 2, y: 30 },
+    { x: 3, y: 30 },
+  ];
+  state.village.npcStates.forEach((npc, index) => {
+    npc.position = { x: 70 + index, y: 70 };
+  });
+  Object.assign(guard, {
+    position: { x: 19, y: 11 },
+    actionReason: "player_crime",
+    actionTarget: { x: 24, y: 11 },
+  });
+  Object.assign(porter, {
+    position: { x: 20, y: 11 },
+    actionReason: "player_crime",
+    actionTarget: { x: 14, y: 11 },
+  });
+  for (let turn = 0; turn < 3; turn += 1) {
+    applyRogueTurn(state, { kind: "equip", itemId: axe.id });
+    const positions = state.village.npcStates.map((npc) => key(npc.position));
+    assert.equal(new Set(positions).size, positions.length);
+    usedPassingLane ||= [guard.position.y, porter.position.y].includes(12);
+  }
+  assert.ok(guard.position.x > porter.position.x);
+  assert.equal(usedPassingLane, true);
+});
+
+test("M-2 unreachable NPC work emits a stable blocking reason", () => {
+  const state = stonebridgeState(),
+    guard = state.village.npcStates.find((npc) => npc.personKey === "watchman");
+  Object.assign(guard, {
+    actionReason: "player_crime",
+    actionTarget: { x: 11, y: 3 },
+  });
+  const outcome = applyRogueTurn(state, {
+      kind: "local_move",
+      x: 19,
+      y: 13,
+    }),
+    blocked = outcome.events.find(
+      (event) => event.type === "npc_blocked" && event.actorId === guard.id,
+    );
+  assert.equal(blocked.reason, "no_path");
+  assert.deepEqual(blocked.destination, { x: 11, y: 3 });
+  assert.deepEqual(guard.position, { x: 20, y: 9 });
+});
+
+test("M-2 the guard completes an entire continuous patrol circuit", () => {
+  const state = stonebridgeState(),
+    guard = state.village.npcStates.find((npc) => npc.personKey === "watchman"),
+    axe = state.hero.inventory.find((item) => item.kind === "hand_axe"),
+    positions = [{ ...guard.position }];
+  for (let turn = 0; turn < 16; turn += 1) {
+    const before = { ...guard.position };
+    applyRogueTurn(state, { kind: "equip", itemId: axe.id });
+    const distance =
+      Math.abs(guard.position.x - before.x) +
+      Math.abs(guard.position.y - before.y);
+    assert.equal(distance, 1);
+    positions.push({ ...guard.position });
+  }
+  assert.deepEqual(guard.position, positions[0]);
+  assert.equal(guard.routeIndex, 0);
+  assert.ok(positions.some(({ y }) => y === 12));
 });

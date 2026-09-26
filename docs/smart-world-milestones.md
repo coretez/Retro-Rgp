@@ -29,11 +29,12 @@ The public engine contracts remain stable while the internals change:
 
 ## Status
 
-| Milestone                           | State    |
-| ----------------------------------- | -------- |
-| M-1 · Contracts and simulation seam | Complete |
-| M-2 · Navigation and credible roads | Next     |
-| M-3 through M-10                    | Planned  |
+| Milestone                            | State    |
+| ------------------------------------ | -------- |
+| M-1 · Contracts and simulation seam  | Complete |
+| M-2 · Navigation and credible roads  | Complete |
+| M-3 · Smart objects and interactions | Next     |
+| M-4 through M-10                     | Planned  |
 
 ## Target architecture
 
@@ -165,6 +166,19 @@ orthogonal cell per turn, avoid blocked terrain, and prefer roads and paths.
 
 The guard still has a prescribed patrol objective. Residents do not yet choose
 work.
+
+### Completion evidence
+
+- Deterministic weighted routing uses explicit terrain costs, four-directional
+  one-cell steps, dynamic actor occupancy, and adjacent interaction targets.
+- Stonebridge's principal stone roads are two cells wide; signs were moved off
+  the roadway, and the guard routes around the baker instead of occupying the
+  same cell.
+- Automated gates cover cheaper-road selection, static blockers, blocked-route
+  reasons, two-actor passing, collision prevention, and a complete 16-turn
+  guard patrol circuit.
+- The full suite passes with 57 tests. Live browser turns showed continuous
+  guard movement without a browser console error.
 
 ## M-3 — Smart objects and unified interactions
 

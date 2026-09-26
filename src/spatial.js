@@ -123,6 +123,88 @@ export function neighbors(map, p) {
             !blocked(map, { x: p.x, y: q.y }))),
     );
 }
+
+const ORTHOGONAL_STEPS = [
+  [0, -1],
+  [-1, 0],
+  [1, 0],
+  [0, 1],
+];
+
+export const orthogonalNeighbors = (position) =>
+  ORTHOGONAL_STEPS.map(([dx, dy]) => ({
+    x: position.x + dx,
+    y: position.y + dy,
+  }));
+
+const withinBounds = (position, bounds) =>
+  !bounds ||
+  (position.x >= bounds.minX &&
+    position.x <= bounds.maxX &&
+    position.y >= bounds.minY &&
+    position.y <= bounds.maxY);
+
+function navigationFailure(reason, destination) {
+  return { ok: false, reason, destination: { ...destination } };
+}
+
+function rebuildWeightedPath(previous, from, destination) {
+  const path = [destination];
+  while (key(path[0]) !== key(from)) path.unshift(previous.get(key(path[0])));
+  return path;
+}
+
+function takeLowestCost(queue, costs) {
+  queue.sort(
+    (a, b) => costs.get(key(a)) - costs.get(key(b)) || a.y - b.y || a.x - b.x,
+  );
+  return queue.shift();
+}
+
+export function weightedRoute({
+  from,
+  to,
+  bounds,
+  isBlocked,
+  terrainCost,
+  occupied = new Set(),
+  adjacent = false,
+}) {
+  const unavailable = (position) =>
+      !withinBounds(position, bounds) ||
+      isBlocked(position) ||
+      (key(position) !== key(from) && occupied.has(key(position))),
+    candidates = adjacent ? orthogonalNeighbors(to) : [to],
+    goals = new Set(candidates.filter((goal) => !unavailable(goal)).map(key));
+  if (!adjacent && isBlocked(to))
+    return navigationFailure("destination_blocked", to);
+  if (!adjacent && occupied.has(key(to)))
+    return navigationFailure("destination_occupied", to);
+  if (!goals.size) return navigationFailure("destination_unreachable", to);
+  const costs = new Map([[key(from), 0]]),
+    previous = new Map(),
+    queue = [{ ...from }];
+  while (queue.length) {
+    const current = takeLowestCost(queue, costs);
+    if (goals.has(key(current)))
+      return {
+        ok: true,
+        path: rebuildWeightedPath(previous, from, current),
+        cost: costs.get(key(current)),
+        destination: { ...current },
+      };
+    for (const next of orthogonalNeighbors(current)) {
+      if (unavailable(next)) continue;
+      const nextCost = costs.get(key(current)) + terrainCost(next);
+      if (nextCost >= (costs.get(key(next)) ?? Infinity)) continue;
+      costs.set(key(next), nextCost);
+      previous.set(key(next), current);
+      queue.push(next);
+    }
+  }
+  return navigationFailure("no_path", to);
+}
+
 export function paths(
   map,
   from,

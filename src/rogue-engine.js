@@ -2885,7 +2885,9 @@ function resolveVillageAction(state, intent, events) {
 
 function resolveVillageTurn(state, intent, events) {
   const result = resolveVillageAction(state, intent, events);
-  advanceVillageSimulation(state, intent, events);
+  advanceVillageSimulation(state, intent, events, {
+    terrainAt: ({ x, y }) => villageTile(state, x, y, false).tile,
+  });
   return result;
 }
 
@@ -3327,9 +3329,9 @@ const VILLAGE_BUILDINGS = [
 const VILLAGE_SIGNS = [
   { x: 7, y: 10, text: "Red Hammer Smithy · weapons and repairs" },
   { x: 33, y: 10, text: "Juniper & Salt · remedies and provisions" },
-  { x: 30, y: 12, text: "Gatehouse Armorer · armor and shields" },
-  { x: 20, y: 10, text: "Stonebridge · Keep west · river road east" },
-  { x: -7, y: 11, text: "The Lantern Inn · meals, beds and stories" },
+  { x: 30, y: 10, text: "Gatehouse Armorer · armor and shields" },
+  { x: 21, y: 10, text: "Stonebridge · Keep west · river road east" },
+  { x: -7, y: 13, text: "The Lantern Inn · meals, beds and stories" },
   { x: 46, y: 10, text: "Chapel of the Road · travelers welcome" },
   { x: 11, y: 26, text: "Delvers' Guildhall · contracts and company" },
   { x: 38, y: 20, text: "South Road Stable · mounts and tack" },
@@ -3633,7 +3635,7 @@ function villageTree(state, x, y) {
 }
 
 function villagePathAt(x, y) {
-  if (y === 11 || x === 19) return "road_stone";
+  if (y === 11 || y === 12 || x === 19 || x === 20) return "road_stone";
   const onApproach = VILLAGE_BUILDINGS.some(({ door }) => {
     const verticalDistance = Math.abs(door.y - 11),
       horizontalDistance = Math.abs(door.x - 19);
@@ -3648,7 +3650,7 @@ function villagePathAt(x, y) {
   return onApproach ? "road_dirt" : null;
 }
 
-function villageTile(state, x, y) {
+function villageTile(state, x, y, includePeople = true) {
   const modification = state.village.modifications.find(
       (entry) => entry.x === x && entry.y === y,
     ),
@@ -3677,7 +3679,7 @@ function villageTile(state, x, y) {
       ...state.village.companionPositions,
     ].some((position) => same(position, { x, y })),
     person = occupiedByParty ? null : villagePersonAt(state, x, y);
-  if (person)
+  if (includePeople && person)
     return {
       tile: "village_person",
       glyph: person.glyph,

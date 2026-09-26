@@ -986,7 +986,7 @@ test("the party can zoom from a local exterior to world travel and back", () => 
   assert.ok(village.legalIntents.includes("local_talk"));
   const examined = applyRogueTurn(state, {
     kind: "local_examine",
-    x: 20,
+    x: 21,
     y: 10,
   });
   assert.match(
@@ -1142,7 +1142,7 @@ test("town guards walk between patrol waypoints without teleporting", () => {
     { x: 20, y: 10 },
     { x: 20, y: 11 },
     { x: 21, y: 11 },
-    { x: 22, y: 11 },
+    { x: 21, y: 12 },
   ]);
 });
 
