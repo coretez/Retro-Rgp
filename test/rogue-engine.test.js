@@ -1014,7 +1014,7 @@ test("the party can zoom from a local exterior to world travel and back", () => 
     state.village.companionPositions,
     companionsBeforeDispersing,
   );
-  assert.deepEqual(rogueRunView(state).village.map.origin, { x: -4, y: -1 });
+  assert.deepEqual(rogueRunView(state).village.map.origin, { x: -8, y: -13 });
   applyRogueTurn(state, { kind: "set_party_movement", mode: "follow" });
   assert.throws(
     () =>

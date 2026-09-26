@@ -180,8 +180,8 @@ const VILLAGE = {
   name: "Stonebridge",
   description:
     "A road village beneath the old keep, sustained by delvers, charcoal burners and river traffic.",
-  width: 48,
-  height: 26,
+  width: 56,
+  height: 50,
   viewportOrigin: { x: -4, y: -2 },
   heroPosition: { x: 19, y: 12 },
   companionPositions: [
