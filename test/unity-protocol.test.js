@@ -24,6 +24,15 @@ test("Unity protocol projects one compact retained-mode village snapshot", () =>
     ),
   );
   assert.ok(view.map.cells.some((cell) => cell.entityKind === "party"));
+  assert.ok(
+    view.map.cells
+      .filter(
+        (cell) =>
+          ["outdoor_grass", "road_stone", "road_dirt"].includes(cell.tile) &&
+          !cell.entityKind,
+      )
+      .every((cell) => cell.glyph === " "),
+  );
 });
 
 test("Unity protocol preserves stable coordinates and lightweight identity", () => {

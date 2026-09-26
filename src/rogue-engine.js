@@ -4391,12 +4391,20 @@ function unityCell(state, cell) {
     x: cell.x,
     y: cell.y,
     tile: cell.tile,
-    glyph: actor?.glyph ?? cell.glyph ?? " ",
+    glyph: unityGlyph(cell, actor),
     objectKind: unityObjectKind(cell),
     entityId: actor?.entityId ?? null,
     entityKind: actor?.entityKind ?? null,
     entityName: actor?.entityName ?? null,
   };
+}
+
+function unityGlyph(cell, actor) {
+  if (actor) return actor.glyph;
+  if (["outdoor_grass", "road_stone", "road_dirt"].includes(cell.tile))
+    return " ";
+  if (cell.tile === "village_floor" && cell.glyph === "·") return " ";
+  return cell.glyph ?? " ";
 }
 
 function unityVillageMap(state) {

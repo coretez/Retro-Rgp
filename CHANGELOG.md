@@ -9,6 +9,10 @@
   authoritative simulation, persistence, and revision checks as the HTML client.
 - Added keyboard and adjacent-cell click movement, selection, camera fitting,
   zoom, status HUD, distance shading, and a custom animated ground shader.
+- Removed redundant grass, road, and ordinary floor punctuation so terrain is
+  communicated by shading while actors and meaningful objects retain glyphs.
+- Reorganized the native HUD into a party-status card, contextual selection
+  inspector, and bottom command strip without reducing the map viewport.
 - Added protocol size and identity tests and retained the complete 80-test suite.
 
 ## Interactive Version 1 · M-4
