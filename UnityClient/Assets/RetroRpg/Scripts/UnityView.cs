@@ -14,11 +14,13 @@ namespace RetroRpg
         public string title;
         public string message;
         public string activity;
+        public ActivityView[] activityLog;
         public string[] legalIntents;
         public HeroView hero;
         public MapView map;
         public JobView[] jobs;
         public InventoryItemView[] inventory;
+        public InventoryOwnerView[] inventories;
         public TargetView[] targets;
         public PartyOrderView partyOrder;
         public PowerView classPower;
@@ -65,6 +67,8 @@ namespace RetroRpg
         public string entityName;
         public string entityObjective;
         public string entityAction;
+        public int entityHp;
+        public int entityMaxHp;
     }
 
     [Serializable]
@@ -108,6 +112,21 @@ namespace RetroRpg
         public bool equipped;
         public bool throwable;
         public bool invokable;
+    }
+
+    [Serializable]
+    public sealed class InventoryOwnerView
+    {
+        public string actorId;
+        public string actorName;
+        public InventoryItemView[] items;
+    }
+
+    [Serializable]
+    public sealed class ActivityView
+    {
+        public string text;
+        public string tone;
     }
 
     [Serializable]

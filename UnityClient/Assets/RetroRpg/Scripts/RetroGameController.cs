@@ -14,11 +14,17 @@ namespace RetroRpg
         private bool busy;
         private bool inventoryOpen;
         private bool partyOpen;
+        private string inventoryActorId;
+        private Vector2 inventoryScroll;
+        private float damageFlashUntil;
         private Vector2Int? selected;
         private GUIStyle titleStyle;
         private GUIStyle headingStyle;
         private GUIStyle bodyStyle;
         private GUIStyle subtleStyle;
+        private GUIStyle dangerStyle;
+        private GUIStyle healingStyle;
+        private GUIStyle treasureStyle;
 
         private void Awake()
         {
@@ -60,6 +66,7 @@ namespace RetroRpg
 
         private void HandleKeyboard()
         {
+            if (view.location == "dungeon" && !Can("move")) return;
             var delta = Vector2Int.zero;
             if (Input.GetKeyDown(KeyCode.LeftArrow) || Input.GetKeyDown(KeyCode.A)) delta = Vector2Int.left;
             if (Input.GetKeyDown(KeyCode.RightArrow) || Input.GetKeyDown(KeyCode.D)) delta = Vector2Int.right;
@@ -106,17 +113,19 @@ namespace RetroRpg
         private void HandleDungeonCommands()
         {
             if (view.location != "dungeon") return;
-            if (Input.GetKeyDown(KeyCode.Space)) StartCoroutine(DungeonAction("wait"));
-            if (Input.GetKeyDown(KeyCode.Q)) StartCoroutine(DungeonAction("search"));
-            if (Input.GetKeyDown(KeyCode.X) && selected.HasValue)
+            if (Can("death_save") && Input.GetKeyDown(KeyCode.V))
+                StartCoroutine(DungeonAction("death_save"));
+            if (Can("wait") && Input.GetKeyDown(KeyCode.Space)) StartCoroutine(DungeonAction("wait"));
+            if (Can("search") && Input.GetKeyDown(KeyCode.Q)) StartCoroutine(DungeonAction("search"));
+            if (Can("examine") && Input.GetKeyDown(KeyCode.X) && selected.HasValue)
                 StartCoroutine(DungeonAction("examine", selected.Value));
-            if (Input.GetKeyDown(KeyCode.H)) UseFirstPotion();
-            if (Input.GetKeyDown(KeyCode.P)) StartCoroutine(DungeonAction("class_power"));
-            if (Input.GetKeyDown(KeyCode.R)) AttackSelected("ranged_attack");
+            if (Can("use_item") && Input.GetKeyDown(KeyCode.H)) UseFirstPotion();
+            if (Can("class_power") && Input.GetKeyDown(KeyCode.P)) UseClassPower();
+            if (Can("ranged_attack") && Input.GetKeyDown(KeyCode.R)) AttackSelected("ranged_attack");
             if (Input.GetKeyDown(KeyCode.I)) inventoryOpen = !inventoryOpen;
             if (Input.GetKeyDown(KeyCode.C)) partyOpen = !partyOpen;
-            if (Input.GetKeyDown(KeyCode.Period)) StartCoroutine(DungeonAction("stairs"));
-            if (Input.GetKeyDown(KeyCode.Comma)) StartCoroutine(DungeonAction("stairs_up"));
+            if (Can("stairs") && Input.GetKeyDown(KeyCode.Period)) StartCoroutine(DungeonAction("stairs"));
+            if (Can("stairs_up") && Input.GetKeyDown(KeyCode.Comma)) StartCoroutine(DungeonAction("stairs_up"));
         }
 
         private IEnumerator DungeonAction(string kind, Vector2Int? target = null)
@@ -189,7 +198,10 @@ namespace RetroRpg
 
         private void ApplyView(UnityView next)
         {
+            if (view != null && next.hero.hp < view.hero.hp)
+                damageFlashUntil = Time.time + 0.38f;
             view = next;
+            inventoryActorId ??= view.hero.id;
             error = null;
             mapRenderer.Render(view);
             FitCamera();
@@ -239,11 +251,36 @@ namespace RetroRpg
                 GUI.Label(new Rect(32f, 34f, 290f, 28f), "Connecting to the world…", bodyStyle);
                 return;
             }
+            DrawDamageFlash();
             DrawTopBar();
             DrawInspector();
+            DrawActivityLog();
             DrawCommandBar();
             DrawInventoryOverlay();
             DrawPartyOverlay();
+            DrawOutcomeOverlay();
+        }
+
+        private void DrawDamageFlash()
+        {
+            if (Time.time >= damageFlashUntil) return;
+            var strength = Mathf.Clamp01((damageFlashUntil - Time.time) / 0.38f);
+            GUI.color = new Color(0.72f, 0.04f, 0.02f, strength * 0.24f);
+            GUI.DrawTexture(new Rect(0f, 0f, Screen.width, Screen.height), Texture2D.whiteTexture);
+            GUI.color = Color.white;
+        }
+
+        private void DrawOutcomeOverlay()
+        {
+            if (view.status == "active" || view.status == "dying") return;
+            var panel = new Rect((Screen.width - 420f) * 0.5f, 86f, 420f, 112f);
+            DrawPanel(panel);
+            var title = view.status == "won" ? "DUNGEON CONQUERED" : view.status == "dead" ? "THE PARTY FALLS" : "THE LEADER IS STABLE";
+            var detail = view.status == "won"
+                ? $"The expedition returns with {view.hero.goldCp} CP."
+                : "No further turn can be taken from this state.";
+            GUI.Label(new Rect(panel.x + 18f, panel.y + 18f, 384f, 28f), title, titleStyle);
+            GUI.Label(new Rect(panel.x + 18f, panel.y + 58f, 384f, 24f), detail, bodyStyle);
         }
 
         private void DrawTopBar()
@@ -273,16 +310,39 @@ namespace RetroRpg
         {
             var cell = SelectedCell();
             if (cell == null) return;
-            var panel = new Rect(12f, Screen.height - 208f, 300f, 144f);
+            var panel = new Rect(12f, Screen.height - 230f, 300f, 166f);
             DrawPanel(panel);
             GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, 238f, 18f), "SELECTED", headingStyle);
             GUI.Label(new Rect(panel.x + 14f, panel.y + 32f, 238f, 24f), SelectionName(cell), titleStyle);
             GUI.Label(new Rect(panel.x + 14f, panel.y + 60f, 238f, 18f), $"{Readable(cell.objectKind)}  ·  {Readable(cell.tile)}", bodyStyle);
             GUI.Label(new Rect(panel.x + 14f, panel.y + 82f, 238f, 18f), $"POSITION  {cell.x}, {cell.y}", subtleStyle);
+            if (cell.entityMaxHp > 0)
+                GUI.Label(new Rect(panel.x + 14f, panel.y + 104f, 272f, 18f),
+                    $"HEALTH  {cell.entityHp} / {cell.entityMaxHp}", cell.entityKind == "monster" ? dangerStyle : bodyStyle);
             if (!string.IsNullOrEmpty(cell.entityAction))
-                GUI.Label(new Rect(panel.x + 14f, panel.y + 104f, 272f, 18f), cell.entityAction, bodyStyle);
+                GUI.Label(new Rect(panel.x + 14f, panel.y + 126f, 272f, 18f), cell.entityAction, bodyStyle);
             if (!string.IsNullOrEmpty(cell.entityObjective))
-                GUI.Label(new Rect(panel.x + 14f, panel.y + 124f, 272f, 16f), Readable(cell.entityObjective), subtleStyle);
+                GUI.Label(new Rect(panel.x + 14f, panel.y + 146f, 272f, 16f), Readable(cell.entityObjective), subtleStyle);
+        }
+
+        private void DrawActivityLog()
+        {
+            var entries = view.activityLog ?? Array.Empty<ActivityView>();
+            if (entries.Length == 0) return;
+            var height = 22f + entries.Length * 18f;
+            var panel = new Rect((Screen.width - 560f) * 0.5f, Screen.height - 66f - height, 560f, height);
+            DrawPanel(panel);
+            for (var index = 0; index < entries.Length; index++)
+                GUI.Label(new Rect(panel.x + 14f, panel.y + 7f + index * 18f, 532f, 18f),
+                    entries[index].text, ActivityStyle(entries[index].tone));
+        }
+
+        private GUIStyle ActivityStyle(string tone)
+        {
+            if (tone == "danger" || tone == "combat") return dangerStyle;
+            if (tone == "healing") return healingStyle;
+            if (tone == "treasure" || tone == "discovery") return treasureStyle;
+            return subtleStyle;
         }
 
         private void DrawCommandBar()
@@ -301,13 +361,24 @@ namespace RetroRpg
         private void DrawDungeonCommands(Rect panel)
         {
             var x = panel.x + 322f;
+            if (Can("death_save"))
+            {
+                CommandButton(ref x, panel, "Death Save [V]", "death_save", () => SendIntent(new MoveIntent { kind = "death_save" }));
+                return;
+            }
             if (SelectedDoorIsAdjacent())
                 CommandButton(ref x, panel, "Open", "open", OpenSelectedDoor);
+            if (selected.HasValue)
+                CommandButton(ref x, panel, "Examine [X]", "examine", ExamineSelected);
+            if (!string.IsNullOrEmpty(SelectedTargetId()))
+                CommandButton(ref x, panel, "Shoot [R]", "ranged_attack", () => AttackSelected("ranged_attack"));
             CommandButton(ref x, panel, "Search [Q]", "search", () => SendIntent(new MoveIntent { kind = "search" }));
             CommandButton(ref x, panel, "Wait", "wait", () => SendIntent(new MoveIntent { kind = "wait" }));
             CommandButton(ref x, panel, "Potion [H]", "use_item", UseFirstPotion);
             CommandButton(ref x, panel, "Power [P]", "class_power", UseClassPower);
             CommandButton(ref x, panel, "Rest", "short_rest", () => SendIntent(new MoveIntent { kind = "short_rest" }));
+            CommandButton(ref x, panel, "Ascend", "stairs_up", () => SendIntent(new MoveIntent { kind = "stairs_up" }));
+            CommandButton(ref x, panel, "Descend", "stairs", () => SendIntent(new MoveIntent { kind = "stairs" }));
             if (GUI.Button(new Rect(x, panel.y + 7f, 76f, 28f), "Items [I]")) inventoryOpen = !inventoryOpen;
             x += 80f;
             if (GUI.Button(new Rect(x, panel.y + 7f, 76f, 28f), "Party [C]")) partyOpen = !partyOpen;
@@ -329,35 +400,69 @@ namespace RetroRpg
             SendIntent(new MoveIntent { kind = "class_power", targetId = SelectedTargetId() });
         }
 
+        private void ExamineSelected()
+        {
+            if (selected.HasValue) StartCoroutine(DungeonAction("examine", selected.Value));
+        }
+
         private void DrawInventoryOverlay()
         {
             if (!inventoryOpen || view.location != "dungeon") return;
-            var items = view.inventory ?? Array.Empty<InventoryItemView>();
-            var height = Mathf.Min(430f, 58f + items.Length * 42f);
-            var panel = new Rect(Screen.width - 382f, 68f, 370f, height);
+            var owner = CurrentInventoryOwner();
+            if (owner == null) return;
+            var items = owner.items ?? Array.Empty<InventoryItemView>();
+            var panel = new Rect(Screen.width - 402f, 68f, 390f, 460f);
             DrawPanel(panel);
             GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, 260f, 24f), "INVENTORY & EQUIPMENT", headingStyle);
-            if (GUI.Button(new Rect(panel.x + 328f, panel.y + 8f, 28f, 24f), "×")) inventoryOpen = false;
-            for (var index = 0; index < items.Length && index < 9; index++)
-                DrawInventoryItem(panel, items[index], index);
+            if (GUI.Button(new Rect(panel.x + 348f, panel.y + 8f, 28f, 24f), "×")) inventoryOpen = false;
+            DrawInventoryOwners(panel);
+            var viewport = new Rect(panel.x + 10f, panel.y + 72f, panel.width - 20f, panel.height - 82f);
+            var content = new Rect(0f, 0f, viewport.width - 18f, Mathf.Max(viewport.height, items.Length * 42f));
+            inventoryScroll = GUI.BeginScrollView(viewport, inventoryScroll, content);
+            for (var index = 0; index < items.Length; index++)
+                DrawInventoryItem(owner, items[index], index);
+            GUI.EndScrollView();
         }
 
-        private void DrawInventoryItem(Rect panel, InventoryItemView item, int index)
+        private InventoryOwnerView CurrentInventoryOwner()
         {
-            var y = panel.y + 40f + index * 42f;
+            var owners = view.inventories ?? Array.Empty<InventoryOwnerView>();
+            var owner = Array.Find(owners, entry => entry.actorId == inventoryActorId);
+            return owner ?? Array.Find(owners, entry => entry.actorId == view.hero.id);
+        }
+
+        private void DrawInventoryOwners(Rect panel)
+        {
+            var owners = view.inventories ?? Array.Empty<InventoryOwnerView>();
+            var x = panel.x + 12f;
+            foreach (var owner in owners)
+            {
+                var label = owner.actorName.Split(' ')[0];
+                if (GUI.Button(new Rect(x, panel.y + 38f, 82f, 26f), label))
+                {
+                    inventoryActorId = owner.actorId;
+                    inventoryScroll = Vector2.zero;
+                }
+                x += 86f;
+            }
+        }
+
+        private void DrawInventoryItem(InventoryOwnerView owner, InventoryItemView item, int index)
+        {
+            var y = 8f + index * 42f;
             var count = item.charges > 0 ? $" · {item.charges} charges" : item.quantity > 1 ? $" · ×{item.quantity}" : "";
             var state = item.equipped ? " · EQUIPPED" : count;
-            GUI.Label(new Rect(panel.x + 14f, y, 190f, 20f), item.name + state, bodyStyle);
-            var x = panel.x + 208f;
-            if (item.itemType == "equipment" && !item.equipped)
-                ItemButton(ref x, y, "Equip", () => SendIntent(new MoveIntent { kind = "equip", itemId = item.id }));
-            if (item.equipped && item.slot == "offhand")
-                ItemButton(ref x, y, "Remove", () => SendIntent(new MoveIntent { kind = "unequip", slot = "offhand" }));
-            if (item.kind == "healing_potion")
+            GUI.Label(new Rect(4f, y, 190f, 20f), item.name + state, bodyStyle);
+            var x = 198f;
+            if (Can("equip") && item.itemType == "equipment" && !item.equipped)
+                ItemButton(ref x, y, "Equip", () => SendIntent(new MoveIntent { kind = "equip", actorId = owner.actorId, itemId = item.id }));
+            if (Can("unequip") && item.equipped && item.slot == "offhand")
+                ItemButton(ref x, y, "Remove", () => SendIntent(new MoveIntent { kind = "unequip", actorId = owner.actorId, slot = "offhand" }));
+            if (Can("use_item") && owner.actorId == view.hero.id && item.kind == "healing_potion")
                 ItemButton(ref x, y, "Use", () => SendIntent(new MoveIntent { kind = "use_item", itemId = item.id }));
-            if (item.invokable)
+            if (Can("invoke_item") && owner.actorId == view.hero.id && item.invokable)
                 ItemButton(ref x, y, "Invoke", () => SendIntent(new MoveIntent { kind = "invoke_item", itemId = item.id, targetId = SelectedTargetId() }));
-            if (item.throwable)
+            if (Can("throw_item") && owner.actorId == view.hero.id && item.throwable)
                 ItemButton(ref x, y, "Throw", () => AttackSelected("throw_item", item.id));
         }
 
@@ -447,6 +552,9 @@ namespace RetroRpg
             headingStyle.fontStyle = FontStyle.Bold;
             bodyStyle = NewStyle(13, new Color(0.86f, 0.85f, 0.76f));
             subtleStyle = NewStyle(11, new Color(0.55f, 0.58f, 0.51f));
+            dangerStyle = NewStyle(12, new Color(0.96f, 0.34f, 0.28f));
+            healingStyle = NewStyle(12, new Color(0.42f, 0.88f, 0.48f));
+            treasureStyle = NewStyle(12, new Color(0.96f, 0.76f, 0.28f));
         }
 
         private static GUIStyle NewStyle(int size, Color color)

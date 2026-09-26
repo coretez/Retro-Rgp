@@ -4727,12 +4727,16 @@ function unityDungeonCell(state, position, currentVisible) {
           entityId: cell.partyMember.id,
           entityKind: "party",
           entityName: cell.partyMember.name,
+          entityHp: cell.partyMember.hp,
+          entityMaxHp: cell.partyMember.maxHp,
         }
       : cell.enemy
         ? {
             entityId: cell.enemy.id,
             entityKind: "monster",
             entityName: cell.enemy.name,
+            entityHp: cell.enemy.hp,
+            entityMaxHp: cell.enemy.maxHp,
             entityObjective: "investigate_and_defend",
             entityAction: active(state).enemies.find(
               (enemy) => enemy.id === cell.enemy.id,
@@ -4743,6 +4747,8 @@ function unityDungeonCell(state, position, currentVisible) {
               entityId: state.hero.id,
               entityKind: "party",
               entityName: state.hero.name,
+              entityHp: state.hero.hp,
+              entityMaxHp: state.hero.maxHp,
             }
           : null;
   return {
@@ -4756,6 +4762,8 @@ function unityDungeonCell(state, position, currentVisible) {
           entityId: actor.entityId,
           entityKind: actor.entityKind,
           entityName: actor.entityName,
+          entityHp: actor.entityHp,
+          entityMaxHp: actor.entityMaxHp,
           ...(actor.entityObjective
             ? { entityObjective: actor.entityObjective }
             : {}),
@@ -4781,47 +4789,184 @@ function unityDungeonMap(state) {
   return { width, height, origin, cells };
 }
 
-function unityActivityMessage(event) {
-  if (event.type === "job_started") return `Work started: ${event.jobName}.`;
-  if (event.type === "job_reserved")
-    return `${event.actorName} accepted ${event.jobName}.`;
-  if (event.type === "cargo_loaded")
-    return `${event.actorName} loaded ${event.quantity} ${event.cargoName}.`;
-  if (event.type === "cargo_delivered")
-    return `${event.actorName} delivered ${event.quantity} ${event.cargoName}.`;
-  if (event.type === "job_blocked")
-    return `Work blocked: ${event.reason?.replaceAll("_", " ") ?? "unknown reason"}.`;
-  if (event.type === "job_completed")
-    return `Work completed: ${event.jobName}.`;
-  if (event.type === "job_posted") return `New work: ${event.jobName}.`;
-  if (event.type === "job_resumed") return `Work resumed: ${event.jobName}.`;
-  if (event.type === "door_opened")
-    return event.jobName
-      ? `${event.actorName} opened the way for ${event.jobName}.`
-      : `${event.actorName ?? "The party"} opened a door.`;
+function unityCombatActivity(event) {
+  if (event.type === "attack")
+    return event.hit
+      ? {
+          text: `${event.actorName} hits ${event.targetName} for ${event.appliedDamage?.hpDamage ?? 0}.`,
+          tone: event.actorKind === "enemy" ? "danger" : "combat",
+        }
+      : {
+          text: `${event.actorName} misses ${event.targetName}.`,
+          tone: "subtle",
+        };
+  if (event.type === "spell_cast")
+    return {
+      text: `${event.spellName} strikes ${event.targetName} for ${event.appliedDamage?.hpDamage ?? 0}.`,
+      tone: "combat",
+    };
+  if (event.type === "item_used" || event.type === "short_rest")
+    return { text: `Recovered ${event.healing} HP.`, tone: "healing" };
+  if (event.type === "enemy_defeated")
+    return { text: `${event.actorName} is defeated.`, tone: "combat" };
+  if (event.type === "death_save")
+    return { text: `Death save: ${event.result}.`, tone: "danger" };
   return null;
 }
 
-function unityActivity(recentEvents) {
-  return [...recentEvents].reverse().map(unityActivityMessage).find(Boolean);
+function unityExplorationActivity(event) {
+  if (event.type === "treasure_collected")
+    return { text: `Collected ${event.valueCp} CP.`, tone: "treasure" };
+  if (event.type === "item_collected")
+    return { text: `Found ${event.itemName}.`, tone: "treasure" };
+  if (event.type === "trap_triggered")
+    return {
+      text: `${event.trapName} triggered${event.damage ? ` for ${event.damage.applied?.hpDamage ?? event.damage.total} damage` : ", but the save succeeds"}.`,
+      tone: "danger",
+    };
+  if (event.type === "discovery")
+    return event.found?.length
+      ? { text: `A hidden feature is noticed.`, tone: "discovery" }
+      : null;
+  if (event.type === "level_changed")
+    return {
+      text: `${event.direction === "down" ? "Descended" : "Ascended"} to depth ${event.depth}.`,
+      tone: "discovery",
+    };
+  if (event.type === "equipment_changed")
+    return {
+      text: `${event.actorName} equips ${event.itemName}.`,
+      tone: "subtle",
+    };
+  if (event.type === "equipment_removed")
+    return {
+      text: `${event.actorName} removes ${event.itemName}.`,
+      tone: "subtle",
+    };
+  if (event.type === "permanent_gain")
+    return { text: `${event.itemName}: ${event.gain}.`, tone: "treasure" };
+  if (event.type === "door_opened")
+    return {
+      text: event.jobName
+        ? `${event.actorName} opened the way for ${event.jobName}.`
+        : `${event.actorName ?? "The party"} opened a door.`,
+      tone: "discovery",
+    };
+  return null;
 }
 
-function unityDungeonIntents(state, level) {
+function unityWorkActivity(event) {
+  if (event.type === "job_started")
+    return { text: `Work started: ${event.jobName}.`, tone: "subtle" };
+  if (event.type === "job_reserved")
+    return {
+      text: `${event.actorName} accepted ${event.jobName}.`,
+      tone: "subtle",
+    };
+  if (event.type === "cargo_loaded")
+    return {
+      text: `${event.actorName} loaded ${event.quantity} ${event.cargoName}.`,
+      tone: "subtle",
+    };
+  if (event.type === "cargo_delivered")
+    return {
+      text: `${event.actorName} delivered ${event.quantity} ${event.cargoName}.`,
+      tone: "subtle",
+    };
+  if (event.type === "job_blocked")
+    return {
+      text: `Work blocked: ${event.reason?.replaceAll("_", " ") ?? "unknown reason"}.`,
+      tone: "danger",
+    };
+  if (event.type === "job_completed")
+    return { text: `Work completed: ${event.jobName}.`, tone: "subtle" };
+  if (event.type === "job_posted")
+    return { text: `New work: ${event.jobName}.`, tone: "subtle" };
+  if (event.type === "job_resumed")
+    return { text: `Work resumed: ${event.jobName}.`, tone: "subtle" };
+  return null;
+}
+
+function unityActivityEntry(event) {
+  return (
+    unityCombatActivity(event) ??
+    unityExplorationActivity(event) ??
+    unityWorkActivity(event)
+  );
+}
+
+function unityActivity(recentEvents) {
+  return [...recentEvents].reverse().map(unityActivityEntry).find(Boolean)
+    ?.text;
+}
+
+function unityActivityLog(recentEvents) {
+  return recentEvents.map(unityActivityEntry).filter(Boolean).slice(-5);
+}
+
+function adjacentClosedDoor(state, level) {
+  return level.doors.some(
+    (door) =>
+      door.revealed &&
+      door.state === "closed" &&
+      gridDistance("square", state.hero, door) === 1,
+  );
+}
+
+function unityCombatIntents(state, items, targets) {
+  const weapon = ROGUE_EQUIPMENT[state.hero.weapon],
+    inRange = (target, range) =>
+      gridDistance("square", state.hero, target) <= range;
   return [
-    "move",
-    "command",
-    "open",
-    "wait",
-    "search",
-    "use_item",
-    "invoke_item",
-    "ranged_attack",
-    "throw_item",
-    "examine",
-    "class_power",
-    "short_rest",
-    "equip",
-    "unequip",
+    ...(weapon?.rangeSquares &&
+    targets.some((target) => inRange(target, weapon.rangeSquares))
+      ? ["ranged_attack"]
+      : []),
+    ...(items.some(
+      (item) =>
+        item.throwable && targets.some((target) => inRange(target, item.range)),
+    )
+      ? ["throw_item"]
+      : []),
+  ];
+}
+
+function unityResourceIntents(state, items, targets) {
+  const needsHealth = state.hero.hp < state.hero.maxHp,
+    canInvoke = items.some(
+      (item) =>
+        item.invokable &&
+        (!["scroll_flame", "wand_arc"].includes(item.kind) || targets.length),
+    );
+  return [
+    ...(items.some((item) => item.kind === "healing_potion") && needsHealth
+      ? ["use_item"]
+      : []),
+    ...(canInvoke ? ["invoke_item"] : []),
+    ...(state.hero.classPower.remaining > 0 &&
+    (state.hero.classPower.key === "magic_missile"
+      ? targets.length
+      : needsHealth)
+      ? ["class_power"]
+      : []),
+    ...(restStatus(state).available ? ["short_rest"] : []),
+  ];
+}
+
+function unityEquipmentIntents(state) {
+  const actors = partyActors(state),
+    items = actors.flatMap((actor) => actor.inventory ?? []);
+  return [
+    ...(items.some((item) => item.itemType === "equipment" && !item.equipped)
+      ? ["equip"]
+      : []),
+    ...(actors.some((actor) => actor.equipment.offhand) ? ["unequip"] : []),
+  ];
+}
+
+function unityPositionIntents(state, level) {
+  return [
+    ...(adjacentClosedDoor(state, level) ? ["open"] : []),
     ...(same(state.hero, level.entrance) ? ["stairs_up"] : []),
     ...(same(state.hero, level.exit) && state.depth < state.maxDepth
       ? ["stairs"]
@@ -4829,8 +4974,26 @@ function unityDungeonIntents(state, level) {
   ];
 }
 
-function unityInventory(state) {
-  return state.hero.inventory
+function unityDungeonIntents(state, level) {
+  if (state.status === "dying") return ["death_save"];
+  if (state.status !== "active") return [];
+  const items = unityInventory(state),
+    targets = unityTargets(state);
+  return [
+    "move",
+    "command",
+    "wait",
+    "search",
+    "examine",
+    ...unityPositionIntents(state, level),
+    ...unityCombatIntents(state, items, targets),
+    ...unityResourceIntents(state, items, targets),
+    ...unityEquipmentIntents(state),
+  ];
+}
+
+function unityInventoryItems(actor) {
+  return (actor.inventory ?? [])
     .filter((item) => (item.quantity ?? item.charges ?? 1) > 0)
     .map((item) => ({
       id: item.id,
@@ -4842,8 +5005,21 @@ function unityInventory(state) {
       charges: item.charges ?? 0,
       equipped: Boolean(item.equipped),
       throwable: Boolean(item.thrownRange),
+      range: item.thrownRange ?? 0,
       invokable: ["relic", "scroll", "wand"].includes(item.itemType),
     }));
+}
+
+function unityInventory(state) {
+  return unityInventoryItems(state.hero);
+}
+
+function unityPartyInventories(state) {
+  return partyActors(state).map((actor) => ({
+    actorId: actor.id,
+    actorName: actor.name,
+    items: unityInventoryItems(actor),
+  }));
 }
 
 function unityPartyOrder(state) {
@@ -4892,6 +5068,7 @@ export function rogueUnityView(state, recentEvents = []) {
     location: state.location,
     title: dungeon ? level.theme.title : VILLAGE.name,
     activity: unityActivity(recentEvents),
+    activityLog: unityActivityLog(recentEvents),
     legalIntents: dungeon ? unityDungeonIntents(state, level) : ["local_move"],
     message: dungeon ? level.theme.atmosphere : VILLAGE.description,
     hero: {
@@ -4906,6 +5083,7 @@ export function rogueUnityView(state, recentEvents = []) {
     map,
     jobs,
     inventory: dungeon ? unityInventory(state) : [],
+    inventories: dungeon ? unityPartyInventories(state) : [],
     targets: dungeon ? unityTargets(state) : [],
     partyOrder: dungeon ? unityPartyOrder(state) : null,
     classPower: dungeon ? structuredClone(state.hero.classPower) : null,

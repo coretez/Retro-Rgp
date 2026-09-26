@@ -1,5 +1,19 @@
 # Changelog
 
+## Interactive Version 1 · D-M5.2 native dungeon hardening
+
+- Made Unity dungeon commands state-aware so actions appear only when their
+  health, resource, target, range, equipment, door, stair, and status
+  requirements can currently succeed.
+- Added visible Examine, Shoot, Ascend, Descend, and Death Save commands plus
+  actor HP inspection, damage flashing, colored combat and exploration activity,
+  and explicit victory, death, and stabilization overlays.
+- Replaced the nine-item hero-only drawer with scrollable UUID-addressed
+  inventories and equipment controls for all four party members.
+- Expanded the suite to 94 passing tests, produced a successful macOS Unity
+  build, and completed a 255-turn three-level Unity-protocol victory with all
+  four party members alive.
+
 ## Interactive Version 1 · D-M5.1 Unity dungeon playability
 
 - Replaced the full-floor dungeon projection with a rolling 30×20 viewport so

@@ -38,7 +38,8 @@ The public engine contracts remain stable while the internals change:
 | M-5 · Carter delivery                | Complete |
 | D-M1–D-M5 · Dungeon parity           | Complete |
 | D-M5.1 · Unity dungeon playability   | Complete |
-| M-6 · Reactive guard work            | Next     |
+| D-M5.2 · Native dungeon hardening    | Playtest |
+| M-6 · Reactive guard work            | Blocked  |
 | M-7 through M-10                     | Planned  |
 
 ## Target architecture
@@ -433,6 +434,38 @@ panels.
   the final exit with all four members alive. Native smoke checks separately
   verified movement, search, inventory/equipment, and a revisioned party order.
 
+## D-M5.2 — Native dungeon hardening
+
+### Player-visible result
+
+The native dungeon now explains combat and only offers actions that can
+currently succeed. Inventory, targeting, terminal states, and party equipment
+are usable without leaving the Unity window.
+
+### Completion evidence
+
+- Dungeon `legalIntents` now respect active, dying, stable, dead, and won
+  states plus health, remaining powers, safe rest, equipment, visible targets,
+  weapon range, nearby doors, and stair position.
+- The command strip exposes Examine, Shoot, Ascend, Descend, and Death Save when
+  relevant. Unusable potion, power, rest, ranged, throw, invoke, and equipment
+  controls remain hidden instead of failing after selection.
+- Selected actors show current and maximum HP. A transient red screen flash and
+  a five-entry colored activity overlay communicate attacks, misses, damage,
+  healing, traps, discoveries, treasure, equipment, level changes, and death
+  saves.
+- Inventory is scrollable and can inspect or equip each party member by UUID.
+  Victory, death, and stabilization receive explicit terminal overlays.
+- The regression suite passes with 94 tests and the macOS Unity player builds
+  successfully. A 255-turn, three-level Unity-protocol dungeon run reached
+  victory with all four party members alive after 10 opened doors and 32
+  attacks.
+
+### Remaining manual gate
+
+- Complete one three-level dungeon using only the visible Unity controls. Until
+  that player-facing run is accepted, M-6 remains blocked.
+
 ## M-6 — Reactive guard work
 
 ### Player-visible result
@@ -618,7 +651,7 @@ The first smart-world release is complete when all of the following are true:
 
 ## Immediate next objective
 
-Implement **M-6 only**: convert guard patrol and investigation into competing
-jobs, then prove that danger can interrupt routine work and that the guard can
-resume appropriate work afterward. Do not add the broader economy, companion
-autonomy, needs, or continuous time yet.
+Play and accept the **D-M5.2 native dungeon gate** using only Unity controls.
+After that gate passes, implement **M-6 only**: convert guard patrol and
+investigation into competing jobs, then prove that danger can interrupt routine
+work and that the guard can resume appropriate work afterward.

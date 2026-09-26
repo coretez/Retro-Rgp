@@ -79,6 +79,39 @@ test("Unity activity describes a player-opened dungeon door", () => {
   assert.equal(view.activity, "Mara opened a door.");
 });
 
+test("Unity activity log gives combat readable tone and damage", () => {
+  const state = newRogueRun(input);
+  const view = rogueUnityView(state, [
+    {
+      type: "attack",
+      actorKind: "enemy",
+      actorName: "Goblin",
+      targetName: "Mara",
+      hit: true,
+      appliedDamage: { hpDamage: 4 },
+    },
+  ]);
+  assert.deepEqual(view.activityLog, [
+    { text: "Goblin hits Mara for 4.", tone: "danger" },
+  ]);
+});
+
+test("Unity legal intents collapse to death save while dying", () => {
+  const state = newRogueRun(input);
+  state.status = "dying";
+  assert.deepEqual(rogueUnityView(state).legalIntents, ["death_save"]);
+});
+
+test("Unity exposes healing actions only when healing can succeed", () => {
+  const state = newRogueRun(input);
+  state.hero.hp -= 5;
+  state.enemies = state.levels[state.depth - 1].enemies = [];
+  const intents = rogueUnityView(state).legalIntents;
+  assert.ok(intents.includes("use_item"));
+  assert.ok(intents.includes("class_power"));
+  assert.ok(intents.includes("short_rest"));
+});
+
 test("Unity protocol projects the active dungeon instead of Stonebridge", () => {
   const state = newRogueRun(input),
     view = rogueUnityView(state);
@@ -95,10 +128,13 @@ test("Unity protocol projects the active dungeon instead of Stonebridge", () => 
   assert.notEqual(view.title, "Stonebridge");
   assert.ok(view.legalIntents.includes("search"));
   assert.ok(view.legalIntents.includes("command"));
-  assert.ok(view.legalIntents.includes("ranged_attack"));
   assert.ok(view.legalIntents.includes("equip"));
+  assert.ok(!view.legalIntents.includes("use_item"));
+  assert.ok(!view.legalIntents.includes("short_rest"));
   assert.ok(view.inventory.some((item) => item.itemType === "equipment"));
   assert.ok(view.inventory.some((item) => item.kind === "healing_potion"));
+  assert.equal(view.inventories.length, 4);
+  assert.equal(view.inventories[0].actorId, state.hero.id);
   assert.equal(view.partyOrder.id, state.partyGroup.id);
   assert.equal(view.partyOrder.commandRevision, 0);
   assert.equal(view.classPower.name, state.hero.classPower.name);
