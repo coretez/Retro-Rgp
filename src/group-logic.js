@@ -10,6 +10,7 @@ export const GROUP_OBJECTIVES = [
   "retreat",
 ];
 export const GROUP_RESOURCE_POLICIES = ["conserve", "balanced", "spend"];
+export const GROUP_MOVEMENT_MODES = ["follow_leader", "individual"];
 
 const living = (actor) => actor && actor.hp > 0 && !actor.dead;
 
@@ -25,6 +26,7 @@ export function createGroup({
   objective = "explore",
   resourcePolicy = "balanced",
   retreatThreshold = 25,
+  movementMode = "follow_leader",
 }) {
   check(
     isUuid(id) && isUuid(definitionId) && name,
@@ -47,9 +49,9 @@ export function createGroup({
     "A group cannot contain the same actor UUID twice.",
   );
   check(
-    memberIds.includes(leaderId),
+    leaderId === null || memberIds.includes(leaderId),
     "INVALID_GROUP_LEADER",
-    "The leader must be a member of the group.",
+    "The leader must be a member of the group or null when none are living.",
   );
   check(
     assignments.every(
@@ -73,6 +75,11 @@ export function createGroup({
     GROUP_RESOURCE_POLICIES.includes(resourcePolicy),
     "INVALID_RESOURCE_POLICY",
     "Unknown group resource policy.",
+  );
+  check(
+    GROUP_MOVEMENT_MODES.includes(movementMode),
+    "INVALID_MOVEMENT_MODE",
+    "Unknown group movement mode.",
   );
   check(
     Number.isInteger(retreatThreshold) &&
@@ -103,6 +110,7 @@ export function createGroup({
       destination: null,
       resourcePolicy,
       retreatThreshold,
+      movementMode,
       issuedBy: leaderId,
       issuedAtTick: 0,
     },
@@ -180,6 +188,7 @@ export function issueGroupOrder(group, command, tick) {
     destination: command.destination ? { ...command.destination } : null,
     resourcePolicy: command.resourcePolicy,
     retreatThreshold: command.retreatThreshold,
+    movementMode: command.movementMode ?? group.order.movementMode,
     issuedBy: command.issuerId,
     issuedAtTick: tick,
   };
@@ -197,6 +206,11 @@ export function issueGroupOrder(group, command, tick) {
     GROUP_RESOURCE_POLICIES.includes(next.resourcePolicy),
     "INVALID_RESOURCE_POLICY",
     "Unknown group resource policy.",
+  );
+  check(
+    GROUP_MOVEMENT_MODES.includes(next.movementMode),
+    "INVALID_MOVEMENT_MODE",
+    "Unknown group movement mode.",
   );
   check(
     Number.isInteger(next.retreatThreshold) &&
@@ -250,6 +264,19 @@ export function groupView(group, actors) {
         alive: living(actor),
         hp: actor?.hp ?? null,
         maxHp: actor?.maxHp ?? null,
+        ac: actor?.ac ?? null,
+        attackBonus: actor?.attackBonus ?? null,
+        damage: actor?.damage ?? null,
+        attackRange: actor?.attackRange ?? null,
+        supportUses: actor?.supportUses ?? null,
+        conditions: [...(actor?.conditions ?? [])],
+        class: actor?.class ?? null,
+        glyph: actor?.glyph ?? null,
+        glyphReading: actor?.glyphReading ?? null,
+        position:
+          actor?.x == null || actor?.y == null
+            ? null
+            : { x: actor.x, y: actor.y },
       };
     }),
   };

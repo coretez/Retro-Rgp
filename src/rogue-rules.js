@@ -99,9 +99,10 @@ export const ROGUE_DND_PROFILE = {
   ],
   explicitOverrides: [
     "one square is five feet, but one step consumes the roguelike turn's movement cadence",
-    "the hero resolves first, then eligible enemies resolve in stable order instead of rolling initiative",
+    "the hero resolves first, companions resolve in party order, then eligible enemies resolve in stable order instead of rolling initiative",
     "opening a door consumes a roguelike turn instead of using the tabletop free object interaction",
-    "hostiles stop resolving attacks when the solo hero falls unconscious",
+    "companions choose deterministic role-based actions from the leader's current group order",
+    "a fallen companion remains unconscious without rolling separate player-facing death saves",
     "room-scale awareness and noise replace passive Perception encounter setup",
   ],
 };

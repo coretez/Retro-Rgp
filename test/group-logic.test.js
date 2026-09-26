@@ -50,6 +50,20 @@ test("group leadership remains stable until the leader is unavailable", () => {
   assert.equal(value.leaderId, ids.guard);
 });
 
+test("a group with no living leader can be represented without inventing one", () => {
+  const value = createGroup({
+    id: ids.group,
+    definitionId: ids.definition,
+    name: "Fallen Company",
+    side: "enemy",
+    memberIds: [ids.enemy],
+    assignments: [{ actorId: ids.enemy, role: "leader", commandScore: 10 }],
+    leaderId: null,
+  });
+  assert.equal(value.leaderId, null);
+  assert.equal(value.order.issuedBy, null);
+});
+
 test("only the current leader can issue a revisioned group order", () => {
   const value = group();
   reconcileGroupLeadership(value, actors);
@@ -109,4 +123,5 @@ test("group views include roles, health and authoritative order state", () => {
   assert.equal(view.memberStatus[0].alive, false);
   assert.equal(view.memberStatus[2].role, "frontline");
   assert.equal(view.order.objective, "explore");
+  assert.equal(view.order.movementMode, "follow_leader");
 });

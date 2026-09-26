@@ -59,6 +59,10 @@ test("all runtime identity fields in a new universe are UUIDs", () => {
   };
   visit(state);
   assert.deepEqual(failures, []);
-  assert.deepEqual(state.partyGroup.memberIds, [state.hero.id]);
+  assert.equal(state.partyGroup.memberIds.length, 4);
+  assert.deepEqual(state.partyGroup.memberIds, [
+    state.hero.id,
+    ...state.companions.map((companion) => companion.id),
+  ]);
   assert.equal(state.partyGroup.leaderId, state.hero.id);
 });

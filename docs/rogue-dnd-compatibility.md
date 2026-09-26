@@ -1,6 +1,6 @@
 # Roguelike D&D compatibility profile
 
-The solo roguelike uses SRD 5.1 combat semantics wherever the dungeon cadence
+The party roguelike uses SRD 5.1 combat semantics wherever the dungeon cadence
 does not make them impossible. Presentation and pacing may change; numerical
 combat rules should not silently fork.
 
@@ -23,12 +23,14 @@ combat rules should not silently fork.
 - One tile is five feet, but a single step consumes the roguelike movement
   cadence rather than tracking a 30-foot movement budget beside a separate
   action.
-- The hero resolves first and eligible enemies then resolve in stable order.
-  The mode does not roll or maintain standard encounter initiative.
+- The hero resolves first, companions resolve in party order, and eligible
+  enemies then resolve in stable order. The mode does not roll or maintain
+  standard encounter initiative.
 - Opening a door consumes a roguelike turn rather than the tabletop free object
   interaction.
-- Hostiles stop resolving further attacks when the only solo hero falls
-  unconscious. This preserves death saves as a meaningful solo mechanic.
+- Companions choose deterministic role-based actions from the current group
+  order. A fallen companion stays unconscious without a separate player-facing
+  death-save turn; the controlled hero retains full death saves.
 - Noise and room-scale awareness replace the tabletop encounter setup process.
 
 These are named mode rules, not claims about the SRD. New combat features should

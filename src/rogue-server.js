@@ -9,6 +9,7 @@ import { bestiaryView } from "./rogue-bestiary.js";
 import { RogueStore, rogueError } from "./rogue-store.js";
 import {
   GROUP_FORMATIONS,
+  GROUP_MOVEMENT_MODES,
   GROUP_OBJECTIVES,
   GROUP_RESOURCE_POLICIES,
 } from "./group-logic.js";
@@ -33,18 +34,18 @@ const wrap = (handler) => async (args) => {
 
 export function buildRogueServer(store) {
   const server = new McpServer(
-    { name: "dungeon-rogue", version: "0.2.0-alpha.2" },
+    { name: "dungeon-rogue", version: "0.2.0-alpha.5" },
     {
       instructions:
-        "A turn-based dungeon server using the SRD 5.1 compatibility profile returned by rogue_run_get. Version 0.1 play remains one-character, while the experimental group contract persists the party, creature groups, leaders, formations and revisioned orders. Read rogue_run_get and rogue_groups_get before issuing a command. Only the current leader may command its group. Submit exactly one rogue_act intent with the current run revision and a fresh requestId. One accepted intent atomically resolves the hero action or command and all enemy responses. A dying hero must submit death_save. Retry an uncertain response with the same requestId and identical intent. Never infer hidden cells, entities or group membership.",
+        "A turn-based party dungeon server using the SRD 5.1 compatibility profile returned by rogue_run_get. The four-character party follows its leader through local maps while creature packs retain leaders, formations and revisioned orders. Leaving depth 1 enters the local exterior; open_world collapses the party to one world-map group marker for travel between the Rooted Keep and Stonebridge, and enter_location expands it locally again. Village shop_buy actions spend shared copper on a named party actor. Read rogue_run_get and rogue_groups_get before issuing a command. Only the current leader may command its group. Submit exactly one rogue_act intent with the current run revision and a fresh requestId. Retry an uncertain response with the same requestId and identical intent. Never infer hidden cells, entities or group membership.",
     },
   );
   server.registerTool(
     "rogue_run_create",
     {
-      title: "Create solo dungeon run",
+      title: "Create party dungeon run",
       description:
-        "Create and persist a 3-, 5-, or 8-level solo roguelike run with rooms, doors, noise, 25 behavioral creature types, consumables, equippable loot, passive discovery, traps, treasure, stairs, depth-scaled factions, a final boss and an exit. Repeating the same requestId and identical inputs returns the original run.",
+        "Create and persist a 3-, 5-, or 8-level party roguelike expedition with bidirectional stairs, the Stonebridge village and shops, rooms, doors, noise, behavioral creatures, equipment, treasure and a final boss. Repeating the same requestId and identical inputs returns the original run.",
       inputSchema: z
         .object({
           requestId: text(),
@@ -71,7 +72,7 @@ export function buildRogueServer(store) {
   server.registerTool(
     "rogue_run_get",
     {
-      title: "Read solo dungeon run",
+      title: "Read party dungeon run",
       description:
         "Read the current player-visible decision state. Hidden cells, enemies and treasure are omitted. This does not advance the dungeon.",
       inputSchema: z.object({ runId: id }).strict(),
@@ -90,7 +91,7 @@ export function buildRogueServer(store) {
     {
       title: "Take one roguelike turn",
       description:
-        "Submit one player intent. A successful call atomically resolves the hero action, automatic enemy responses, visibility, treasure collection and victory/death, then returns the next decision state.",
+        "Submit one dungeon or village intent. A successful call atomically resolves travel, shopping or the party combat turn and returns the next decision state.",
       inputSchema: z
         .object({
           runId: id,
@@ -131,10 +132,70 @@ export function buildRogueServer(store) {
                   .optional(),
                 resourcePolicy: z.enum(GROUP_RESOURCE_POLICIES),
                 retreatThreshold: z.number().int().min(0).max(100),
+                movementMode: z.enum(GROUP_MOVEMENT_MODES).optional(),
               })
               .strict(),
             z.object({ kind: z.literal("search") }).strict(),
             z.object({ kind: z.literal("stairs") }).strict(),
+            z.object({ kind: z.literal("stairs_up") }).strict(),
+            z.object({ kind: z.literal("enter_dungeon") }).strict(),
+            z.object({ kind: z.literal("open_world") }).strict(),
+            z.object({ kind: z.literal("enter_location") }).strict(),
+            z
+              .object({
+                kind: z.literal("local_move"),
+                x: z.number().int(),
+                y: z.number().int(),
+              })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("local_examine"),
+                x: z.number().int(),
+                y: z.number().int(),
+              })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("local_talk"),
+                x: z.number().int(),
+                y: z.number().int(),
+              })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("local_manipulate"),
+                action: z.enum(["dig", "harvest", "breach", "collect"]),
+                x: z.number().int(),
+                y: z.number().int(),
+              })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("set_party_movement"),
+                mode: z.enum(["follow", "dispersed"]),
+              })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("world_move"),
+                x: z.number().int(),
+                y: z.number().int(),
+              })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("world_travel"),
+                destination: z.enum(["dungeon_entrance", "stonebridge"]),
+              })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("shop_buy"),
+                actorId: id,
+                itemKind: text(),
+              })
+              .strict(),
             z.object({ kind: z.literal("death_save") }).strict(),
             z
               .object({
@@ -160,19 +221,39 @@ export function buildRogueServer(store) {
             z
               .object({
                 kind: z.literal("equip"),
-                itemId: text(),
+                itemId: id,
+                actorId: id.optional(),
               })
               .strict(),
             z
               .object({
                 kind: z.literal("unequip"),
                 slot: z.literal("offhand"),
+                actorId: id.optional(),
               })
               .strict(),
             z
               .object({
                 kind: z.literal("invoke_item"),
                 itemId: text(),
+                targetId: id.optional(),
+              })
+              .strict(),
+            z
+              .object({ kind: z.literal("ranged_attack"), targetId: id })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("throw_item"),
+                itemId: id,
+                targetId: id,
+              })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("examine"),
+                x: z.number().int().min(0),
+                y: z.number().int().min(0),
               })
               .strict(),
             z.object({ kind: z.literal("class_power") }).strict(),

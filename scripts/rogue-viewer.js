@@ -50,7 +50,7 @@ if (rememberedRunId) {
 active ??= await call("rogue_run_create", {
   requestId: "rogue-viewer-default-v3",
   seed: "the-river-below",
-  heroName: "The Delver",
+  heroName: "Mara Thorn",
   heroClass: "fighter",
   form: "hybrid",
   size: "small",
@@ -166,7 +166,7 @@ async function handleRequest(request, response) {
 const server = http.createServer(handleRequest);
 
 server.listen(port, "127.0.0.1", () => {
-  console.log(`Solo roguelike ready: http://127.0.0.1:${port}`);
+  console.log(`Party roguelike ready: http://127.0.0.1:${port}`);
   console.log(`Database: ${database}`);
   console.log(`Run: ${runId}`);
 });

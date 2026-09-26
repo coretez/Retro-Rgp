@@ -35,6 +35,13 @@ an unseen alpha.
 
 ## Behavior connected in this slice
 
+The player group now contains four independent actor instances: the selected
+leader plus Niklas Ried, Adelheid Bauer and Konrad Falk. Its movement mode is
+`follow_leader`. A successful leader step moves each available companion toward
+the position just vacated by the actor ahead of them. Reversals resolve without
+placing two actors in one cell. Level transitions place the complete party near
+the entrance, and legacy solo saves acquire deterministic companion instances.
+
 Creature groups choose a stable alpha from their actual members. If that actor
 falls, the highest-ranked living member succeeds it with a stable actor-ID
 tie-break. Group-wide hold and retreat objectives alter individual movement.
@@ -42,11 +49,56 @@ The retreat threshold uses aggregate current HP against aggregate maximum HP,
 so casualties can change the whole group's posture. Individual bestiary roles
 still govern execution within that strategy.
 
+Generated inhabitants can now appear as spatial packs. Pack members begin in
+the same room, share a group record and retain individual actor UUIDs.
+
+The party also has persisted tactical state: its last facing, anchor, deployment
+tick and one of `travel`, `deployed` or `engaged`. A leader step establishes
+facing and returns the group to travel. Waiting or issuing an order deploys the
+companions; sighting an enemy changes the posture to engaged. Saves from before
+this addition migrate to a north-facing travel posture.
+
+Column, line, wedge and scatter now have role-specific grid slots relative to
+the leader's position and facing. A blocked ideal slot falls back to the nearest
+reachable free cell. Members move at most one cell on their activation, reserve
+distinct cells through normal occupancy and never teleport into formation.
+
+Every conscious companion now receives one deterministic combat activation
+after the leader and before the enemy side. Niklas fights in melee, Adelheid
+fights in melee or spends one of two support heals on a badly wounded ally, and
+Konrad attacks at range. All attacks use the shared d20-versus-AC, critical-hit
+and typed-damage resolver.
+
+Companions obey the authoritative group objective. `focus` prioritizes the
+ordered enemy UUID, `hold` permits attacks but suppresses pursuit, and `retreat`
+suppresses engagement. Monster members select their own nearest visible living
+party target unless their group carries a valid focus target. This distributes
+pressure spatially across the formation rather than treating the leader as the
+only combatant.
+
+Within a deployment, Niklas is the closing melee element, Adelheid preserves
+support access and Konrad maintains the rear ranged slot. Targets engaged with
+any living party member rank ahead of isolated targets, followed by wounded
+targets and distance. A pressured rear guard withdraws toward its slot instead
+of entering a melee scrum. The HTML Party card issues revisioned formation and
+Explore, Hold or Advance orders through the same server contract as MCP clients.
+
+Backline protection is reciprocal. A ranged character with an enemy within two
+squares selects a legal step that strictly increases its minimum distance from
+all visible threats, preferring a cell near its formation slot and leader when
+equally safe. Melee companions rank enemies within two squares of ranged or
+support members above ordinary engaged targets and close with them using the
+`protect_ranged_ally` movement reason. An explicit leader focus order remains
+authoritative and overrides this default target priority.
+
+An incapacitated companion remains an actor and party member, becomes
+unconscious, stops acting and can be restored by support healing. Leadership
+succession sees the same status immediately. Only the player hero exposes death
+saves as interactive turns in this slice.
+
 ## Deliberately next
 
-Version 0.1 remains a one-character game. This slice establishes the server
-contract before companions are added. Formation-slot movement, companion action
-selection, focus-target execution, leader incapacitation in the player party,
-automatic alpha strategy reassessment and UI command controls are not yet
-implemented. They must build on this persisted contract rather than recreate
-group logic in the HTML client.
+Automatic enemy-alpha strategy reassessment, companion death-save policy,
+retreat-destination controls in the HTML interface and player control after
+leader incapacitation are not yet implemented. They must build on this
+persisted contract rather than recreate group logic in the HTML client.

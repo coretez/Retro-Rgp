@@ -268,11 +268,14 @@ function buildRooms({ width, height, count, form, theme, rng }) {
     "command",
     "secret",
   ];
+  const partyScale = width >= 56;
   return slots.map((slot, index) => {
     const maxWidth = Math.max(3, cellWidth - 2);
     const maxHeight = Math.max(3, cellHeight - 2);
-    const roomWidth = rng.int(3, maxWidth);
-    const roomHeight = rng.int(3, maxHeight);
+    const minimumWidth = Math.min(maxWidth, partyScale ? 6 : 3);
+    const minimumHeight = Math.min(maxHeight, partyScale ? 5 : 3);
+    const roomWidth = rng.int(minimumWidth, maxWidth);
+    const roomHeight = rng.int(minimumHeight, maxHeight);
     const baseX = 1 + slot.column * cellWidth;
     const baseY = 1 + slot.row * cellHeight;
     const x = baseX + rng.int(0, Math.max(0, cellWidth - roomWidth - 1));

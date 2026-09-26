@@ -1,8 +1,7 @@
 # Retro RPG: Dungeon Rogue
 
-A persistent, single-character dungeon roguelike with D&D SRD 5.1-compatible
-combat rules, a dedicated Model Context Protocol server, and an HTML play
-surface.
+A persistent, party-based dungeon roguelike with D&D SRD 5.1-compatible combat
+rules, a dedicated Model Context Protocol server, and an HTML play surface.
 
 Version 0.1 is the frozen solo baseline. It includes themed multi-level
 dungeons, large fog-of-war maps, rooms, doors, noise, passive searching, traps,
@@ -56,9 +55,13 @@ It persists leaders and monster alphas, role assignments, formations, objectives
 resource policy, retreat thresholds, command revisions and deterministic
 succession. Group orders are replay-safe `rogue_act` intents, and
 `rogue_groups_get` exposes the party plus only currently known enemy groups. See
-[MCP-native group logic](docs/group-logic.md) for implemented behavior and the
-remaining companion-play work. All persistent definitions, instances and
+[MCP-native group logic](docs/group-logic.md) for four-character
+follow-the-leader movement, spatial creature packs and group-to-group combat.
+All persistent definitions, instances and
 references follow the [universe identity standard](docs/identity-model.md).
+The party can also retreat up through explored levels to
+[Stonebridge](docs/village-expedition-loop.md), spend recovered copper in its
+shops, and re-enter the same persistent dungeon.
 
 ## Public source and restricted rights
 

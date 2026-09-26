@@ -9,10 +9,12 @@ import {
 import {
   blocked,
   gridDistance,
+  inside,
   key,
   lineOfSight,
   neighbors,
   paths,
+  route,
 } from "./spatial.js";
 import {
   createGroup,
@@ -24,10 +26,11 @@ import {
   definitionId,
   isUuid,
   migratedInstanceId,
+  namedUuid,
   newInstanceId,
 } from "./identity.js";
 
-export const ROGUE_RULESET = "solo-roguelike-v2";
+export const ROGUE_RULESET = "party-roguelike-v9";
 export const DIRECTIONS = {
   north: [0, -1],
   northeast: [1, -1],
@@ -46,6 +49,7 @@ const ROGUE_EQUIPMENT = {
     attackBonus: 5,
     damage: "1d8+3",
     damageType: "slashing",
+    priceCp: 120,
   },
   iron_mace: {
     name: "Iron mace",
@@ -53,6 +57,8 @@ const ROGUE_EQUIPMENT = {
     attackBonus: 5,
     damage: "1d6+3",
     damageType: "bludgeoning",
+    priceCp: 80,
+    toolTags: ["breach"],
   },
   battleaxe: {
     name: "Battleaxe",
@@ -60,6 +66,9 @@ const ROGUE_EQUIPMENT = {
     attackBonus: 5,
     damage: "1d8+3",
     damageType: "slashing",
+    priceCp: 150,
+    thrownRange: 4,
+    toolTags: ["cut", "breach"],
   },
   ash_spear: {
     name: "Ash spear",
@@ -67,6 +76,46 @@ const ROGUE_EQUIPMENT = {
     attackBonus: 5,
     damage: "1d6+3",
     damageType: "piercing",
+    priceCp: 60,
+    thrownRange: 6,
+  },
+  warhammer: {
+    name: "Warhammer",
+    slot: "weapon",
+    attackBonus: 5,
+    damage: "1d8+3",
+    damageType: "bludgeoning",
+    priceCp: 140,
+    thrownRange: 4,
+    toolTags: ["breach"],
+  },
+  hand_axe: {
+    name: "Hand axe",
+    slot: "weapon",
+    attackBonus: 4,
+    damage: "1d6+2",
+    damageType: "slashing",
+    priceCp: 55,
+    thrownRange: 4,
+    toolTags: ["cut", "breach"],
+  },
+  field_shovel: {
+    name: "Field shovel",
+    slot: "weapon",
+    attackBonus: 3,
+    damage: "1d4+2",
+    damageType: "bludgeoning",
+    priceCp: 35,
+    toolTags: ["dig"],
+  },
+  shortbow: {
+    name: "Shortbow",
+    slot: "weapon",
+    attackBonus: 5,
+    damage: "1d6+3",
+    damageType: "piercing",
+    priceCp: 125,
+    rangeSquares: 10,
   },
   quarterstaff: {
     name: "Quarterstaff",
@@ -74,14 +123,16 @@ const ROGUE_EQUIPMENT = {
     attackBonus: 4,
     damage: "1d6+2",
     damageType: "bludgeoning",
+    priceCp: 30,
   },
-  chain_shirt: { name: "Chain shirt", slot: "armor", ac: 15 },
-  mage_robes: { name: "Mage robes", slot: "armor", ac: 12 },
-  scale_mail: { name: "Scale mail", slot: "armor", ac: 16 },
+  chain_shirt: { name: "Chain shirt", slot: "armor", ac: 15, priceCp: 200 },
+  mage_robes: { name: "Mage robes", slot: "armor", ac: 12, priceCp: 50 },
+  scale_mail: { name: "Scale mail", slot: "armor", ac: 16, priceCp: 300 },
   reinforced_shield: {
     name: "Reinforced shield",
     slot: "offhand",
     acBonus: 2,
+    priceCp: 100,
   },
 };
 for (const [key, value] of Object.entries(ROGUE_EQUIPMENT)) {
@@ -124,6 +175,207 @@ for (const [key, value] of Object.entries(HERO_ARCHETYPES)) {
 }
 
 const HERO_HIT_DICE = { fighter: 10, mage: 6, cleric: 8 };
+
+const VILLAGE = {
+  name: "Stonebridge",
+  description:
+    "A road village beneath the old keep, sustained by delvers, charcoal burners and river traffic.",
+  width: 48,
+  height: 26,
+  viewportOrigin: { x: -4, y: -2 },
+  heroPosition: { x: 19, y: 12 },
+  companionPositions: [
+    { x: 18, y: 12 },
+    { x: 17, y: 12 },
+    { x: 16, y: 12 },
+  ],
+  shops: [
+    {
+      id: "smithy",
+      name: "Red Hammer Smithy",
+      keeper: "Hanne Voss",
+      goods: [
+        "ash_spear",
+        "iron_mace",
+        "longsword",
+        "battleaxe",
+        "warhammer",
+        "hand_axe",
+        "field_shovel",
+        "shortbow",
+      ],
+    },
+    {
+      id: "armorer",
+      name: "Gatehouse Armorer",
+      keeper: "Otto Kern",
+      goods: ["mage_robes", "chain_shirt", "reinforced_shield", "scale_mail"],
+    },
+    {
+      id: "apothecary",
+      name: "Juniper & Salt",
+      keeper: "Mei Lin",
+      goods: ["healing_potion"],
+    },
+  ],
+};
+
+const WORLD = {
+  name: "The Stonebridge March",
+  groupGlyph: "群",
+  groupGlyphReading: "qún",
+  viewport: { width: 46, height: 28 },
+  nodes: [
+    {
+      id: "dungeon_entrance",
+      name: "Rooted Keep",
+      kind: "dungeon",
+      x: 8,
+      y: 20,
+    },
+    {
+      id: "stonebridge",
+      name: "Stonebridge",
+      kind: "town",
+      x: 36,
+      y: 7,
+    },
+  ],
+  routes: [
+    {
+      from: "dungeon_entrance",
+      to: "stonebridge",
+      material: "stone",
+    },
+  ],
+};
+
+const EXTERIOR = {
+  name: "Rooted Keep approach",
+  description:
+    "Ruined masonry, meadow and old roads surround the dungeon stair.",
+  width: 46,
+  height: 28,
+  heroPosition: { x: 18, y: 15 },
+  companionPositions: [
+    { x: 17, y: 16 },
+    { x: 16, y: 16 },
+    { x: 15, y: 17 },
+  ],
+};
+
+const COMPANION_TEMPLATES = [
+  {
+    key: "niklas-ried",
+    name: "Niklas Ried",
+    class: "rogue",
+    role: "scout",
+    glyph: "盗",
+    glyphReading: "tō",
+    hp: 20,
+    ac: 14,
+    attackBonus: 5,
+    damage: "1d6+3",
+    damageType: "piercing",
+    attackRange: 1,
+  },
+  {
+    key: "adelheid-bauer",
+    name: "Adelheid Bauer",
+    class: "cleric",
+    role: "support",
+    glyph: "癒",
+    glyphReading: "iyasu",
+    hp: 24,
+    ac: 16,
+    attackBonus: 5,
+    damage: "1d6+3",
+    damageType: "bludgeoning",
+    attackRange: 1,
+    supportUses: 2,
+  },
+  {
+    key: "konrad-falk",
+    name: "Konrad Falk",
+    class: "mage",
+    role: "rear_guard",
+    glyph: "魔",
+    glyphReading: "ma",
+    hp: 17,
+    ac: 12,
+    attackBonus: 5,
+    damage: "1d10",
+    damageType: "fire",
+    attackRange: 6,
+  },
+];
+
+const FORMATION_SLOTS = {
+  column: {
+    scout: { forward: -1, right: 0 },
+    support: { forward: -2, right: 0 },
+    rear_guard: { forward: -3, right: 0 },
+  },
+  line: {
+    scout: { forward: 0, right: -1 },
+    support: { forward: 0, right: 1 },
+    rear_guard: { forward: -1, right: 0 },
+  },
+  wedge: {
+    scout: { forward: -1, right: -1 },
+    support: { forward: -1, right: 1 },
+    rear_guard: { forward: -2, right: 0 },
+  },
+  scatter: {
+    scout: { forward: 1, right: -1 },
+    support: { forward: -1, right: 1 },
+    rear_guard: { forward: -2, right: -1 },
+  },
+};
+
+function companionActor(template, id) {
+  return {
+    id,
+    definitionId: definitionId("actor-archetype", template.key),
+    entityType: "actor",
+    kind: "character",
+    name: template.name,
+    class: template.class,
+    role: template.role,
+    glyph: template.glyph,
+    glyphReading: template.glyphReading,
+    level: 3,
+    speedFeet: 30,
+    x: 0,
+    y: 0,
+    hp: template.hp,
+    maxHp: template.hp,
+    ac: template.ac,
+    baseAc: template.ac,
+    attackBonus: template.attackBonus,
+    baseAttackBonus: template.attackBonus,
+    damage: template.damage,
+    baseDamage: template.damage,
+    damageType: template.damageType,
+    baseDamageType: template.damageType,
+    attackRange: template.attackRange,
+    supportUses: template.supportUses ?? 0,
+    tempHp: 0,
+    resistances: [],
+    vulnerabilities: [],
+    immunities: [],
+    conditions: [],
+    death: { successes: 0, failures: 0 },
+    dead: false,
+    inventory: [],
+    equipment: { weapon: null, armor: null, offhand: null },
+  };
+}
+
+const createCompanions = (idFor = () => newInstanceId()) =>
+  COMPANION_TEMPLATES.map((template) =>
+    companionActor(template, idFor(template.key)),
+  );
 
 const ROGUE_LORE = {
   fortress_keep: [
@@ -224,16 +476,19 @@ const center = (room) => ({
 const same = (a, b) => a.x === b.x && a.y === b.y;
 const active = (state) => state.levels[state.depth - 1];
 const aliveEnemies = (state) => state.enemies.filter((enemy) => enemy.hp > 0);
+const partyActors = (state) => [state.hero, ...(state.companions ?? [])];
 const commandScore = (role) =>
   ({ boss: 100, sentinel: 70, guardian: 60, support: 50, brute: 40 })[role] ??
   20;
 
 function buildEnemyGroups(enemies, depth) {
-  const factions = Map.groupBy(
+  const packs = Map.groupBy(
     enemies,
-    (enemy) => ROGUE_BESTIARY[enemy.template].faction,
+    (enemy) =>
+      enemy.packId ?? `faction:${ROGUE_BESTIARY[enemy.template].faction}`,
   );
-  return [...factions.entries()].map(([faction, actors]) => {
+  return [...packs.values()].map((actors, packIndex) => {
+    const faction = ROGUE_BESTIARY[actors[0].template].faction;
     const assignments = actors
       .map((enemy) => ({
         actorId: enemy.id,
@@ -247,7 +502,7 @@ function buildEnemyGroups(enemies, depth) {
     return createGroup({
       id: newInstanceId(),
       definitionId: definitionId("group", `enemy-faction:${faction}`),
-      name: faction.replaceAll("_", " "),
+      name: `${faction.replaceAll("_", " ")} pack ${packIndex + 1}`,
       side: "enemy",
       memberIds: assignments.map((assignment) => assignment.actorId),
       assignments,
@@ -263,6 +518,7 @@ function buildEnemyGroups(enemies, depth) {
       )
         ? 50
         : 20,
+      movementMode: "individual",
     });
   });
 }
@@ -334,19 +590,32 @@ function attack(attacker, defender, dice, events, actorKind) {
     appliedDamage: damage?.applied ?? null,
     targetHp: defender.hp,
   });
-  if (defender.hp === 0)
+  if (defender.hp === 0) {
+    const defenderKind = defender.template
+      ? "enemy"
+      : defender.role
+        ? "companion"
+        : "hero";
+    if (
+      defenderKind !== "enemy" &&
+      !defender.conditions.includes("unconscious")
+    )
+      defender.conditions.push("unconscious");
     events.push({
-      type:
-        actorKind === "hero"
-          ? "enemy_defeated"
-          : defender.dead
-            ? "hero_defeated"
-            : "hero_unconscious",
+      type: defeatEventType(defenderKind, defender.dead),
       actorId: defender.id,
       actorName: defender.name,
       actorTemplate: defender.template ?? null,
       position: { x: defender.x, y: defender.y },
     });
+  }
+}
+
+function defeatEventType(defenderKind, dead) {
+  if (defenderKind === "enemy") return "enemy_defeated";
+  if (defenderKind === "companion")
+    return dead ? "companion_defeated" : "companion_unconscious";
+  return dead ? "hero_defeated" : "hero_unconscious";
 }
 
 function visibleFloorKeys(state) {
@@ -514,43 +783,319 @@ function triggerTrap(state, dice, events) {
   }
 }
 
-function enemyCanSeeHero(state, enemy) {
-  const template = ROGUE_BESTIARY[enemy.template],
-    radius = template.role === "ambusher" && !enemy.aware ? 2 : 7;
+const conscious = (actor) => actor.hp > 0 && !actor.dead;
+const livingParty = (state) => partyActors(state).filter(conscious);
+
+function canAttack(state, actor, target) {
   return (
-    gridDistance("square", enemy, state.hero) <= radius &&
-    lineOfSight(effectiveMap(state), enemy, state.hero).clear
+    gridDistance("square", actor, target) <= (actor.attackRange ?? 1) &&
+    lineOfSight(effectiveMap(state), actor, target).clear
   );
 }
 
-function enemyStep(state, enemy, retreat = false) {
+function nearestActor(origin, actors) {
+  return [...actors].sort(
+    (a, b) =>
+      gridDistance("square", origin, a) - gridDistance("square", origin, b) ||
+      a.id.localeCompare(b.id),
+  )[0];
+}
+
+function orderedTarget(group, actors) {
+  if (group?.order.objective !== "focus") return null;
+  return actors.find((actor) => actor.id === group.order.targetId) ?? null;
+}
+
+function partyTarget(state, companion, targets) {
+  const ordered = orderedTarget(state.partyGroup, targets);
+  if (ordered) return ordered;
+  const party = livingParty(state),
+    protectedActors = party.filter(
+      (actor) => actor.role === "support" || (actor.attackRange ?? 1) > 1,
+    ),
+    threatensBackline = (enemy) =>
+      protectedActors.some(
+        (actor) => gridDistance("square", actor, enemy) <= 2,
+      ),
+    engaged = (enemy) =>
+      party.some((actor) => gridDistance("square", actor, enemy) <= 1);
+  return [...targets].sort(
+    (a, b) =>
+      Number(threatensBackline(b)) - Number(threatensBackline(a)) ||
+      Number(engaged(b)) - Number(engaged(a)) ||
+      a.hp / a.maxHp - b.hp / b.maxHp ||
+      gridDistance("square", companion, a) -
+        gridDistance("square", companion, b) ||
+      a.id.localeCompare(b.id),
+  )[0];
+}
+
+function threatensBackline(state, enemy) {
+  return livingParty(state).some(
+    (actor) =>
+      (actor.role === "support" || (actor.attackRange ?? 1) > 1) &&
+      gridDistance("square", actor, enemy) <= 2,
+  );
+}
+
+function formationPosition(state, companion) {
+  const [dx, dy] = DIRECTIONS[state.partyTactics.facing] ?? DIRECTIONS.north,
+    right = { x: -dy, y: dx },
+    slots = FORMATION_SLOTS[state.partyGroup.order.formation],
+    offset = slots?.[companion.role] ?? { forward: -1, right: 0 };
+  return {
+    x: state.hero.x + dx * offset.forward + right.x * offset.right,
+    y: state.hero.y + dy * offset.forward + right.y * offset.right,
+  };
+}
+
+function stepTowardPosition(state, actor, desired) {
+  const map = effectiveMap(state);
+  if (blocked(map, actor)) return null;
+  const occupied = new Set([
+      ...livingParty(state)
+        .filter((candidate) => candidate.id !== actor.id)
+        .map(key),
+      ...aliveEnemies(state).map(key),
+    ]),
+    { costs, previous } = paths(map, actor, occupied),
+    goals = [desired, ...neighbors(map, desired)]
+      .filter(
+        (position) => !occupied.has(key(position)) && costs.has(key(position)),
+      )
+      .sort(
+        (a, b) =>
+          gridDistance("square", a, desired) -
+            gridDistance("square", b, desired) ||
+          costs.get(key(a)) - costs.get(key(b)),
+      );
+  if (!goals.length || same(goals[0], actor)) return null;
+  const path = [goals[0]];
+  while (!same(path[0], actor)) path.unshift(previous.get(key(path[0])));
+  return path[1] ?? null;
+}
+
+function moveCompanion(state, companion, destination, reason, events) {
+  if (!destination) return false;
+  const from = { x: companion.x, y: companion.y };
+  Object.assign(companion, destination);
+  events.push({
+    type: "companion_move",
+    actorKind: "companion",
+    actorId: companion.id,
+    actorName: companion.name,
+    groupId: state.partyGroup.id,
+    from,
+    to: { ...destination },
+    position: { ...destination },
+    reason,
+  });
+  return true;
+}
+
+function adoptFormation(state, phase, reason, events) {
+  if (state.partyTactics.phase === phase) return;
+  state.partyTactics.phase = phase;
+  state.partyTactics.anchor = { x: state.hero.x, y: state.hero.y };
+  state.partyTactics.deployedAtTick = state.tick;
+  const event = {
+    type: "formation_adopted",
+    groupId: state.partyGroup.id,
+    formation: state.partyGroup.order.formation,
+    objective: state.partyGroup.order.objective,
+    phase,
+    reason,
+    facing: state.partyTactics.facing,
+    position: { ...state.partyTactics.anchor },
+  };
+  const current = events.find(
+    (candidate) => candidate.type === "formation_adopted",
+  );
+  if (current) Object.assign(current, event);
+  else events.push(event);
+}
+
+function combatStep(state, actor, target, retreat = false) {
   const map = effectiveMap(state),
     occupied = new Set(
       aliveEnemies(state)
-        .filter((e) => e.id !== enemy.id)
+        .filter((candidate) => candidate.id !== actor.id)
         .map(key),
     );
-  occupied.add(key(state.hero));
+  for (const candidate of livingParty(state))
+    if (candidate.id !== actor.id) occupied.add(key(candidate));
+  occupied.delete(key(target));
   if (retreat)
     return (
-      neighbors(map, enemy)
+      neighbors(map, actor)
         .filter((p) => !occupied.has(key(p)))
         .sort(
           (a, b) =>
-            gridDistance("square", b, state.hero) -
-            gridDistance("square", a, state.hero),
+            gridDistance("square", b, target) -
+            gridDistance("square", a, target),
         )[0] ?? null
     );
-  const { costs, previous } = paths(map, enemy, occupied);
-  const goals = neighbors(map, state.hero)
+  const { costs, previous } = paths(map, actor, occupied);
+  const goals = neighbors(map, target)
     .filter((p) => !occupied.has(key(p)) && costs.has(key(p)))
     .sort(
       (a, b) => costs.get(key(a)) - costs.get(key(b)) || a.y - b.y || a.x - b.x,
     );
   if (!goals.length) return null;
   const path = [goals[0]];
-  while (key(path[0]) !== key(enemy)) path.unshift(previous.get(key(path[0])));
+  while (key(path[0]) !== key(actor)) path.unshift(previous.get(key(path[0])));
   return path[1] ?? null;
+}
+
+function rangedRetreatStep(state, actor, targets, slot) {
+  const map = effectiveMap(state),
+    occupied = new Set([
+      ...livingParty(state)
+        .filter((candidate) => candidate.id !== actor.id)
+        .map(key),
+      ...aliveEnemies(state).map(key),
+    ]),
+    distanceFromThreats = (position) =>
+      Math.min(
+        ...targets.map((enemy) => gridDistance("square", position, enemy)),
+      ),
+    currentSpace = distanceFromThreats(actor);
+  return (
+    neighbors(map, actor)
+      .filter((position) => !occupied.has(key(position)))
+      .filter((position) => distanceFromThreats(position) > currentSpace)
+      .sort(
+        (a, b) =>
+          distanceFromThreats(b) - distanceFromThreats(a) ||
+          gridDistance("square", a, slot) - gridDistance("square", b, slot) ||
+          gridDistance("square", a, state.hero) -
+            gridDistance("square", b, state.hero),
+      )[0] ?? null
+  );
+}
+
+function visibleEnemiesFor(state, actor) {
+  const visible = visibility(state),
+    map = active(state).map;
+  if (!inside(map, actor)) return [];
+  return aliveEnemies(state).filter(
+    (enemy) =>
+      inside(map, enemy) &&
+      visible.has(key(enemy)) &&
+      lineOfSight(effectiveMap(state), actor, enemy).clear,
+  );
+}
+
+function healTarget(state, companion, dice, events) {
+  if (companion.role !== "support" || companion.supportUses <= 0) return false;
+  const wounded = partyActors(state)
+    .filter(
+      (actor) =>
+        !actor.dead &&
+        actor.hp < actor.maxHp &&
+        actor.hp <= Math.ceil(actor.maxHp / 2) &&
+        gridDistance("square", companion, actor) <= 6,
+    )
+    .sort((a, b) => a.hp / a.maxHp - b.hp / b.maxHp)[0];
+  if (!wounded) return false;
+  const roll = dice.roll("1d4+3"),
+    before = wounded.hp;
+  wounded.hp = Math.min(wounded.maxHp, wounded.hp + roll.total);
+  wounded.death = { successes: 0, failures: 0 };
+  wounded.conditions = wounded.conditions.filter(
+    (value) => value !== "unconscious",
+  );
+  companion.supportUses -= 1;
+  if (wounded.id === state.hero.id) state.status = "active";
+  events.push({
+    type: "companion_heal",
+    actorKind: "companion",
+    actorId: companion.id,
+    actorName: companion.name,
+    targetId: wounded.id,
+    targetName: wounded.name,
+    healing: wounded.hp - before,
+    position: { x: wounded.x, y: wounded.y },
+  });
+  return true;
+}
+
+function moveCompanionToCombat(
+  state,
+  companion,
+  target,
+  events,
+  reason = "engage_group_target",
+) {
+  if (state.partyGroup.order.objective === "hold") return;
+  const destination = combatStep(state, companion, target);
+  moveCompanion(state, companion, destination, reason, events);
+}
+
+function resolveCompanion(state, companion, dice, events) {
+  const targets = visibleEnemiesFor(state, companion),
+    slot = formationPosition(state, companion),
+    atSlot = same(companion, slot);
+  if (
+    (targets.length || state.status === "dying") &&
+    healTarget(state, companion, dice, events)
+  )
+    return;
+  if (state.partyGroup.order.objective === "retreat") return;
+  const target = targets.length ? partyTarget(state, companion, targets) : null,
+    pressured = targets.some(
+      (enemy) => gridDistance("square", companion, enemy) <= 2,
+    );
+  if (
+    companion.role === "rear_guard" &&
+    pressured &&
+    moveCompanion(
+      state,
+      companion,
+      rangedRetreatStep(state, companion, targets, slot),
+      "withdraw_to_ranged_position",
+      events,
+    )
+  )
+    return;
+  if (target && canAttack(state, companion, target)) {
+    attack(companion, target, dice, events, "companion");
+    addNoise(state, events, 6, companion, "companion_combat");
+    return;
+  }
+  if (target && companion.role === "scout" && threatensBackline(state, target))
+    return moveCompanionToCombat(
+      state,
+      companion,
+      target,
+      events,
+      "protect_ranged_ally",
+    );
+  if (
+    state.partyTactics.phase !== "travel" &&
+    !atSlot &&
+    moveCompanion(
+      state,
+      companion,
+      stepTowardPosition(state, companion, slot),
+      "take_formation_slot",
+      events,
+    )
+  )
+    return;
+  if (!target || companion.role !== "scout") return;
+  moveCompanionToCombat(state, companion, target, events);
+}
+
+function resolveCompanions(state, dice, events) {
+  if (visibleEnemiesFor(state, state.hero).length)
+    adoptFormation(state, "engaged", "enemy_engaged", events);
+  const byId = new Map(state.companions.map((actor) => [actor.id, actor]));
+  for (const actorId of state.partyGroup.memberIds) {
+    const companion = byId.get(actorId);
+    if (companion && conscious(companion))
+      resolveCompanion(state, companion, dice, events);
+  }
 }
 
 function enemyGroupPolicy(state, enemy) {
@@ -594,7 +1139,7 @@ function reconcileEnemyLeaders(state, events) {
   }
 }
 
-function enemyLeavesTerritory(state, enemy, template, policy) {
+function enemyLeavesTerritory(state, enemy, target, template, policy) {
   const home = active(state).rooms.find((room) => room.id === enemy.homeRoomId),
     territorial =
       policy.hold ||
@@ -602,14 +1147,14 @@ function enemyLeavesTerritory(state, enemy, template, policy) {
   return (
     territorial &&
     home &&
-    roomAt(active(state), state.hero)?.id !== home.id &&
+    roomAt(active(state), target)?.id !== home.id &&
     gridDistance("square", center(home), enemy) >= 4
   );
 }
 
-function moveEnemy(state, enemy, template, seesHero, events) {
+function moveEnemy(state, enemy, target, template, seesTarget, events) {
   const policy = enemyGroupPolicy(state, enemy);
-  if (enemyLeavesTerritory(state, enemy, template, policy)) {
+  if (enemyLeavesTerritory(state, enemy, target, template, policy)) {
     enemy.aware = false;
     return;
   }
@@ -617,7 +1162,7 @@ function moveEnemy(state, enemy, template, seesHero, events) {
       policy.retreat ||
       (["coward", "skirmisher"].includes(template.role) &&
         enemy.hp <= Math.ceil(enemy.maxHp / 2)),
-    step = enemyStep(state, enemy, retreat);
+    step = combatStep(state, enemy, target, retreat);
   if (!step) return;
   const from = { x: enemy.x, y: enemy.y };
   Object.assign(enemy, step);
@@ -630,33 +1175,72 @@ function moveEnemy(state, enemy, template, seesHero, events) {
     position: { x: enemy.x, y: enemy.y },
     reason: retreat
       ? (policy.reason ?? "retreat_wounded")
-      : seesHero
-        ? "approach_visible_hero"
+      : seesTarget
+        ? "approach_visible_party"
         : "investigate_noise",
   });
 }
 
+function enemyCanSee(state, enemy, target) {
+  const template = ROGUE_BESTIARY[enemy.template],
+    radius = template.role === "ambusher" && !enemy.aware ? 2 : 7,
+    map = active(state).map;
+  return (
+    inside(map, enemy) &&
+    inside(map, target) &&
+    gridDistance("square", enemy, target) <= radius &&
+    lineOfSight(effectiveMap(state), enemy, target).clear
+  );
+}
+
+function enemyTarget(state, enemy, group) {
+  const visible = livingParty(state).filter((target) =>
+    enemyCanSee(state, enemy, target),
+  );
+  return orderedTarget(group, visible) ?? nearestActor(enemy, visible);
+}
+
 function resolveEnemy(state, enemy, dice, events) {
-  const template = ROGUE_BESTIARY[enemy.template];
+  const template = ROGUE_BESTIARY[enemy.template],
+    policy = enemyGroupPolicy(state, enemy),
+    target = enemyTarget(state, enemy, policy.group),
+    seesTarget = Boolean(target);
   if ((template.cadence ?? 1) > 1 && state.tick % template.cadence !== 0)
     return;
-  const seesHero = enemyCanSeeHero(state, enemy);
-  if (seesHero) {
+  if (seesTarget) {
     enemy.aware = true;
-    enemy.lastKnown = { x: state.hero.x, y: state.hero.y };
+    enemy.lastKnown = { x: target.x, y: target.y };
   }
-  if (gridDistance("square", enemy, state.hero) === 1)
-    return attack(enemy, state.hero, dice, events, "enemy");
-  if (enemy.aware) moveEnemy(state, enemy, template, seesHero, events);
+  if (target && gridDistance("square", enemy, target) === 1)
+    return attack(enemy, target, dice, events, "enemy");
+  const destination = target ?? enemy.lastKnown;
+  if (enemy.aware && destination)
+    moveEnemy(state, enemy, destination, template, seesTarget, events);
+}
+
+function reconcilePartyLeader(state, events) {
+  const change = reconcileGroupLeadership(state.partyGroup, partyActors(state));
+  if (!change) return;
+  const actor = partyActors(state).find(
+    (candidate) =>
+      candidate.id === change.leaderId ||
+      candidate.id === change.previousLeaderId,
+  );
+  events.push({
+    type: "group_leader_changed",
+    ...change,
+    position: actor ? { x: actor.x, y: actor.y } : null,
+  });
 }
 
 function resolveEnemies(state, dice, events) {
   reconcileEnemyLeaders(state, events);
   const enemies = aliveEnemies(state).sort((a, b) => a.id.localeCompare(b.id));
   for (const enemy of enemies) {
-    if (state.hero.hp <= 0 || state.status !== "active") break;
+    if (!livingParty(state).length) break;
     resolveEnemy(state, enemy, dice, events);
   }
+  reconcilePartyLeader(state, events);
   if (state.hero.hp <= 0) {
     state.status = state.hero.dead ? "dead" : "dying";
     if (!state.hero.conditions.includes("unconscious"))
@@ -736,6 +1320,48 @@ function instantiateDungeonGeometry(dungeon) {
   return dungeon;
 }
 
+function enemyActor(template, room, memberIndex, packId, ordinal) {
+  const creature = ROGUE_BESTIARY[template];
+  return {
+    id: newInstanceId(),
+    definitionId: creature.definitionId,
+    entityType: "actor",
+    template,
+    name: `${creature.name} ${ordinal}`,
+    ...positionInRoom(room, memberIndex),
+    hp: creature.hp,
+    maxHp: creature.hp,
+    ac: creature.ac,
+    attackBonus: creature.attackBonus,
+    damage: creature.damage,
+    damageType: creature.damageType,
+    tempHp: 0,
+    resistances: [...(creature.resistances ?? [])],
+    vulnerabilities: [...(creature.vulnerabilities ?? [])],
+    immunities: [...(creature.immunities ?? [])],
+    aware: false,
+    lastKnown: null,
+    homeRoomId: room.id,
+    packId,
+  };
+}
+
+function spawnEnemyPacks(rooms, roster, depth) {
+  const encounterRooms = rooms.slice(
+    0,
+    Math.min(rooms.length, 2 + Math.min(3, depth - 1)),
+  );
+  let ordinal = 1;
+  return encounterRooms.flatMap((room, packIndex) => {
+    const template = roster[packIndex % roster.length],
+      packId = newInstanceId(),
+      packSize = Math.min(3, 1 + ((depth + packIndex) % 2));
+    return Array.from({ length: packSize }, (_, memberIndex) =>
+      enemyActor(template, room, memberIndex, packId, ordinal++),
+    );
+  });
+}
+
 function buildLevel(input, depth, maxDepth) {
   const dungeon = instantiateDungeonGeometry(
     generateDungeon(
@@ -745,7 +1371,7 @@ function buildLevel(input, depth, maxDepth) {
         form: input.form,
         size: input.size === "medium" ? "rogue_vast" : "rogue_expansive",
         partyLevel: depth,
-        partySize: 1,
+        partySize: 4,
         dungeonLevel: depth,
         density: depth === 1 ? "normal" : "dense",
         difficulty: depth === 1 ? "easy" : "standard",
@@ -795,33 +1421,7 @@ function buildLevel(input, depth, maxDepth) {
                 "wight_keeper",
                 "ochre_jelly",
               ];
-  const enemies = candidates
-    .slice(0, Math.min(candidates.length, 2 + Math.min(3, depth - 1)))
-    .map((room, index) => {
-      const template = roster[index % roster.length],
-        m = ROGUE_BESTIARY[template];
-      return {
-        id: newInstanceId(),
-        definitionId: m.definitionId,
-        entityType: "actor",
-        template,
-        name: `${m.name} ${index + 1}`,
-        ...positionInRoom(room),
-        hp: m.hp,
-        maxHp: m.hp,
-        ac: m.ac,
-        attackBonus: m.attackBonus,
-        damage: m.damage,
-        damageType: m.damageType,
-        tempHp: 0,
-        resistances: [...(m.resistances ?? [])],
-        vulnerabilities: [...(m.vulnerabilities ?? [])],
-        immunities: [...(m.immunities ?? [])],
-        aware: false,
-        lastKnown: null,
-        homeRoomId: room.id,
-      };
-    });
+  const enemies = spawnEnemyPacks(candidates, roster, depth);
   if (depth === maxDepth) {
     const room = dungeon.rooms.at(-1),
       m = ROGUE_BESTIARY.reliquary_warden;
@@ -845,6 +1445,7 @@ function buildLevel(input, depth, maxDepth) {
       aware: false,
       lastKnown: null,
       homeRoomId: room.id,
+      packId: newInstanceId(),
     });
   }
   const enemyGroups = buildEnemyGroups(enemies, depth);
@@ -978,6 +1579,34 @@ function buildLevel(input, depth, maxDepth) {
   };
 }
 
+function placePartyAt(state, position) {
+  Object.assign(state.hero, position);
+  const occupied = new Set([key(position)]),
+    enemyPositions = new Set(aliveEnemies(state).map(key)),
+    { costs } = paths(effectiveMap(state), position),
+    candidates = [...costs.entries()]
+      .filter(
+        ([value]) => value !== key(position) && !enemyPositions.has(value),
+      )
+      .sort(([, a], [, b]) => a - b)
+      .map(([value]) => {
+        const [x, y] = value.split(",").map(Number);
+        return { x, y };
+      });
+  for (const companion of state.companions) {
+    const target = candidates.find(
+      (candidate) => !occupied.has(key(candidate)),
+    );
+    check(
+      target,
+      "PARTY_PLACEMENT_BLOCKED",
+      "The party cannot enter this level.",
+    );
+    Object.assign(companion, target);
+    occupied.add(key(target));
+  }
+}
+
 export function newRogueRun(input) {
   const maxDepth = [3, 5, 8].includes(input.levels) ? input.levels : 5,
     archetype = HERO_ARCHETYPES[input.heroClass] ?? HERO_ARCHETYPES.fighter,
@@ -986,16 +1615,48 @@ export function newRogueRun(input) {
     startingOffhand = archetype.offhand
       ? equipmentItem(newInstanceId(), archetype.offhand, true)
       : null,
+    startingAxe = equipmentItem(newInstanceId(), "hand_axe"),
+    startingShovel = equipmentItem(newInstanceId(), "field_shovel"),
     startingAc = startingArmor.ac + (startingOffhand?.acBonus ?? 0),
     runId = newInstanceId(),
-    heroId = newInstanceId();
+    heroId = newInstanceId(),
+    companions = createCompanions();
   const state = {
-    schemaVersion: 4,
+    schemaVersion: 11,
     ruleset: ROGUE_RULESET,
     id: runId,
     revision: 0,
     tick: 0,
     status: "active",
+    location: "dungeon",
+    villageVisits: 0,
+    world: {
+      position: "dungeon_entrance",
+      coordinates: { x: WORLD.nodes[0].x, y: WORLD.nodes[0].y },
+    },
+    exterior: {
+      danger: false,
+      dangerReason: null,
+      heroPosition: { ...EXTERIOR.heroPosition },
+      companionPositions: structuredClone(EXTERIOR.companionPositions),
+    },
+    village: {
+      heroPosition: { ...VILLAGE.heroPosition },
+      companionPositions: structuredClone(VILLAGE.companionPositions),
+      viewportOrigin: { ...VILLAGE.viewportOrigin },
+      partyMovement: "follow",
+      modifications: [],
+      looseMaterials: [],
+      wantedLevel: 0,
+      npcStates: createVillageNpcStates(runId),
+      doors: VILLAGE_BUILDINGS.map((building) => ({
+        id: newInstanceId(),
+        entityType: "door",
+        buildingKey: building.key,
+        ...building.door,
+        state: "closed",
+      })),
+    },
     seed: input.seed,
     depth: 1,
     maxDepth,
@@ -1052,6 +1713,8 @@ export function newRogueRun(input) {
       inventory: [
         startingWeapon,
         startingArmor,
+        startingAxe,
+        startingShovel,
         ...(startingOffhand ? [startingOffhand] : []),
         {
           id: newInstanceId(),
@@ -1069,7 +1732,14 @@ export function newRogueRun(input) {
       },
       inventoryCapacity: 10,
     },
+    companions,
     partyGroup: null,
+    partyTactics: {
+      facing: "north",
+      phase: "travel",
+      anchor: null,
+      deployedAtTick: null,
+    },
     visionRadius: 6,
   };
   state.partyGroup = createGroup({
@@ -1077,18 +1747,24 @@ export function newRogueRun(input) {
     definitionId: definitionId("group", "adventuring-party"),
     name: `${state.hero.name}'s company`,
     side: "party",
-    memberIds: [state.hero.id],
+    memberIds: partyActors(state).map((actor) => actor.id),
     assignments: [
       { actorId: state.hero.id, role: "leader", commandScore: 100 },
+      ...companions.map((companion, index) => ({
+        actorId: companion.id,
+        role: companion.role,
+        commandScore: 60 - index * 10,
+      })),
     ],
     leaderId: state.hero.id,
     formation: "column",
     objective: "explore",
     resourcePolicy: "balanced",
     retreatThreshold: 25,
+    movementMode: "follow_leader",
   });
   attachActive(state);
-  Object.assign(state.hero, state.entrance);
+  placePartyAt(state, state.entrance);
   visibility(state);
   return state;
 }
@@ -1189,13 +1865,33 @@ function recalculateHero(state) {
     (armor?.ac ?? 10) + (offhand?.acBonus ?? 0) + (state.hero.blessingAc ?? 0);
 }
 
+function recalculateCompanion(actor) {
+  const weapon = actor.inventory.find(
+      (entry) => entry.id === actor.equipment.weapon,
+    ),
+    armor = actor.inventory.find((entry) => entry.id === actor.equipment.armor),
+    offhand = actor.inventory.find(
+      (entry) => entry.id === actor.equipment.offhand,
+    );
+  actor.attackBonus = weapon?.attackBonus ?? actor.baseAttackBonus;
+  actor.damage = weapon?.damage ?? actor.baseDamage;
+  actor.damageType = weapon?.damageType ?? actor.baseDamageType;
+  actor.ac = (armor?.ac ?? actor.baseAc) + (offhand?.acBonus ?? 0);
+}
+
+function partyActorById(state, actorId) {
+  return partyActors(state).find((actor) => actor.id === actorId);
+}
+
+function recalculatePartyActor(state, actor) {
+  if (actor.id === state.hero.id) recalculateHero(state);
+  else recalculateCompanion(actor);
+}
+
 function nearestVisibleEnemy(state) {
+  const currentVisible = visibility(state);
   return aliveEnemies(state)
-    .filter(
-      (enemy) =>
-        gridDistance("square", enemy, state.hero) <= state.visionRadius &&
-        lineOfSight(effectiveMap(state), state.hero, enemy).clear,
-    )
+    .filter((enemy) => currentVisible.has(key(enemy)))
     .sort(
       (a, b) =>
         gridDistance("square", a, state.hero) -
@@ -1263,7 +1959,7 @@ function invokeItem(state, intent, dice, events) {
       position: { x: state.hero.x, y: state.hero.y },
     });
   } else if (item.kind === "scroll_flame") {
-    const enemy = nearestVisibleEnemy(state);
+    const enemy = visibleEnemyTarget(state, intent.targetId);
     check(enemy, "NO_VISIBLE_TARGET", "No enemy is visible for the scroll.");
     magicalDamage(state, enemy, dice, events, {
       name: "Flame",
@@ -1272,7 +1968,7 @@ function invokeItem(state, intent, dice, events) {
       source: "scroll",
     });
   } else if (item.kind === "wand_arc") {
-    const enemy = nearestVisibleEnemy(state);
+    const enemy = visibleEnemyTarget(state, intent.targetId);
     check(enemy, "NO_VISIBLE_TARGET", "No enemy is visible for the wand.");
     magicalDamage(state, enemy, dice, events, {
       name: "Arcing Sparks",
@@ -1283,6 +1979,77 @@ function invokeItem(state, intent, dice, events) {
   } else throw new RuleError("ITEM_NOT_USABLE", "That item cannot be invoked.");
   if (item.itemType === "wand") item.charges -= 1;
   else item.quantity -= 1;
+}
+
+function visibleEnemyTarget(state, targetId) {
+  if (!targetId) return nearestVisibleEnemy(state);
+  const visible = visibility(state);
+  return aliveEnemies(state).find(
+    (enemy) => enemy.id === targetId && visible.has(key(enemy)),
+  );
+}
+
+function rangedAttack(state, intent, dice, events) {
+  const weapon = ROGUE_EQUIPMENT[state.hero.weapon];
+  check(weapon?.rangeSquares, "RANGED_WEAPON_REQUIRED", "Equip a bow first.");
+  const enemy = visibleEnemyTarget(state, intent.targetId);
+  check(enemy, "NO_VISIBLE_TARGET", "That target is not visible.");
+  check(
+    gridDistance("square", state.hero, enemy) <= weapon.rangeSquares,
+    "TARGET_OUT_OF_RANGE",
+    `${enemy.name} is beyond the ${weapon.name}'s range.`,
+  );
+  attack(state.hero, enemy, dice, events, "hero");
+  addNoise(state, events, 4, state.hero, "ranged_combat");
+}
+
+function throwItem(state, intent, dice, events) {
+  const item = state.hero.inventory.find((entry) => entry.id === intent.itemId);
+  check(item?.thrownRange, "ITEM_NOT_THROWABLE", "That item cannot be thrown.");
+  const enemy = visibleEnemyTarget(state, intent.targetId);
+  check(enemy, "NO_VISIBLE_TARGET", "That target is not visible.");
+  check(
+    gridDistance("square", state.hero, enemy) <= item.thrownRange,
+    "TARGET_OUT_OF_RANGE",
+    `${enemy.name} is too far away to throw at.`,
+  );
+  attack(
+    {
+      ...state.hero,
+      attackBonus: item.attackBonus,
+      damage: item.damage,
+      damageType: item.damageType,
+    },
+    enemy,
+    dice,
+    events,
+    "hero",
+  );
+  events.push({
+    type: "item_thrown",
+    actorId: state.hero.id,
+    targetId: enemy.id,
+    itemId: item.id,
+    itemName: item.name,
+    targetName: enemy.name,
+    position: { x: enemy.x, y: enemy.y },
+  });
+  addNoise(state, events, 5, state.hero, "thrown_weapon");
+}
+
+function examineDungeon(state, intent, events) {
+  const cell = cellView(state, intent, visibility(state));
+  check(cell?.visibility === "visible", "NOT_VISIBLE", "You cannot see that.");
+  const subject = cell.enemy ?? cell.feature ?? cell.treasure;
+  const name = subject?.name ?? cell.tile.replaceAll("_", " ");
+  const detail = cell.enemy
+    ? `${cell.enemy.name} is a ${cell.enemy.role.replaceAll("_", " ")} of the ${cell.enemy.faction.replaceAll("_", " ")} faction, with ${cell.enemy.hp} of ${cell.enemy.maxHp} HP.`
+    : cell.treasure
+      ? `${cell.treasure.name} appears to be worth ${cell.treasure.valueCp} copper pieces.`
+      : cell.feature
+        ? `${cell.feature.name} is ${cell.feature.spent ? "spent or inactive" : "ready to be approached and used"}.`
+        : `You study the ${name}.`;
+  events.push({ type: "dungeon_examined", name, detail, position: intent });
 }
 
 function useClassPower(state, dice, events) {
@@ -1326,10 +2093,12 @@ function useClassPower(state, dice, events) {
 function restStatus(state) {
   const die = HERO_HIT_DICE[state.hero.class] ?? 8,
     remaining = state.hero.hitDice?.remaining ?? state.hero.level,
-    threatened = aliveEnemies(state).some(
-      (enemy) =>
-        gridDistance("square", enemy, state.hero) <= 2 ||
-        enemyCanSeeHero(state, enemy),
+    threatened = aliveEnemies(state).some((enemy) =>
+      livingParty(state).some(
+        (actor) =>
+          gridDistance("square", enemy, actor) <= 2 ||
+          enemyCanSee(state, enemy, actor),
+      ),
     );
   if (state.hero.hp >= state.hero.maxHp)
     return {
@@ -1448,24 +2217,27 @@ function grantExperience(state, events) {
 }
 
 function equipItem(state, intent, events) {
-  const item = state.hero.inventory.find(
+  const actor = partyActorById(state, intent.actorId ?? state.hero.id);
+  check(actor, "ACTOR_NOT_FOUND", "That party member does not exist.");
+  const item = actor.inventory.find(
     (entry) => entry.id === intent.itemId && entry.itemType === "equipment",
   );
   check(item, "EQUIPMENT_NOT_FOUND", "That equipment is not in the inventory.");
-  const previousId = state.hero.equipment[item.slot],
-    previous = state.hero.inventory.find((entry) => entry.id === previousId);
+  const previousId = actor.equipment[item.slot],
+    previous = actor.inventory.find((entry) => entry.id === previousId);
   if (previous) previous.equipped = false;
   item.equipped = true;
-  state.hero.equipment[item.slot] = item.id;
-  recalculateHero(state);
+  actor.equipment[item.slot] = item.id;
+  recalculatePartyActor(state, actor);
   events.push({
     type: "equipment_changed",
-    actorId: state.hero.id,
+    actorId: actor.id,
+    actorName: actor.name,
     itemId: item.id,
     itemName: item.name,
     slot: item.slot,
     previousItemName: previous?.name ?? null,
-    position: { x: state.hero.x, y: state.hero.y },
+    position: { x: actor.x, y: actor.y },
   });
 }
 
@@ -1475,19 +2247,22 @@ function unequipItem(state, intent, events) {
     "SLOT_REQUIRED",
     "Only the offhand may be left empty.",
   );
-  const previousId = state.hero.equipment.offhand,
-    previous = state.hero.inventory.find((entry) => entry.id === previousId);
+  const actor = partyActorById(state, intent.actorId ?? state.hero.id);
+  check(actor, "ACTOR_NOT_FOUND", "That party member does not exist.");
+  const previousId = actor.equipment.offhand,
+    previous = actor.inventory.find((entry) => entry.id === previousId);
   check(previous, "EQUIPMENT_NOT_FOUND", "The offhand slot is already empty.");
   previous.equipped = false;
-  state.hero.equipment.offhand = null;
-  recalculateHero(state);
+  actor.equipment.offhand = null;
+  recalculatePartyActor(state, actor);
   events.push({
     type: "equipment_removed",
-    actorId: state.hero.id,
+    actorId: actor.id,
+    actorName: actor.name,
     itemId: previous.id,
     itemName: previous.name,
     slot: "offhand",
-    position: { x: state.hero.x, y: state.hero.y },
+    position: { x: actor.x, y: actor.y },
   });
 }
 
@@ -1504,7 +2279,7 @@ function descend(state, events) {
   );
   state.depth += 1;
   attachActive(state);
-  Object.assign(state.hero, state.entrance);
+  placePartyAt(state, state.entrance);
   visibility(state);
   events.push({
     type: "level_changed",
@@ -1512,6 +2287,660 @@ function descend(state, events) {
     depth: state.depth,
     position: { x: state.hero.x, y: state.hero.y },
   });
+}
+
+function ascend(state, events) {
+  check(
+    same(state.hero, state.entrance),
+    "NO_STAIRS_UP",
+    "Stand at this level's entrance before ascending.",
+  );
+  if (state.depth === 1) return enterExterior(state, events);
+  state.depth -= 1;
+  attachActive(state);
+  placePartyAt(state, state.exit);
+  visibility(state);
+  events.push({
+    type: "level_changed",
+    direction: "up",
+    depth: state.depth,
+    position: { x: state.hero.x, y: state.hero.y },
+  });
+}
+
+function enterExterior(state, events) {
+  state.location = "exterior";
+  state.world.position = "dungeon_entrance";
+  state.world.coordinates = {
+    x: WORLD.nodes[0].x,
+    y: WORLD.nodes[0].y,
+  };
+  events.push({
+    type: "exterior_entered",
+    areaName: "Rooted Keep approach",
+    position: null,
+  });
+}
+
+function openWorld(state, events) {
+  check(
+    ["exterior", "village"].includes(state.location),
+    "WORLD_MAP_UNAVAILABLE",
+    "Reach an outdoor local area before opening the world map.",
+  );
+  check(
+    state.location !== "exterior" || !state.exterior.danger,
+    "EXTERIOR_DANGER",
+    state.exterior.dangerReason ??
+      "The party cannot open the world map while the local area is dangerous.",
+  );
+  state.location = "world";
+  events.push({
+    type: "world_map_opened",
+    nodeId: state.world.position,
+    position: null,
+  });
+}
+
+function worldTravel(state, intent, events) {
+  const destination = WORLD.nodes.find(
+      (node) => node.id === intent.destination,
+    ),
+    connected = WORLD.routes.some(
+      (route) =>
+        [route.from, route.to].includes(state.world.position) &&
+        [route.from, route.to].includes(intent.destination),
+    );
+  check(
+    destination && connected,
+    "WORLD_ROUTE_MISSING",
+    "No road leads there.",
+  );
+  check(
+    destination.id !== state.world.position,
+    "WORLD_ALREADY_THERE",
+    "The party is already there.",
+  );
+  const from = state.world.position;
+  state.world.position = destination.id;
+  state.world.coordinates = { x: destination.x, y: destination.y };
+  events.push({
+    type: "world_travel",
+    groupId: state.partyGroup.id,
+    from,
+    destination: destination.id,
+    destinationName: destination.name,
+    position: null,
+  });
+}
+
+function worldMove(state, intent, events) {
+  const visible = worldMapView(state).cells.some(
+      (cell) => cell.worldX === intent.x && cell.worldY === intent.y,
+    ),
+    from = { ...state.world.coordinates },
+    destination = WORLD.nodes.find(
+      (node) => node.x === intent.x && node.y === intent.y,
+    );
+  check(
+    visible,
+    "WORLD_TARGET_NOT_VISIBLE",
+    "Choose a square in the visible regional map.",
+  );
+  state.world.coordinates = { x: intent.x, y: intent.y };
+  state.world.position = destination?.id ?? null;
+  events.push({
+    type: "world_move",
+    groupId: state.partyGroup.id,
+    from,
+    to: { ...state.world.coordinates },
+    destinationName: destination?.name ?? null,
+    position: null,
+  });
+}
+
+function enterWorldLocation(state, events) {
+  if (state.world.position === "stonebridge")
+    return enterVillage(state, events);
+  if (state.world.position === "dungeon_entrance")
+    return enterExterior(state, events);
+  throw new RuleError(
+    "WORLD_LOCATION_UNKNOWN",
+    "That location cannot be entered.",
+  );
+}
+
+function enterVillage(state, events) {
+  state.location = "village";
+  state.world.position = "stonebridge";
+  state.world.coordinates = {
+    x: WORLD.nodes[1].x,
+    y: WORLD.nodes[1].y,
+  };
+  state.villageVisits += 1;
+  events.push({
+    type: "village_entered",
+    villageName: VILLAGE.name,
+    visits: state.villageVisits,
+    position: null,
+  });
+}
+
+function localAreaDefinition(location) {
+  return location === "village"
+    ? { definition: VILLAGE, tileAt: villageTile }
+    : {
+        definition: EXTERIOR,
+        tileAt: (_state, x, y) => exteriorTile(x, y),
+      };
+}
+
+function localMapBounds(state, target) {
+  if (state.location !== "village")
+    return { origin: { x: 0, y: 0 }, ...EXTERIOR };
+  const from = state.village.heroPosition,
+    margin = 16,
+    left = Math.min(from.x, target.x) - margin,
+    top = Math.min(from.y, target.y) - margin;
+  return {
+    origin: { x: left, y: top },
+    width: Math.max(from.x, target.x) - left + margin + 1,
+    height: Math.max(from.y, target.y) - top + margin + 1,
+  };
+}
+
+function localSpatialMap(state, target) {
+  const { tileAt } = localAreaDefinition(state.location),
+    bounds = localMapBounds(state, target),
+    blockedTiles = new Set([
+      "outdoor_tree",
+      "outdoor_ruin",
+      "outdoor_water",
+      "village_sign",
+      "village_building",
+      "village_furniture",
+      "village_person",
+      "village_door_closed",
+      "village_pit",
+    ]),
+    blockedCells = [];
+  for (let y = 0; y < bounds.height; y++)
+    for (let x = 0; x < bounds.width; x++) {
+      const world = { x: x + bounds.origin.x, y: y + bounds.origin.y },
+        terrain = tileAt(state, world.x, world.y),
+        tile = typeof terrain === "string" ? terrain : terrain.tile;
+      if (blockedTiles.has(tile)) blockedCells.push({ x, y });
+    }
+  return {
+    grid: "square",
+    width: bounds.width,
+    height: bounds.height,
+    blocked: blockedCells,
+    difficult: [],
+    origin: bounds.origin,
+  };
+}
+
+function openLocalDoor(state, target, events) {
+  if (state.location !== "village") return false;
+  const door = state.village.doors.find(
+    (candidate) => same(candidate, target) && candidate.state === "closed",
+  );
+  if (!door) return false;
+  check(
+    gridDistance("square", state.village.heroPosition, target) <= 1,
+    "DOOR_OUT_OF_REACH",
+    "Move next to the door before opening it.",
+  );
+  door.state = "open";
+  events.push({
+    type: "door_opened",
+    doorId: door.id,
+    position: { ...target },
+  });
+  return true;
+}
+
+function moveLocalParty(state, intent, events) {
+  const area = state[state.location],
+    target = { x: intent.x, y: intent.y };
+  if (openLocalDoor(state, target, events)) return;
+  const spatial = localSpatialMap(state, target),
+    localize = (position) => ({
+      x: position.x - spatial.origin.x,
+      y: position.y - spatial.origin.y,
+    }),
+    path = route(
+      spatial,
+      localize(area.heroPosition),
+      localize(target),
+      new Set(),
+    ).path.map((position) => ({
+      x: position.x + spatial.origin.x,
+      y: position.y + spatial.origin.y,
+    })),
+    trail = [area.heroPosition, ...area.companionPositions].map((position) => ({
+      ...position,
+    }));
+  if (state.location === "village" && area.partyMovement === "dispersed")
+    area.heroPosition = path.at(-1);
+  else {
+    for (const step of path.slice(1)) {
+      trail.unshift({ ...step });
+      trail.pop();
+    }
+    area.heroPosition = trail[0];
+    area.companionPositions = trail.slice(1);
+  }
+  events.push({
+    type: "local_travel",
+    area: state.location,
+    partyMovement: area.partyMovement ?? "follow",
+    path,
+    position: { ...area.heroPosition },
+  });
+}
+
+function setVillagePartyMovement(state, intent, events) {
+  check(
+    ["follow", "dispersed"].includes(intent.mode),
+    "PARTY_MOVEMENT_INVALID",
+    "Choose follow or dispersed movement.",
+  );
+  state.village.partyMovement = intent.mode;
+  events.push({
+    type: "party_movement_changed",
+    mode: intent.mode,
+    position: { ...state.village.heroPosition },
+  });
+}
+
+function villageExamination(state, target) {
+  const terrain = villageTile(state, target.x, target.y);
+  if (terrain.material)
+    return {
+      name: terrain.material.name,
+      detail: `${terrain.material.quantity} ${MATERIAL_DEFINITIONS[terrain.material.kind].unit}${terrain.material.quantity === 1 ? "" : "s"} can be collected here.`,
+    };
+  if (terrain.modification)
+    return {
+      name: terrain.tile.replaceAll("_", " "),
+      detail: `This place was changed from ${terrain.modification.originalTile.replaceAll("_", " ")} on turn ${terrain.modification.createdAtTick}.`,
+    };
+  if (terrain.sign)
+    return {
+      name: "Roadside sign",
+      detail: `The sign reads: “${terrain.sign.text}.”`,
+    };
+  if (terrain.furniture)
+    return {
+      name: terrain.furniture.name,
+      detail: terrain.furniture.description,
+    };
+  if (terrain.person)
+    return {
+      name: terrain.person.name,
+      detail: `${terrain.person.name} is a ${terrain.person.role} of Stonebridge. Objective: ${terrain.person.objective.replaceAll("_", " ")}. Currently: ${terrain.person.currentAction}.`,
+    };
+  if (terrain.building)
+    return {
+      name: terrain.building.name,
+      detail: `This part of ${terrain.building.name} is ${terrain.tile === "village_floor" ? "a usable interior room" : "solid timber-and-stone construction"}.`,
+    };
+  if (terrain.tile === "outdoor_tree")
+    return {
+      name: "Old tree",
+      detail: "An old shade tree marks the settled edge of Stonebridge.",
+    };
+  if (terrain.tile.startsWith("road_"))
+    return {
+      name: "Town road",
+      detail: "Cart wheels and many boots have worn this route through town.",
+    };
+  return {
+    name: "Village ground",
+    detail: "Grass and low weeds grow between the traveled places.",
+  };
+}
+
+function examineVillage(state, intent, events) {
+  const target = { x: intent.x, y: intent.y },
+    origin = villageViewportOrigin(state),
+    visible =
+      target.x >= origin.x &&
+      target.y >= origin.y &&
+      target.x < origin.x + VILLAGE.width &&
+      target.y < origin.y + VILLAGE.height;
+  check(
+    visible,
+    "EXAMINE_NOT_VISIBLE",
+    "That place is outside the visible town map.",
+  );
+  events.push({
+    type: "local_examined",
+    ...villageExamination(state, target),
+    position: target,
+  });
+}
+
+function talkVillage(state, intent, events) {
+  const target = { x: intent.x, y: intent.y },
+    person = villagePersonAt(state, target.x, target.y),
+    origin = villageViewportOrigin(state),
+    visible =
+      target.x >= origin.x &&
+      target.y >= origin.y &&
+      target.x < origin.x + VILLAGE.width &&
+      target.y < origin.y + VILLAGE.height;
+  check(
+    visible,
+    "TALK_NOT_VISIBLE",
+    "That person is outside the visible town map.",
+  );
+  check(person, "TALK_TARGET_MISSING", "There is nobody there to speak with.");
+  events.push({
+    type: "local_talked",
+    personId: migratedInstanceId(state.id, "village-person", person.key),
+    personName: person.name,
+    role: person.role,
+    dialogue: VILLAGE_DIALOGUE[person.key],
+    position: target,
+  });
+}
+
+const MATERIAL_DEFINITIONS = {
+  timber: { name: "Cut timber", unit: "bundle" },
+  stone: { name: "Building stone", unit: "piece" },
+  earth: { name: "Excavated earth", unit: "load" },
+};
+
+function interactionTool(state, tag) {
+  return state.hero.inventory.find(
+    (item) => item.quantity > 0 && item.toolTags?.includes(tag),
+  );
+}
+
+function createLooseMaterial(state, kind, position, quantity) {
+  const definition = MATERIAL_DEFINITIONS[kind],
+    material = {
+      id: newInstanceId(),
+      definitionId: definitionId("material", kind),
+      entityType: "material",
+      kind,
+      name: definition.name,
+      quantity,
+      ...position,
+    };
+  state.village.looseMaterials.push(material);
+  return material;
+}
+
+function addVillageModification(state, kind, target, originalTile) {
+  const modification = {
+    id: newInstanceId(),
+    definitionId: definitionId("terrain-change", kind),
+    entityType: "terrain-change",
+    kind,
+    x: target.x,
+    y: target.y,
+    originalTile,
+    actorId: state.hero.id,
+    createdAtTick: state.tick,
+  };
+  state.village.modifications.push(modification);
+  return modification;
+}
+
+function collectMaterial(state, material, events) {
+  const carried = state.hero.inventory.find(
+    (item) => item.itemType === "material" && item.kind === material.kind,
+  );
+  if (carried) carried.quantity += material.quantity;
+  else
+    state.hero.inventory.push({
+      id: newInstanceId(),
+      definitionId: material.definitionId,
+      entityType: "item",
+      itemType: "material",
+      kind: material.kind,
+      name: material.name,
+      quantity: material.quantity,
+    });
+  state.village.looseMaterials = state.village.looseMaterials.filter(
+    (candidate) => candidate.id !== material.id,
+  );
+  events.push({
+    type: "material_collected",
+    itemName: material.name,
+    quantity: material.quantity,
+    position: { x: material.x, y: material.y },
+  });
+}
+
+function alertTownGuard(state, target, events) {
+  state.village.wantedLevel += 1;
+  const guard = state.village.npcStates.find(
+    (npc) => npc.personKey === "watchman",
+  );
+  guard.objective = "protect_town";
+  guard.currentAction = "Investigating damage to town property";
+  guard.actionReason = "player_crime";
+  guard.actionTarget = { ...target };
+  events.push({
+    type: "guard_reacted",
+    personId: guard.id,
+    personName: "Friedel Koch",
+    wantedLevel: state.village.wantedLevel,
+    position: { ...guard.position },
+  });
+}
+
+function manipulateVillage(state, intent, events) {
+  const target = { x: intent.x, y: intent.y },
+    distance = gridDistance("square", state.village.heroPosition, target),
+    terrain = villageTile(state, target.x, target.y);
+  check(distance <= 1, "INTERACTION_OUT_OF_REACH", "Move next to the target.");
+  if (intent.action === "collect") {
+    check(terrain.material, "MATERIAL_MISSING", "There is nothing to collect.");
+    return collectMaterial(state, terrain.material, events);
+  }
+  const requirements = { dig: "dig", harvest: "cut", breach: "breach" },
+    tool = interactionTool(state, requirements[intent.action]);
+  check(tool, "TOOL_REQUIRED", `You lack a tool suitable to ${intent.action}.`);
+  const allowed = {
+    dig: ["outdoor_grass", "road_dirt"],
+    harvest: ["outdoor_tree"],
+    breach: ["village_building"],
+  }[intent.action];
+  check(
+    allowed?.includes(terrain.tile),
+    "TARGET_INVALID",
+    `You cannot ${intent.action} that.`,
+  );
+  const result = {
+    dig: ["dug_ground", "earth", 1],
+    harvest: ["tree_stump", "timber", 2],
+    breach: ["breached_wall", "stone", 2],
+  }[intent.action];
+  addVillageModification(state, result[0], target, terrain.tile);
+  const material = createLooseMaterial(state, result[1], target, result[2]);
+  events.push({
+    type: "world_manipulated",
+    action: intent.action,
+    actorId: state.hero.id,
+    toolId: tool.id,
+    toolName: tool.name,
+    materialId: material.id,
+    materialName: material.name,
+    quantity: material.quantity,
+    position: target,
+  });
+  if (intent.action === "breach") alertTownGuard(state, target, events);
+}
+
+function enterDungeon(state, events) {
+  state.location = "dungeon";
+  state.depth = 1;
+  attachActive(state);
+  placePartyAt(state, state.entrance);
+  visibility(state);
+  events.push({
+    type: "dungeon_entered",
+    depth: state.depth,
+    position: { x: state.hero.x, y: state.hero.y },
+  });
+}
+
+function villageGood(itemKind) {
+  if (!VILLAGE.shops.some((shop) => shop.goods.includes(itemKind))) return null;
+  if (itemKind === "healing_potion")
+    return {
+      itemKind,
+      name: "Healing potion",
+      itemType: "consumable",
+      priceCp: 50,
+    };
+  const equipment = ROGUE_EQUIPMENT[itemKind];
+  return equipment ? { itemKind, itemType: "equipment", ...equipment } : null;
+}
+
+function buyConsumable(state, good) {
+  const existing = state.hero.inventory.find(
+    (item) => item.kind === good.itemKind,
+  );
+  if (existing) existing.quantity += 1;
+  else
+    state.hero.inventory.push({
+      id: newInstanceId(),
+      definitionId: definitionId("item", good.itemKind),
+      entityType: "item",
+      kind: good.itemKind,
+      name: good.name,
+      quantity: 1,
+    });
+  return state.hero;
+}
+
+function buyEquipment(state, actor, good) {
+  const item = equipmentItem(newInstanceId(), good.itemKind);
+  actor.inventory.push(item);
+  equipItem(state, { itemId: item.id, actorId: actor.id }, []);
+  return actor;
+}
+
+function shopBuy(state, intent, events) {
+  const good = villageGood(intent.itemKind),
+    actor = partyActorById(state, intent.actorId),
+    shop = VILLAGE.shops.find((candidate) =>
+      candidate.goods.includes(intent.itemKind),
+    ),
+    currentShop = villageShopAt(state.village.heroPosition);
+  check(good, "SHOP_ITEM_NOT_FOUND", "That item is not sold in Stonebridge.");
+  check(
+    shop?.id === currentShop?.shopKey,
+    "SHOP_NOT_PRESENT",
+    `Enter ${shop?.name ?? "the shop"} before buying this item.`,
+  );
+  check(actor, "ACTOR_NOT_FOUND", "That buyer is not a member of the party.");
+  check(
+    state.hero.goldCp >= good.priceCp,
+    "INSUFFICIENT_FUNDS",
+    `The party needs ${good.priceCp} cp for ${good.name}.`,
+  );
+  state.hero.goldCp -= good.priceCp;
+  const recipient =
+    good.itemType === "equipment"
+      ? buyEquipment(state, actor, good)
+      : buyConsumable(state, good);
+  events.push({
+    type: "item_purchased",
+    actorId: recipient.id,
+    actorName: recipient.name,
+    itemKind: good.itemKind,
+    itemName: good.name,
+    priceCp: good.priceCp,
+    remainingCp: state.hero.goldCp,
+    villageName: VILLAGE.name,
+    position: null,
+  });
+}
+
+function resolveVillageAction(state, intent, events) {
+  if (intent.kind === "open_world") return openWorld(state, events);
+  if (intent.kind === "local_move")
+    return moveLocalParty(state, intent, events);
+  if (intent.kind === "local_examine")
+    return examineVillage(state, intent, events);
+  if (intent.kind === "local_talk") return talkVillage(state, intent, events);
+  if (intent.kind === "local_manipulate")
+    return manipulateVillage(state, intent, events);
+  if (intent.kind === "set_party_movement")
+    return setVillagePartyMovement(state, intent, events);
+  if (intent.kind === "shop_buy") return shopBuy(state, intent, events);
+  if (intent.kind === "equip") return equipItem(state, intent, events);
+  if (intent.kind === "unequip") return unequipItem(state, intent, events);
+  throw new RuleError("VILLAGE_INTENT_REQUIRED", "Choose a village action.");
+}
+
+function stepNpcToward(npc, target) {
+  const dx = Math.sign(target.x - npc.position.x),
+    dy = Math.sign(target.y - npc.position.y);
+  npc.position = {
+    x: npc.position.x + (dx || 0),
+    y: npc.position.y + (dx ? 0 : dy),
+  };
+}
+
+function advanceVillageNpc(npc, events) {
+  if (npc.actionReason === "player_crime" && npc.actionTarget)
+    stepNpcToward(npc, npc.actionTarget);
+  else {
+    const route = VILLAGE_ROUTES[npc.personKey];
+    if (!route) return;
+    npc.routeIndex = (npc.routeIndex + 1) % route.length;
+    npc.position = { x: route[npc.routeIndex][0], y: route[npc.routeIndex][1] };
+  }
+  events.push({
+    type: "npc_move",
+    actorId: npc.id,
+    objective: npc.objective,
+    currentAction: npc.currentAction,
+    position: { ...npc.position },
+  });
+}
+
+function advanceVillageNpcs(state, events) {
+  for (const npc of state.village.npcStates) advanceVillageNpc(npc, events);
+}
+
+function resolveVillageTurn(state, intent, events) {
+  const result = resolveVillageAction(state, intent, events);
+  if (
+    ["local_move", "local_manipulate", "shop_buy", "equip"].includes(
+      intent.kind,
+    )
+  )
+    advanceVillageNpcs(state, events);
+  return result;
+}
+
+function resolveExteriorTurn(state, intent, events) {
+  if (intent.kind === "enter_dungeon") return enterDungeon(state, events);
+  if (intent.kind === "open_world") return openWorld(state, events);
+  if (intent.kind === "local_move")
+    return moveLocalParty(state, intent, events);
+  throw new RuleError(
+    "EXTERIOR_INTENT_REQUIRED",
+    "Choose a local-area action.",
+  );
+}
+
+function resolveWorldTurn(state, intent, events) {
+  if (intent.kind === "world_travel") return worldTravel(state, intent, events);
+  if (intent.kind === "world_move") return worldMove(state, intent, events);
+  if (intent.kind === "enter_location")
+    return enterWorldLocation(state, events);
+  throw new RuleError("WORLD_INTENT_REQUIRED", "Choose a world-map action.");
 }
 
 function resolveDyingTurn(state, intent, dice, events) {
@@ -1547,6 +2976,7 @@ function commandGroup(state, intent, events) {
     order,
     position: { x: state.hero.x, y: state.hero.y },
   });
+  adoptFormation(state, "deployed", "leader_order", events);
 }
 
 function openDoor(state, intent, events) {
@@ -1581,7 +3011,11 @@ function completeDungeon(state, events) {
 }
 
 function enterCell(state, to, dice, events) {
-  const from = { x: state.hero.x, y: state.hero.y };
+  const previousPartyPositions = partyActors(state).map(({ x, y }) => ({
+      x,
+      y,
+    })),
+    from = previousPartyPositions[0];
   Object.assign(state.hero, to);
   events.push({
     type: "hero_move",
@@ -1591,6 +3025,7 @@ function enterCell(state, to, dice, events) {
     to,
     position: to,
   });
+  moveFollowers(state, previousPartyPositions, events);
   search(state, dice, events, { passive: true });
   collectGround(state, events);
   triggerShrine(state, events);
@@ -1598,9 +3033,65 @@ function enterCell(state, to, dice, events) {
   completeDungeon(state, events);
 }
 
+function followerDestination(
+  map,
+  enemyPositions,
+  companion,
+  desired,
+  reserved,
+  occupied,
+) {
+  const available = (position) =>
+    !blocked(map, position) &&
+    !reserved.has(key(position)) &&
+    !occupied.has(key(position)) &&
+    !enemyPositions.has(key(position));
+  if (available(desired)) return desired;
+  if (available(companion)) return { x: companion.x, y: companion.y };
+  return neighbors(map, companion).find(available) ?? null;
+}
+
+function moveFollowers(state, previousPositions, events) {
+  if (state.partyGroup.order.movementMode !== "follow_leader") return;
+  const reserved = new Set([key(state.hero)]),
+    occupied = new Set(state.companions.map(key)),
+    map = effectiveMap(state),
+    enemyPositions = new Set(aliveEnemies(state).map(key));
+  state.companions.forEach((companion, index) => {
+    const from = { x: companion.x, y: companion.y };
+    occupied.delete(key(companion));
+    const destination = followerDestination(
+      map,
+      enemyPositions,
+      companion,
+      previousPositions[index],
+      reserved,
+      occupied,
+    );
+    if (!destination) return;
+    Object.assign(companion, destination);
+    reserved.add(key(destination));
+    if (same(from, destination)) return;
+    events.push({
+      type: "companion_move",
+      actorKind: "companion",
+      actorId: companion.id,
+      actorName: companion.name,
+      groupId: state.partyGroup.id,
+      from,
+      to: { ...destination },
+      position: { ...destination },
+      reason: "follow_leader",
+    });
+  });
+}
+
 function moveHero(state, intent, dice, events) {
   const delta = DIRECTIONS[intent.direction];
   check(delta, "INVALID_DIRECTION", "Unknown movement direction.");
+  state.partyTactics.facing = intent.direction;
+  state.partyTactics.phase = "travel";
+  state.partyTactics.anchor = null;
   const to = { x: state.hero.x + delta[0], y: state.hero.y + delta[1] };
   check(
     neighbors(effectiveMap(state), state.hero).some((position) =>
@@ -1623,9 +3114,16 @@ function waitTurn(state, events) {
     actorName: state.hero.name,
     position: { x: state.hero.x, y: state.hero.y },
   });
+  adoptFormation(state, "deployed", "leader_stopped", events);
 }
 
 function resolveActiveTurn(state, intent, dice, events) {
+  if (state.location === "village")
+    return resolveVillageTurn(state, intent, events);
+  if (state.location === "exterior")
+    return resolveExteriorTurn(state, intent, events);
+  if (state.location === "world")
+    return resolveWorldTurn(state, intent, events);
   switch (intent.kind) {
     case "command":
       return commandGroup(state, intent, events);
@@ -1637,6 +3135,12 @@ function resolveActiveTurn(state, intent, dice, events) {
       return useItem(state, intent, dice, events);
     case "invoke_item":
       return invokeItem(state, intent, dice, events);
+    case "ranged_attack":
+      return rangedAttack(state, intent, dice, events);
+    case "throw_item":
+      return throwItem(state, intent, dice, events);
+    case "examine":
+      return examineDungeon(state, intent, events);
     case "class_power":
       return useClassPower(state, dice, events);
     case "short_rest":
@@ -1647,6 +3151,8 @@ function resolveActiveTurn(state, intent, dice, events) {
       return unequipItem(state, intent, events);
     case "stairs":
       return descend(state, events);
+    case "stairs_up":
+      return ascend(state, events);
     case "open":
       return openDoor(state, intent, events);
     case "move":
@@ -1666,10 +3172,19 @@ export function applyRogueTurn(state, intent, dice = new Dice()) {
   const events = [];
   if (state.status === "dying") resolveDyingTurn(state, intent, dice, events);
   else resolveActiveTurn(state, intent, dice, events);
+  if (
+    state.location === "dungeon" &&
+    ["active", "dying"].includes(state.status)
+  )
+    resolveCompanions(state, dice, events);
   grantExperience(state, events);
-  if (state.status === "active") resolveEnemies(state, dice, events);
+  if (
+    state.location === "dungeon" &&
+    ["active", "dying"].includes(state.status)
+  )
+    resolveEnemies(state, dice, events);
   state.tick += 1;
-  visibility(state);
+  if (state.location === "dungeon") visibility(state);
   return { events };
 }
 
@@ -1694,15 +3209,31 @@ function cellView(state, position, currentVisible) {
           : `door_${door.state}`
         : blocked(level.map, position)
           ? "wall"
-          : same(position, level.exit)
-            ? state.depth < state.maxDepth
-              ? "stairs_down"
-              : "exit"
-            : difficult
-              ? "difficult"
-              : "floor",
+          : same(position, level.entrance)
+            ? "stairs_up"
+            : same(position, level.exit)
+              ? state.depth < state.maxDepth
+                ? "stairs_down"
+                : "exit"
+              : difficult
+                ? "difficult"
+                : "floor",
   };
   if (!isVisible) return cell;
+  const companion = state.companions.find((actor) => same(actor, position));
+  if (companion)
+    cell.partyMember = {
+      id: companion.id,
+      definitionId: companion.definitionId,
+      entityType: companion.entityType,
+      name: companion.name,
+      class: companion.class,
+      role: companion.role,
+      glyph: companion.glyph,
+      glyphReading: companion.glyphReading,
+      hp: companion.hp,
+      maxHp: companion.maxHp,
+    };
   const enemy = aliveEnemies(state).find((e) => same(e, position));
   if (enemy) {
     const m = ROGUE_BESTIARY[enemy.template];
@@ -1717,6 +3248,7 @@ function cellView(state, position, currentVisible) {
       glyphReading: m.glyphReading,
       role: m.role,
       faction: m.faction,
+      adversaryKind: m.adversaryKind ?? "monster",
       hp: enemy.hp,
       maxHp: enemy.maxHp,
     };
@@ -1751,16 +3283,790 @@ function cellView(state, position, currentVisible) {
   return cell;
 }
 
+const VILLAGE_BUILDINGS = [
+  {
+    key: "smithy",
+    x: 1,
+    y: 1,
+    w: 14,
+    h: 9,
+    name: "Red Hammer Smithy",
+    glyph: "S",
+    shopKey: "smithy",
+    door: { x: 8, y: 9 },
+  },
+  {
+    key: "apothecary",
+    x: 25,
+    y: 0,
+    w: 15,
+    h: 10,
+    name: "Juniper & Salt",
+    glyph: "A",
+    shopKey: "apothecary",
+    door: { x: 32, y: 9 },
+  },
+  {
+    key: "armorer",
+    x: 22,
+    y: 13,
+    w: 16,
+    h: 11,
+    name: "Gatehouse Armorer",
+    glyph: "R",
+    shopKey: "armorer",
+    door: { x: 28, y: 13 },
+  },
+  {
+    key: "inn",
+    x: -15,
+    y: 2,
+    w: 13,
+    h: 9,
+    name: "The Lantern Inn",
+    glyph: "I",
+    door: { x: -8, y: 10 },
+  },
+  {
+    key: "chapel",
+    x: 42,
+    y: 0,
+    w: 12,
+    h: 10,
+    name: "Chapel of the Road",
+    glyph: "P",
+    door: { x: 47, y: 9 },
+  },
+  {
+    key: "guildhall",
+    x: 2,
+    y: 27,
+    w: 16,
+    h: 10,
+    name: "Delvers' Guildhall",
+    glyph: "G",
+    door: { x: 10, y: 27 },
+  },
+  {
+    key: "stable",
+    x: 39,
+    y: 16,
+    w: 13,
+    h: 9,
+    name: "South Road Stable",
+    glyph: "H",
+    door: { x: 39, y: 20 },
+  },
+];
+
+const VILLAGE_SIGNS = [
+  { x: 7, y: 10, text: "Red Hammer Smithy · weapons and repairs" },
+  { x: 33, y: 10, text: "Juniper & Salt · remedies and provisions" },
+  { x: 30, y: 12, text: "Gatehouse Armorer · armor and shields" },
+  { x: 20, y: 10, text: "Stonebridge · Keep west · river road east" },
+  { x: -7, y: 11, text: "The Lantern Inn · meals, beds and stories" },
+  { x: 46, y: 10, text: "Chapel of the Road · travelers welcome" },
+  { x: 11, y: 26, text: "Delvers' Guildhall · contracts and company" },
+  { x: 38, y: 20, text: "South Road Stable · mounts and tack" },
+];
+
+const VILLAGE_PARTITIONS = [
+  { buildingKey: "smithy", axis: "x", at: 9, from: 2, to: 8, gaps: [5] },
+  { buildingKey: "apothecary", axis: "y", at: 5, from: 26, to: 38, gaps: [32] },
+  { buildingKey: "armorer", axis: "x", at: 30, from: 14, to: 22, gaps: [18] },
+  { buildingKey: "inn", axis: "y", at: 6, from: -14, to: -3, gaps: [-8] },
+  { buildingKey: "chapel", axis: "y", at: 7, from: 43, to: 52, gaps: [47] },
+];
+
+const VILLAGE_FURNITURE = [
+  {
+    x: 3,
+    y: 3,
+    glyph: "C",
+    name: "Smith's counter",
+    description:
+      "A scarred oak counter holds chalked orders and iron fittings.",
+  },
+  {
+    x: 11,
+    y: 3,
+    glyph: "F",
+    name: "Stone forge",
+    description:
+      "Coal glows beneath a broad hood; half-worked steel waits beside it.",
+  },
+  {
+    x: 5,
+    y: 6,
+    glyph: "T",
+    name: "Worktable",
+    description: "Hammers, tongs and punches lie in careful working order.",
+  },
+  {
+    x: 7,
+    y: 6,
+    glyph: "c",
+    name: "Heavy chair",
+    description: "A low chair made to survive armored customers.",
+  },
+  {
+    x: 27,
+    y: 3,
+    glyph: "C",
+    name: "Apothecary counter",
+    description:
+      "A clean counter carries scales, folded papers and a brass mortar.",
+  },
+  {
+    x: 36,
+    y: 3,
+    glyph: "S",
+    name: "Herb shelves",
+    description:
+      "Bundles of feverfew, juniper and river mint fill the shelves.",
+  },
+  {
+    x: 29,
+    y: 7,
+    glyph: "T",
+    name: "Mixing table",
+    description: "Stained glassware surrounds a slate mixing surface.",
+  },
+  {
+    x: 34,
+    y: 7,
+    glyph: "c",
+    name: "Patient's chair",
+    description: "A straight-backed chair stands beside a wash basin.",
+  },
+  {
+    x: 24,
+    y: 16,
+    glyph: "C",
+    name: "Armorer's counter",
+    description:
+      "A reinforced counter is covered with buckles, rivets and leather straps.",
+  },
+  {
+    x: 34,
+    y: 16,
+    glyph: "R",
+    name: "Armor rack",
+    description: "Mail, shields and fitted plates hang from a timber rack.",
+  },
+  {
+    x: 26,
+    y: 20,
+    glyph: "T",
+    name: "Fitting table",
+    description: "Measuring cords and padded forms cover the fitting table.",
+  },
+  {
+    x: 33,
+    y: 20,
+    glyph: "c",
+    name: "Fitting stool",
+    description: "A broad stool faces a polished copper mirror.",
+  },
+  {
+    x: -12,
+    y: 4,
+    glyph: "C",
+    name: "Inn bar",
+    description: "A long bar smells of beeswax, cider and wood smoke.",
+  },
+  {
+    x: -6,
+    y: 4,
+    glyph: "T",
+    name: "Common table",
+    description:
+      "Initials and old dice scores are carved into the common table.",
+  },
+  {
+    x: -4,
+    y: 4,
+    glyph: "c",
+    name: "Common-room chair",
+    description: "A mismatched chair has been repaired more than once.",
+  },
+  {
+    x: 47,
+    y: 4,
+    glyph: "A",
+    name: "Road altar",
+    description: "Small stones and copper pins mark journeys safely completed.",
+  },
+  {
+    x: 45,
+    y: 8,
+    glyph: "B",
+    name: "Chapel bench",
+    description: "A plain bench faces the road altar.",
+  },
+  {
+    x: 8,
+    y: 31,
+    glyph: "T",
+    name: "Guild map table",
+    description:
+      "Wax markers cover a map of ruins, roads and missing expeditions.",
+  },
+  {
+    x: 43,
+    y: 19,
+    glyph: "H",
+    name: "Horse stall",
+    description: "Fresh straw and a leather halter fill the timber stall.",
+  },
+];
+
+const VILLAGE_PEOPLE = [
+  ["miller", "Greta Voll", "miller", 14, 11],
+  ["baker", "Oskar Mertens", "baker", 22, 11],
+  ["porter", "Lina Roth", "porter", 19, 14],
+  ["watchman", "Friedel Koch", "watchman", 20, 9],
+  ["child", "Anja", "errand runner", 15, 15],
+  ["carter", "Bram Eder", "carter", 37, 11],
+  ["pilgrim", "Sister Elske", "pilgrim", 41, 12],
+  ["fisher", "Tomas Venn", "river fisher", -1, 11],
+  ["hostler", "Pavel Dorn", "hostler", 38, 22],
+  ["delver", "Ivo Brandt", "retired delver", 12, 25],
+  ["smith", "Hanne Voss", "smith", 4, 7],
+  ["herbalist", "Mei Lin", "apothecary", 37, 7],
+  ["armorer", "Otto Kern", "armorer", 35, 21],
+  ["innkeeper", "Marta Pell", "innkeeper", -11, 8],
+].map(([key, name, role, x, y]) => ({
+  key,
+  name,
+  role,
+  x,
+  y,
+  glyph: "人",
+  definitionId: definitionId("townsperson", key),
+}));
+
+const VILLAGE_DIALOGUE = {
+  miller: "The river is high. Good for the wheel, bad for the east ford.",
+  baker:
+    "If you are bound for the keep, take bread now. It keeps better than courage.",
+  porter:
+    "The guild pays for sealed maps and reliable accounts of what lies below.",
+  watchman: "Keep weapons lowered in town. Trouble belongs outside the gate.",
+  child:
+    "I know a path behind the chapel, but Sister Elske says not to show delvers.",
+  carter: "The north road is firm. The river road is mud past the willow bend.",
+  pilgrim: "The chapel keeps a lamp for travelers who have not yet returned.",
+  fisher: "Something large has been turning beneath the old bridge after dusk.",
+  hostler:
+    "The stable has room, though the gray mare dislikes the smell of goblins.",
+  delver:
+    "Never let a narrow doorway break your formation. That lesson cost me a knee.",
+  smith:
+    "Bring me sound metal and honest coin; I can improve one of those weapons.",
+  herbalist:
+    "Juniper for the lungs, salt for the restless dead, and redleaf for wounds.",
+  armorer: "A shield saves more lives than pride, especially underground.",
+  innkeeper:
+    "The Lantern has beds, stew, and rumors. Only the first two are dependable.",
+};
+
+const VILLAGE_OBJECTIVES = {
+  watchman: ["protect_town", "Patrolling the market road"],
+  child: ["deliver_messages", "Carrying a message to the mill"],
+  porter: ["haul_goods", "Moving supplies between shops"],
+  carter: ["tend_wagons", "Checking carts on the east road"],
+  smith: ["work_trade", "Tending the forge"],
+  herbalist: ["work_trade", "Preparing remedies"],
+  armorer: ["work_trade", "Repairing armor"],
+  innkeeper: ["work_trade", "Serving the common room"],
+};
+
+const VILLAGE_ROUTES = {
+  watchman: [
+    [20, 9],
+    [20, 10],
+    [20, 11],
+    [22, 11],
+    [24, 11],
+    [22, 11],
+    [20, 11],
+    [20, 10],
+  ],
+  child: [
+    [15, 15],
+    [16, 15],
+    [17, 15],
+    [18, 15],
+    [19, 15],
+    [19, 14],
+  ],
+  porter: [
+    [19, 14],
+    [19, 13],
+    [19, 12],
+    [19, 11],
+    [20, 11],
+    [21, 11],
+  ],
+};
+
+function createVillageNpcStates(runId) {
+  return VILLAGE_PEOPLE.map((person) => {
+    const [objective, currentAction] = VILLAGE_OBJECTIVES[person.key] ?? [
+      "daily_life",
+      `Working as ${person.role}`,
+    ];
+    return {
+      id: namedUuid(runId, `townsperson:${person.key}`),
+      personKey: person.key,
+      position: { x: person.x, y: person.y },
+      objective,
+      currentAction,
+      actionReason: "personal_routine",
+      routeIndex: 0,
+    };
+  });
+}
+
+function villageBuildingAt(x, y) {
+  return VILLAGE_BUILDINGS.find(
+    (site) =>
+      x >= site.x && x < site.x + site.w && y >= site.y && y < site.y + site.h,
+  );
+}
+
+function villageShopAt(position) {
+  const building = villageBuildingAt(position.x, position.y);
+  return building &&
+    position.x > building.x &&
+    position.x < building.x + building.w - 1 &&
+    position.y > building.y &&
+    position.y < building.y + building.h - 1
+    ? building
+    : null;
+}
+
+function villageSignAt(x, y) {
+  return VILLAGE_SIGNS.find((sign) => sign.x === x && sign.y === y);
+}
+
+function villageFurnitureAt(x, y) {
+  return VILLAGE_FURNITURE.find((item) => item.x === x && item.y === y);
+}
+
+function villagePersonAt(state, x, y) {
+  const activity = state.village.npcStates.find((entry) =>
+    same(entry.position, { x, y }),
+  );
+  if (!activity) return null;
+  const person = VILLAGE_PEOPLE.find(
+    (candidate) => candidate.key === activity.personKey,
+  );
+  return { ...person, ...activity, x, y };
+}
+
+function villagePartitionAt(building, x, y) {
+  return VILLAGE_PARTITIONS.some((partition) => {
+    if (partition.buildingKey !== building.key) return false;
+    const along = partition.axis === "x" ? y : x,
+      across = partition.axis === "x" ? x : y;
+    return (
+      across === partition.at &&
+      along >= partition.from &&
+      along <= partition.to &&
+      !partition.gaps.includes(along)
+    );
+  });
+}
+
+function villageTree(state, x, y) {
+  const seed = [...state.seed].reduce(
+      (sum, character) => sum + character.charCodeAt(0),
+      0,
+    ),
+    noise = Math.abs((x * 73856093) ^ (y * 19349663) ^ seed) % 101,
+    nearBuilding = VILLAGE_BUILDINGS.some(
+      (site) =>
+        x >= site.x - 2 &&
+        x <= site.x + site.w + 1 &&
+        y >= site.y - 2 &&
+        y <= site.y + site.h + 1,
+    );
+  return !nearBuilding && noise < 14;
+}
+
+function villagePathAt(x, y) {
+  if (y === 11 || x === 19) return "road_stone";
+  const onApproach = VILLAGE_BUILDINGS.some(({ door }) => {
+    const verticalDistance = Math.abs(door.y - 11),
+      horizontalDistance = Math.abs(door.x - 19);
+    if (verticalDistance <= horizontalDistance)
+      return (
+        x === door.x && y >= Math.min(door.y, 11) && y <= Math.max(door.y, 11)
+      );
+    return (
+      y === door.y && x >= Math.min(door.x, 19) && x <= Math.max(door.x, 19)
+    );
+  });
+  return onApproach ? "road_dirt" : null;
+}
+
+function villageTile(state, x, y) {
+  const modification = state.village.modifications.find(
+      (entry) => entry.x === x && entry.y === y,
+    ),
+    material = state.village.looseMaterials.find(
+      (entry) => entry.x === x && entry.y === y,
+    );
+  if (modification) {
+    const changed = {
+      dug_ground: { tile: "village_pit", glyph: "○" },
+      tree_stump: { tile: "outdoor_stump", glyph: "♧" },
+      breached_wall: { tile: "village_rubble", glyph: ":" },
+    }[modification.kind];
+    return { ...changed, modification, material, featureName: changed.tile };
+  }
+  if (material)
+    return {
+      tile: "village_material",
+      glyph: "*",
+      material,
+      featureName: material.name,
+    };
+  const building = villageBuildingAt(x, y),
+    furniture = villageFurnitureAt(x, y),
+    occupiedByParty = [
+      state.village.heroPosition,
+      ...state.village.companionPositions,
+    ].some((position) => same(position, { x, y })),
+    person = occupiedByParty ? null : villagePersonAt(state, x, y);
+  if (person)
+    return {
+      tile: "village_person",
+      glyph: person.glyph,
+      person: {
+        ...person,
+        category: [
+          "smith",
+          "herbalist",
+          "armorer",
+          "innkeeper",
+          "hostler",
+        ].includes(person.key)
+          ? "shopkeeper"
+          : ["watchman", "delver"].includes(person.key)
+            ? "guard"
+            : "civilian",
+        id: namedUuid(state.id, `townsperson:${person.key}`),
+        objective: person.objective,
+        currentAction: person.currentAction,
+        actionReason: person.actionReason,
+      },
+    };
+  if (furniture)
+    return { tile: "village_furniture", glyph: furniture.glyph, furniture };
+  if (building) {
+    const door = state.village.doors.find((candidate) =>
+        same(candidate, { x, y }),
+      ),
+      boundary =
+        x === building.x ||
+        x === building.x + building.w - 1 ||
+        y === building.y ||
+        y === building.y + building.h - 1;
+    if (door)
+      return {
+        tile: `village_door_${door.state}`,
+        building,
+        doorId: door.id,
+        glyph: door.state === "open" ? "'" : "+",
+      };
+    if (!boundary && !villagePartitionAt(building, x, y))
+      return {
+        tile: "village_floor",
+        building,
+        glyph:
+          x === building.x + 1 && y === building.y + 1 ? building.glyph : "·",
+      };
+    return {
+      tile: "village_building",
+      building,
+      glyph: "#",
+    };
+  }
+  const sign = villageSignAt(x, y),
+    path = villagePathAt(x, y);
+  if (sign) return { tile: "village_sign", glyph: "!", sign };
+  if (path) return { tile: path, glyph: path === "road_stone" ? "=" : ":" };
+  if (villageTree(state, x, y))
+    return { tile: "outdoor_tree", glyph: "♣", featureName: "Tree" };
+  return { tile: "outdoor_grass", glyph: "," };
+}
+
+function localPartyCells(
+  state,
+  definition,
+  area,
+  tileAt,
+  origin = { x: 0, y: 0 },
+) {
+  const companions = new Map(
+      area.companionPositions.map((position, index) => [
+        key(position),
+        state.companions[index],
+      ]),
+    ),
+    cells = [];
+  for (let y = 0; y < definition.height; y++)
+    for (let x = 0; x < definition.width; x++) {
+      const world = { x: x + origin.x, y: y + origin.y },
+        terrain = tileAt(state, world.x, world.y),
+        cell = {
+          ...world,
+          visibility: "visible",
+          ...(typeof terrain === "string" ? { tile: terrain } : terrain),
+        },
+        companion = companions.get(key(cell));
+      if (companion) cell.partyMember = localPartyMember(companion);
+      cells.push(cell);
+    }
+  return cells;
+}
+
+function localPartyMember(companion) {
+  return {
+    id: companion.id,
+    name: companion.name,
+    class: companion.class,
+    glyph: companion.glyph,
+    hp: companion.hp,
+    maxHp: companion.maxHp,
+  };
+}
+
+function villageViewportOrigin(state) {
+  return {
+    x: state.village.heroPosition.x - Math.floor(VILLAGE.width / 2),
+    y: state.village.heroPosition.y - Math.floor(VILLAGE.height / 2),
+  };
+}
+
+function villageView(state) {
+  const origin = villageViewportOrigin(state),
+    cells = localPartyCells(state, VILLAGE, state.village, villageTile, origin),
+    currentShopKey = villageShopAt(state.village.heroPosition)?.shopKey ?? null;
+  return {
+    name: VILLAGE.name,
+    description: VILLAGE.description,
+    visits: state.villageVisits,
+    partyMovement: state.village.partyMovement,
+    heroPosition: { ...state.village.heroPosition },
+    map: {
+      width: VILLAGE.width,
+      height: VILLAGE.height,
+      origin: { ...origin },
+      rolling: true,
+      cells,
+    },
+    currentShopKey,
+    shops: VILLAGE.shops.map((shop) => ({
+      ...shop,
+      accessible: shop.id === currentShopKey,
+      goods: shop.goods.map(villageGood),
+    })),
+    buyers: partyActors(state).map((actor) => ({
+      id: actor.id,
+      name: actor.name,
+      class: actor.class,
+    })),
+  };
+}
+
+function exteriorTile(x, y) {
+  const boundary =
+      x === 0 ||
+      y === 0 ||
+      x === EXTERIOR.width - 1 ||
+      y === EXTERIOR.height - 1,
+    ruinWall =
+      x >= 6 &&
+      x <= 14 &&
+      y >= 7 &&
+      y <= 13 &&
+      (x === 6 || x === 14 || y === 7 || y === 13);
+  if (x === 10 && y === 13) return "stairs_down";
+  if (ruinWall) return "outdoor_ruin";
+  if (x >= 27 && y >= 22 && (x + y) % 3 !== 0) return "outdoor_water";
+  if (x >= 33 && x <= 35) return "road_dirt";
+  if (y >= 14 && y <= 16) return "road_stone";
+  if (boundary || ((x * 7 + y * 11) % 43 === 0 && y !== 15))
+    return "outdoor_tree";
+  return "outdoor_grass";
+}
+
+function exteriorView(state) {
+  const cells = localPartyCells(
+    state,
+    EXTERIOR,
+    state.exterior,
+    (_state, x, y) => exteriorTile(x, y),
+  );
+  return {
+    name: EXTERIOR.name,
+    description: EXTERIOR.description,
+    safe: !state.exterior.danger,
+    dangerReason: state.exterior.dangerReason,
+    heroPosition: { ...state.exterior.heroPosition },
+    map: { width: EXTERIOR.width, height: EXTERIOR.height, cells },
+  };
+}
+
+function worldRoutePath(from, to) {
+  const steps = Math.max(Math.abs(to.x - from.x), Math.abs(to.y - from.y));
+  return Array.from({ length: steps + 1 }, (_, index) => ({
+    x: Math.round(from.x + ((to.x - from.x) * index) / steps),
+    y: Math.round(from.y + ((to.y - from.y) * index) / steps),
+  }));
+}
+
+function worldViewportOrigin(state) {
+  const current = state.world.coordinates,
+    currentNode = WORLD.nodes.find((node) => node.id === state.world.position),
+    connected = WORLD.routes
+      .filter(
+        (route) =>
+          currentNode && [route.from, route.to].includes(currentNode.id),
+      )
+      .map((route) =>
+        WORLD.nodes.find(
+          (node) =>
+            node.id === (route.from === currentNode.id ? route.to : route.from),
+        ),
+      ),
+    points = [current, ...connected],
+    center = (axis) =>
+      (Math.min(...points.map((point) => point[axis])) +
+        Math.max(...points.map((point) => point[axis]))) /
+      2;
+  return {
+    x: Math.floor(center("x") - WORLD.viewport.width / 2),
+    y: Math.floor(center("y") - WORLD.viewport.height / 2),
+  };
+}
+
+function worldTerrain(seed, x, y) {
+  const seedValue = [...seed].reduce(
+      (total, character) => total + character.charCodeAt(0),
+      0,
+    ),
+    noise = Math.abs((x * 73856093) ^ (y * 19349663) ^ seedValue) % 101,
+    riverCenter = 21 + Math.round(Math.sin((y + (seedValue % 17)) / 5) * 3),
+    elevation =
+      Math.sin((x + (seedValue % 23)) / 7) +
+      Math.cos((y - (seedValue % 19)) / 6) +
+      noise / 150;
+  if (Math.abs(x - riverCenter) <= 1) return "world_water";
+  if (elevation > 1.45) return "world_mountain";
+  return noise < 12 ? "world_tree" : "world_grass";
+}
+
+function worldFeatures() {
+  const nodes = new Map(WORLD.nodes.map((node) => [node.id, node])),
+    routes = WORLD.routes.map((route) => ({
+      ...route,
+      path: worldRoutePath(nodes.get(route.from), nodes.get(route.to)),
+    })),
+    roads = new Map(
+      routes.flatMap((route) =>
+        route.path.map((position) => [key(position), route.material]),
+      ),
+    ),
+    destinations = new Map(WORLD.nodes.map((node) => [key(node), node]));
+  return { routes, roads, destinations };
+}
+
+function worldCellView(state, origin, features, x, y) {
+  const worldPosition = { x: origin.x + x, y: origin.y + y },
+    destination = features.destinations.get(key(worldPosition)),
+    material = features.roads.get(key(worldPosition));
+  return {
+    x,
+    y,
+    worldX: worldPosition.x,
+    worldY: worldPosition.y,
+    tile: destination
+      ? `world_${destination.kind}`
+      : material
+        ? `road_${material}`
+        : worldTerrain(state.seed, worldPosition.x, worldPosition.y),
+    destination: destination ? structuredClone(destination) : null,
+  };
+}
+
+function worldViewportCells(state, origin, features) {
+  const cells = [];
+  for (let y = 0; y < WORLD.viewport.height; y++)
+    for (let x = 0; x < WORLD.viewport.width; x++)
+      cells.push(worldCellView(state, origin, features, x, y));
+  return cells;
+}
+
+function worldMapView(state) {
+  const features = worldFeatures(),
+    origin = worldViewportOrigin(state),
+    cells = worldViewportCells(state, origin, features),
+    localize = (position) => ({
+      x: position.x - origin.x,
+      y: position.y - origin.y,
+    }),
+    routes = features.routes.map((route) => ({
+      ...route,
+      path: route.path.map(localize),
+    }));
+  return { ...WORLD.viewport, origin, cells, routes, localize };
+}
+
+function worldView(state) {
+  const map = worldMapView(state);
+  return {
+    ...structuredClone(WORLD),
+    open: true,
+    tileSystem: "rolling",
+    cameraMode: "static",
+    nodes: WORLD.nodes.map((node) => ({ ...node, ...map.localize(node) })),
+    routes: map.routes,
+    map: {
+      width: map.width,
+      height: map.height,
+      cells: map.cells,
+      rolling: true,
+    },
+    position: state.world.position,
+    party: {
+      groupId: state.partyGroup.id,
+      name: state.partyGroup.name,
+      glyph: WORLD.groupGlyph,
+      glyphReading: WORLD.groupGlyphReading,
+      memberCount: livingParty(state).length,
+      position: map.localize(state.world.coordinates),
+    },
+  };
+}
+
 export function rogueRunView(state, recentEvents = []) {
   const level = active(state),
     currentVisible = visibility(state),
-    cells = [];
+    cells = [],
+    outside = exteriorView(state),
+    village = villageView(state);
   for (let y = 0; y < level.map.height; y++)
     for (let x = 0; x < level.map.width; x++) {
       const cell = cellView(state, { x, y }, currentVisible);
       if (cell) cells.push(cell);
     }
   const visibleEvent = (event) =>
+    state.location !== "dungeon" ||
     event.actorKind === "hero" ||
     event.actorId === state.hero.id ||
     event.targetId === state.hero.id ||
@@ -1768,16 +4074,30 @@ export function rogueRunView(state, recentEvents = []) {
     (event.from && currentVisible.has(key(event.from))) ||
     (event.to && currentVisible.has(key(event.to)));
   const here = roomAt(level, state.hero);
+  const hero = structuredClone(state.hero);
+  if (state.location === "exterior") Object.assign(hero, outside.heroPosition);
+  if (state.location === "village") Object.assign(hero, village.heroPosition);
   return {
     runId: state.id,
     revision: state.revision,
     tick: state.tick,
     status: state.status,
+    location: state.location,
+    village,
+    world: worldView(state),
+    exterior: outside,
     ruleset: state.ruleset,
     combatProfile: ROGUE_DND_PROFILE,
     depth: state.depth,
     maxDepth: state.maxDepth,
-    title: level.theme.title,
+    title:
+      state.location === "village"
+        ? VILLAGE.name
+        : state.location === "world"
+          ? WORLD.name
+          : state.location === "exterior"
+            ? "Rooted Keep approach"
+            : level.theme.title,
     theme: {
       archetype: level.theme.archetype,
       form: level.theme.form,
@@ -1790,47 +4110,96 @@ export function rogueRunView(state, recentEvents = []) {
         `On this depth, the site is ${level.theme.state}.`,
       ],
     },
-    currentRoom: here
-      ? {
-          id: here.id,
-          definitionId: here.definitionId,
-          entityType: here.entityType,
-          name: here.name,
-          purpose: here.purpose,
-          description: here.description,
-        }
-      : null,
-    map: { width: level.map.width, height: level.map.height, cells },
-    hero: structuredClone(state.hero),
+    currentRoom:
+      state.location === "dungeon" && here
+        ? {
+            id: here.id,
+            definitionId: here.definitionId,
+            entityType: here.entityType,
+            name: here.name,
+            purpose: here.purpose,
+            description: here.description,
+          }
+        : null,
+    map:
+      state.location === "exterior"
+        ? outside.map
+        : state.location === "village"
+          ? village.map
+          : { width: level.map.width, height: level.map.height, cells },
+    hero,
+    companions: structuredClone(state.companions),
     groups: rogueGroupsView(state, currentVisible),
-    enemyCount: aliveEnemies(state).length,
+    enemyCount:
+      state.location === "dungeon"
+        ? aliveEnemies(state).length
+        : state.location === "exterior" && state.exterior.danger
+          ? 1
+          : 0,
     treasureRemaining: level.treasures.filter((item) => !item.collected).length,
     factions: [
       ...new Set(
         aliveEnemies(state).map((e) => ROGUE_BESTIARY[e.template].faction),
       ),
     ],
-    rest: restStatus(state),
+    rest:
+      state.location === "dungeon"
+        ? restStatus(state)
+        : {
+            available: false,
+            reason: "Rest at the village inn.",
+            die: 0,
+            remaining: 0,
+          },
     legalIntents:
       state.status === "dying"
         ? ["death_save"]
         : state.status === "active"
-          ? [
-              "move",
-              "command",
-              "open",
-              "wait",
-              "search",
-              "use_item",
-              "invoke_item",
-              "class_power",
-              "short_rest",
-              "equip",
-              "unequip",
-              ...(same(state.hero, level.exit) && state.depth < state.maxDepth
-                ? ["stairs"]
-                : []),
-            ]
+          ? state.location === "village"
+            ? [
+                "local_move",
+                "local_examine",
+                "local_talk",
+                "local_manipulate",
+                "set_party_movement",
+                "open_world",
+                ...(village.currentShopKey ? ["shop_buy"] : []),
+                "equip",
+                "unequip",
+              ]
+            : state.location === "exterior"
+              ? [
+                  "local_move",
+                  "enter_dungeon",
+                  ...(!state.exterior.danger ? ["open_world"] : []),
+                ]
+              : state.location === "world"
+                ? [
+                    "world_move",
+                    "world_travel",
+                    ...(state.world.position ? ["enter_location"] : []),
+                  ]
+                : [
+                    "move",
+                    "command",
+                    "open",
+                    "wait",
+                    "search",
+                    "use_item",
+                    "invoke_item",
+                    "ranged_attack",
+                    "throw_item",
+                    "examine",
+                    "class_power",
+                    "short_rest",
+                    "equip",
+                    "unequip",
+                    ...(same(state.hero, level.entrance) ? ["stairs_up"] : []),
+                    ...(same(state.hero, level.exit) &&
+                    state.depth < state.maxDepth
+                      ? ["stairs"]
+                      : []),
+                  ]
           : [],
     recentEvents: recentEvents.filter(visibleEvent),
   };
@@ -1876,7 +4245,12 @@ function migrateGroup(group, value, actorIds, side, fallbackName) {
       ...assignment,
       actorId: actorIds.get(assignment.actorId) ?? assignment.actorId,
     })),
-    leaderId = actorIds.get(group?.leaderId) ?? group?.leaderId ?? memberIds[0];
+    hasStoredLeader = Object.hasOwn(group ?? {}, "leaderId"),
+    leaderId = hasStoredLeader
+      ? group.leaderId === null
+        ? null
+        : (actorIds.get(group.leaderId) ?? group.leaderId)
+      : memberIds[0];
   const migrated = createGroup({
     id,
     definitionId:
@@ -1894,6 +4268,9 @@ function migrateGroup(group, value, actorIds, side, fallbackName) {
     objective: group?.order?.objective ?? "explore",
     resourcePolicy: group?.order?.resourcePolicy ?? "balanced",
     retreatThreshold: group?.order?.retreatThreshold ?? 25,
+    movementMode:
+      group?.order?.movementMode ??
+      (side === "party" ? "follow_leader" : "individual"),
   });
   migrated.leadershipRevision = group?.leadershipRevision ?? 0;
   migrated.commandRevision = group?.commandRevision ?? 0;
@@ -1902,7 +4279,10 @@ function migrateGroup(group, value, actorIds, side, fallbackName) {
     ...(group?.order ?? {}),
     targetId:
       actorIds.get(group?.order?.targetId) ?? group?.order?.targetId ?? null,
-    issuedBy: actorIds.get(group?.order?.issuedBy) ?? leaderId,
+    issuedBy:
+      group?.order?.issuedBy === null
+        ? null
+        : (actorIds.get(group?.order?.issuedBy) ?? leaderId),
   };
   return migrated;
 }
@@ -1942,6 +4322,38 @@ function migrateHeroIdentity(value, actorId) {
   );
 }
 
+function migrateCompanionIdentities(value, actorId) {
+  value.companions ??= createCompanions((key) => actorId(`companion:${key}`));
+  for (const companion of value.companions) {
+    const template =
+      COMPANION_TEMPLATES.find(({ name }) => name === companion.name) ??
+      COMPANION_TEMPLATES[0];
+    companion.id = actorId(companion.id);
+    companion.definitionId ??= definitionId(
+      "actor-archetype",
+      companion.name.toLowerCase().replaceAll(" ", "-"),
+    );
+    companion.entityType = "actor";
+    for (const field of [
+      "attackBonus",
+      "damage",
+      "damageType",
+      "attackRange",
+      "supportUses",
+    ])
+      companion[field] ??= template[field] ?? 0;
+    companion.baseAc ??= template.ac;
+    companion.baseAttackBonus ??= template.attackBonus;
+    companion.baseDamage ??= template.damage;
+    companion.baseDamageType ??= template.damageType;
+    companion.conditions ??= [];
+    companion.death ??= { successes: 0, failures: 0 };
+    companion.dead ??= false;
+    companion.inventory ??= [];
+    companion.equipment ??= { weapon: null, armor: null, offhand: null };
+  }
+}
+
 function migrateRooms(level, objectId) {
   const roomIds = new Map();
   for (const room of level.rooms) {
@@ -1964,13 +4376,15 @@ function migrateConnections(level, roomIds, objectId) {
   }
 }
 
-function migrateEnemies(level, roomIds, actorId) {
+function migrateEnemies(level, roomIds, actorId, objectId) {
   for (const enemy of level.enemies) {
     const legacyId = enemy.id;
     enemy.id = actorId(legacyId);
     enemy.definitionId ??= definitionId("actor", `creature:${enemy.template}`);
     enemy.entityType = "actor";
     enemy.homeRoomId = roomIds.get(enemy.homeRoomId) ?? enemy.homeRoomId;
+    if (enemy.packId && !isUuid(enemy.packId))
+      enemy.packId = objectId("enemy-pack", enemy.packId);
   }
 }
 
@@ -2015,16 +4429,25 @@ function migrateLevelIdentity(level, migration) {
   level.entityType = "dungeon-level";
   const roomIds = migrateRooms(level, migration.objectId);
   migrateConnections(level, roomIds, migration.objectId);
-  migrateEnemies(level, roomIds, migration.actorId);
+  migrateEnemies(level, roomIds, migration.actorId, migration.objectId);
   migrateLevelObjects(level, migration.objectIds, migration.objectId);
 }
 
-function migrateHeroItems(value, objectIds, objectId) {
-  for (const item of value.hero.inventory) {
+function migrateActorItems(actor, objectIds, objectId) {
+  for (const item of actor.inventory ?? []) {
     item.id = objectIds.get(item.id) ?? objectId("item", item.id);
     item.definitionId ??= definitionId("item", item.kind);
     item.entityType = "item";
   }
+  for (const slot of ["weapon", "armor", "offhand"])
+    if (actor.equipment?.[slot])
+      actor.equipment[slot] =
+        objectIds.get(actor.equipment[slot]) ?? actor.equipment[slot];
+}
+
+function migratePartyItems(value, objectIds, objectId) {
+  for (const actor of partyActors(value))
+    migrateActorItems(actor, objectIds, objectId);
   for (const treasure of value.hero.treasures ?? []) {
     treasure.id =
       objectIds.get(treasure.id) ?? objectId("treasure", treasure.id);
@@ -2034,13 +4457,10 @@ function migrateHeroItems(value, objectIds, objectId) {
     );
     treasure.entityType = "treasure";
   }
-  for (const slot of ["weapon", "armor", "offhand"])
-    if (value.hero.equipment[slot])
-      value.hero.equipment[slot] =
-        objectIds.get(value.hero.equipment[slot]) ?? value.hero.equipment[slot];
 }
 
 function migratePartyGroup(value, actorIds) {
+  const actors = partyActors(value);
   value.partyGroup ??= {
     id: "party",
     name: `${value.hero.name}'s company`,
@@ -2048,6 +4468,33 @@ function migratePartyGroup(value, actorIds) {
     members: [{ actorId: value.hero.id, role: "leader", commandScore: 100 }],
     leaderId: value.hero.id,
   };
+  value.partyGroup.memberIds ??= (value.partyGroup.members ?? []).map(
+    (member) => member.actorId,
+  );
+  value.partyGroup.assignments ??= value.partyGroup.members ?? [];
+  value.partyGroup.memberIds = value.partyGroup.memberIds.map(
+    (actorId) => actorIds.get(actorId) ?? actorId,
+  );
+  value.partyGroup.assignments = value.partyGroup.assignments.map(
+    (assignment) => ({
+      ...assignment,
+      actorId: actorIds.get(assignment.actorId) ?? assignment.actorId,
+    }),
+  );
+  for (const actor of actors) {
+    if (!value.partyGroup.memberIds.includes(actor.id))
+      value.partyGroup.memberIds.push(actor.id);
+    if (
+      !value.partyGroup.assignments.some(
+        (assignment) => assignment.actorId === actor.id,
+      )
+    )
+      value.partyGroup.assignments.push({
+        actorId: actor.id,
+        role: actor.role ?? "member",
+        commandScore: actor.id === value.hero.id ? 100 : 40,
+      });
+  }
   value.partyGroup = migrateGroup(
     value.partyGroup,
     value,
@@ -2080,13 +4527,76 @@ function assignEnemyGroups(level, value, actorIds) {
 function migrateIdentity(value) {
   const migration = identityMigration(value);
   migrateHeroIdentity(value, migration.actorId);
+  migrateCompanionIdentities(value, migration.actorId);
   for (const level of value.levels) migrateLevelIdentity(level, migration);
-  migrateHeroItems(value, migration.objectIds, migration.objectId);
+  migratePartyItems(value, migration.objectIds, migration.objectId);
   migratePartyGroup(value, migration.actorIds);
   for (const level of value.levels) {
     assignEnemyGroups(level, value, migration.actorIds);
   }
-  value.schemaVersion = 4;
+  value.schemaVersion = 11;
+  value.location ??= "dungeon";
+  value.villageVisits ??= 0;
+  value.world ??= {
+    position: value.location === "village" ? "stonebridge" : "dungeon_entrance",
+  };
+  const worldNode =
+    WORLD.nodes.find((node) => node.id === value.world.position) ??
+    WORLD.nodes[0];
+  value.world.coordinates ??= { x: worldNode.x, y: worldNode.y };
+  value.exterior ??= { danger: false, dangerReason: null };
+  value.exterior.heroPosition ??= { ...EXTERIOR.heroPosition };
+  value.exterior.companionPositions ??= structuredClone(
+    EXTERIOR.companionPositions,
+  );
+  value.village ??= {};
+  value.village.heroPosition ??= { ...VILLAGE.heroPosition };
+  value.village.companionPositions ??= structuredClone(
+    VILLAGE.companionPositions,
+  );
+  value.village.viewportOrigin ??= { ...VILLAGE.viewportOrigin };
+  value.village.partyMovement ??= "follow";
+  value.village.modifications ??= [];
+  value.village.looseMaterials ??= [];
+  value.village.wantedLevel ??= 0;
+  value.village.npcStates ??= createVillageNpcStates(value.id);
+  for (const npc of value.village.npcStates) {
+    npc.id ??= namedUuid(value.id, `townsperson:${npc.personKey}`);
+    npc.actionReason ??= "personal_routine";
+    npc.routeIndex ??= 0;
+  }
+  for (const toolKind of ["hand_axe", "field_shovel"])
+    if (!value.hero.inventory.some((item) => item.kind === toolKind))
+      value.hero.inventory.push(equipmentItem(newInstanceId(), toolKind));
+  value.village.doors ??= VILLAGE_BUILDINGS.map((building) => ({
+    id: migratedInstanceId(value.id, "village-door", building.key),
+    entityType: "door",
+    buildingKey: building.key,
+    ...building.door,
+    state: "closed",
+  }));
+  for (const door of value.village.doors) {
+    door.shopKey ??= door.shopId;
+    delete door.shopId;
+  }
+  value.village.doors = VILLAGE_BUILDINGS.map((building) => {
+    const door = value.village.doors.find(
+      (candidate) =>
+        candidate.buildingKey === building.key ||
+        (building.shopKey && candidate.shopKey === building.shopKey),
+    ) ?? {
+      id: migratedInstanceId(value.id, "village-door", building.key),
+      entityType: "door",
+      state: "closed",
+    };
+    return { ...door, buildingKey: building.key, ...building.door };
+  });
+  value.partyTactics ??= {
+    facing: "north",
+    phase: "travel",
+    anchor: null,
+    deployedAtTick: null,
+  };
   return value;
 }
 
@@ -2097,11 +4607,18 @@ export function parseRogueState(value) {
     remembered: new Set(level.remembered),
     searched: new Set(level.searched),
   }));
-  return attachActive(value);
+  attachActive(value);
+  const actors = partyActors(value),
+    positions = new Set(actors.map(key)),
+    invalidPosition = actors.some((actor) => blocked(value.map, actor));
+  if (positions.size !== actors.length || invalidPosition)
+    placePartyAt(value, value.hero);
+  return value;
 }
 
 export function rogueGroupsView(state, currentVisible = visibility(state)) {
-  const party = groupView(state.partyGroup, [state.hero]);
+  const party = groupView(state.partyGroup, partyActors(state));
+  party.tactics = structuredClone(state.partyTactics);
   const visibleEnemyIds = new Set(
     aliveEnemies(state)
       .filter((enemy) => currentVisible.has(key(enemy)))

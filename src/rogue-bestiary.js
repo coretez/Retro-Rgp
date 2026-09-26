@@ -146,6 +146,7 @@ export const ROGUE_BESTIARY = {
   },
   tomb_scavenger: {
     name: "Tomb Scavenger",
+    adversaryKind: "hostile_human",
     glyph: "盗",
     glyphLanguage: "Japanese",
     glyphReading: "tō",
@@ -315,6 +316,7 @@ export const ROGUE_BESTIARY = {
   },
   cult_adept: {
     name: "Cult Adept",
+    adversaryKind: "hostile_human",
     glyph: "教",
     glyphLanguage: "Chinese",
     glyphReading: "jiào",

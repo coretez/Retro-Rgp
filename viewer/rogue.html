@@ -33,6 +33,48 @@
           Menlo,
           monospace;
       }
+      body.outside {
+        color-scheme: light;
+        --bg: #e9e2cf;
+        --panel: #f7f1e2;
+        --panel2: #ddd2b9;
+        --line: #292820;
+        --ink: #171711;
+        --muted: #625d4e;
+        --gold: #765328;
+        --blood: #992f25;
+        --moss: #35623b;
+        background:
+          radial-gradient(circle at 20% 12%, #f8f3e5 0, transparent 32%),
+          linear-gradient(145deg, #eee8d7, #ddd5c0);
+      }
+      body.outside .new-run,
+      body.outside .side-tabs {
+        background: #f7f1e2f2;
+        box-shadow: 0 10px 28px #5c4c3426;
+      }
+      body.outside .side-tabs button[aria-selected="true"] {
+        background: #d8cfb3;
+        color: #171711;
+      }
+      body.outside .event {
+        color: #39372f;
+      }
+      body.outside .event-name,
+      body.outside #events-card h2 {
+        color: #4d351d;
+      }
+      body.outside #scene-card {
+        border-color: #576342;
+        background: linear-gradient(145deg, #edf0d7, #f7f1e2);
+      }
+      body.outside .lore-section p,
+      body.outside #room {
+        color: #302f27;
+      }
+      body.outside kbd {
+        background: #ece4d0;
+      }
       header {
         padding: 10px 18px;
         border-bottom: 1px solid var(--line);
@@ -116,10 +158,10 @@
       }
       main {
         display: grid;
-        grid-template-columns: minmax(900px, 1fr) minmax(300px, 380px);
+        grid-template-columns: minmax(0, 1fr);
         gap: 18px;
         padding: 18px;
-        max-width: 1680px;
+        max-width: 1920px;
         margin: auto;
       }
       .card {
@@ -239,9 +281,23 @@
         background: #3b513e;
         text-shadow: 0 0 7px #d8efb9;
       }
+      .cell.companion {
+        color: #b9e7ff;
+        background: #243844;
+        text-shadow: 0 0 6px #8ecce8;
+      }
       .cell.enemy {
-        color: #ff9b82;
-        background: #3a2420;
+        font-weight: 900;
+      }
+      .cell.enemy.hostile-human {
+        color: #ffd5c9;
+        background: #7b241f;
+        text-shadow: 0 0 5px #ff6d5f;
+      }
+      .cell.enemy.monster {
+        color: #f0c7ff;
+        background: #40284c;
+        text-shadow: 0 0 5px #c78ee0;
       }
       .cell.hit-flash {
         animation: target-hit 420ms ease-out;
@@ -255,14 +311,30 @@
         z-index: 2;
       }
       aside {
-        display: grid;
+        display: none;
         gap: 14px;
         align-content: start;
-        position: sticky;
-        top: 18px;
-        max-height: calc(100vh - 36px);
+        position: fixed;
+        z-index: 80;
+        top: 104px;
+        right: 18px;
+        bottom: 18px;
+        width: min(390px, calc(100vw - 36px));
         overflow-y: auto;
-        padding-right: 3px;
+        border-radius: 8px;
+        box-shadow: 0 18px 50px #0008;
+      }
+      body.drawer-open aside {
+        display: grid;
+      }
+      .header-actions {
+        display: flex;
+        gap: 8px;
+        align-items: center;
+      }
+      #inspector-toggle[aria-expanded="true"] {
+        border-color: var(--gold);
+        color: var(--gold);
       }
       .side-tabs {
         position: sticky;
@@ -345,7 +417,9 @@
         color: #f1d98f;
       }
       .event.attack,
-      .event.hero_defeated {
+      .event.hero_defeated,
+      .event.companion_defeated,
+      .event.companion_unconscious {
         border-color: var(--blood);
       }
       .damage-number {
@@ -363,6 +437,12 @@
       .event-name {
         color: #f2dfaa;
         font-weight: 700;
+      }
+      .event-empty {
+        margin: 0;
+        padding: 12px;
+        color: var(--muted);
+        border: 1px dashed var(--line);
       }
       #combat-float {
         position: absolute;
@@ -536,6 +616,607 @@
         color: var(--muted);
         font-size: 11px;
       }
+      .shop-grid {
+        display: grid;
+        gap: 12px;
+        margin-top: 14px;
+      }
+      .shop {
+        border: 1px solid var(--line);
+        background: #0b100d;
+        padding: 12px;
+      }
+      body.outside #village-panel {
+        align-self: start;
+        padding: 0;
+        background: #f6efdd;
+        border-color: #292820;
+        box-shadow: 0 16px 40px #5f4a2b24;
+      }
+      body.outside .shop {
+        background: #eee5d1;
+        border-color: #4a4131;
+      }
+      body.outside .shop-good,
+      body.outside .inventory-row,
+      body.outside .equipment-slot {
+        border-color: #a89c82;
+      }
+      .outdoor-plan {
+        position: relative;
+        min-height: 245px;
+        margin: 0 0 18px;
+        overflow: hidden;
+        border: 2px solid #1f2119;
+        background:
+          radial-gradient(circle at 14% 24%, #7e9b5f 0 5%, transparent 5.5%),
+          radial-gradient(circle at 84% 68%, #668552 0 7%, transparent 7.5%),
+          linear-gradient(#dfe3bd, #d3d9ad);
+      }
+      .outdoor-road {
+        position: absolute;
+        z-index: 1;
+        color: #171711;
+        font-size: 9px;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        text-align: center;
+        text-transform: uppercase;
+      }
+      .road-stone {
+        left: -2%;
+        right: -2%;
+        top: 46%;
+        height: 42px;
+        padding-top: 14px;
+        background: #c4c2b6;
+        border-block: 2px solid #56564f;
+        transform: rotate(-2deg);
+      }
+      .road-dirt {
+        top: -6%;
+        bottom: -8%;
+        left: 69%;
+        width: 31px;
+        padding: 35px 6px 0;
+        overflow: hidden;
+        background: #d7bd8b;
+        border-inline: 2px solid #7a6241;
+        transform: rotate(5deg);
+        writing-mode: vertical-rl;
+      }
+      .outdoor-place {
+        position: absolute;
+        z-index: 2;
+        padding: 8px 10px;
+        border: 2px solid #171711;
+        color: #171711;
+        background: #9b7145;
+        box-shadow: 4px 4px 0 #1717112e;
+        font:
+          700 12px/1.15 Georgia,
+          serif;
+      }
+      .place-smithy {
+        left: 8%;
+        top: 20%;
+      }
+      .place-armorer {
+        left: 38%;
+        bottom: 12%;
+        background: #826343;
+      }
+      .place-apothecary {
+        right: 6%;
+        top: 13%;
+        background: #7d9860;
+      }
+      .village-green {
+        left: 27%;
+        top: 12%;
+        padding: 11px 15px;
+        border-radius: 50%;
+        background: #718c55;
+      }
+      .road-key {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 14px;
+        margin: 0;
+        color: #413d32;
+        font-size: 10px;
+        text-transform: uppercase;
+      }
+      .road-key span::before {
+        content: "";
+        display: inline-block;
+        width: 18px;
+        height: 8px;
+        margin-right: 5px;
+        border: 1px solid #37372f;
+        vertical-align: middle;
+      }
+      .road-key .key-stone::before {
+        background: #c4c2b6;
+      }
+      .road-key .key-dirt::before {
+        background: #d7bd8b;
+      }
+      .road-key .key-tree::before {
+        background: #78935c;
+      }
+      .road-key .key-sign::before {
+        background: #8d653b;
+      }
+      .village-summary {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) auto;
+        gap: 10px 20px;
+        padding: 14px 18px 18px;
+        border-top: 1px solid #8e846d;
+      }
+      .village-summary .road-key,
+      .village-interaction-guide,
+      #village-interaction,
+      #shop-context,
+      #shop-actions,
+      #shop-note,
+      #shops {
+        grid-column: 1 / -1;
+      }
+      .village-summary h2,
+      .village-summary p {
+        margin: 0;
+      }
+      .village-meta {
+        display: grid;
+        gap: 4px;
+      }
+      .village-utilities {
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        justify-content: flex-end;
+      }
+      .local-party {
+        position: absolute;
+        z-index: 4;
+        left: 48%;
+        bottom: 18%;
+        display: flex;
+        gap: 3px;
+        padding: 5px;
+        border: 2px solid #171711;
+        background: #f6efdd;
+        color: #171711;
+        font-family: "Hiragino Sans", "PingFang SC", sans-serif;
+        font-weight: 700;
+      }
+      #world-panel {
+        padding: 18px;
+      }
+      .exterior-controls {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        padding: 10px 14px;
+        border-bottom: 1px solid var(--line);
+        background: #e8e0ca;
+        color: #171711;
+      }
+      .exterior-controls[hidden] {
+        display: none;
+      }
+      #exterior-status {
+        display: block;
+        color: #5a5548;
+        font-size: 11px;
+      }
+      body.outside #map {
+        border-color: #26271f;
+        background: #c9c9aa;
+      }
+      body.outside .map-wrap {
+        background: #f4eedc;
+      }
+      .cell.outdoor_grass {
+        color: #5c6f43;
+        background: #dce1b9;
+      }
+      .cell.outdoor_tree {
+        color: #193e25;
+        background: #85a064;
+      }
+      .cell.outdoor_ruin {
+        color: #171711;
+        background: #876947;
+      }
+      .cell.outdoor_water {
+        color: #244d59;
+        background: #9fc1bd;
+      }
+      .cell.road_stone {
+        color: #4b4b45;
+        background: #c4c2b6;
+      }
+      .cell.road_dirt {
+        color: #654b2d;
+        background: #d7bd8b;
+      }
+      body.outside .cell.hero {
+        color: #171711;
+        background: #f5e6a9;
+        text-shadow: none;
+      }
+      body.outside .cell.companion {
+        color: #102f3d;
+        background: #b9d4d6;
+        text-shadow: none;
+      }
+      .world-map-wrap {
+        position: relative;
+        width: 100%;
+        max-width: 100%;
+        overflow: auto;
+        border: 2px solid #171711;
+        background: #d6d6ae;
+      }
+      .world-ascii-map {
+        display: grid;
+        gap: 1px;
+        width: 100%;
+        min-width: 912px;
+        background: #8d8b76;
+      }
+      .world-cell {
+        display: grid;
+        place-items: center;
+        width: auto;
+        min-width: 18px;
+        min-height: 18px;
+        aspect-ratio: 1;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        color: #171711;
+        background: #dfe1b9;
+        font-weight: 800;
+      }
+      .world-cell.world_tree {
+        color: #24482b;
+        background: #a8bd83;
+      }
+      .world-cell.world_water {
+        color: #e8f3ed;
+        background: #6e9eaa;
+      }
+      .world-cell.world_mountain {
+        color: #f0ead8;
+        background: #716e63;
+      }
+      .world-cell.road_stone {
+        color: #4b4b45;
+        background: #c4c2b6;
+      }
+      .world-cell.world_dungeon {
+        color: #fff5d7;
+        background: #765638;
+        cursor: pointer;
+      }
+      .world-cell.world_town {
+        color: #102714;
+        background: #839b62;
+        cursor: pointer;
+      }
+      .world-cell.destination {
+        z-index: 2;
+        outline: 2px solid #2d3325;
+        font-size: 15px;
+      }
+      .world-cell.destination:hover {
+        outline: 2px solid #171711;
+        z-index: 3;
+      }
+      .world-party-marker {
+        position: absolute;
+        z-index: 5;
+        display: grid;
+        place-items: center;
+        width: 28px;
+        height: 28px;
+        border: 2px solid #171711;
+        border-radius: 50%;
+        background: #f6efdd;
+        color: #171711;
+        font-family: "Hiragino Sans", "PingFang SC", sans-serif;
+        font-size: 17px;
+        font-weight: 800;
+        box-shadow: 3px 3px 0 #1717113b;
+        transform: translate(-50%, -50%);
+        transition:
+          left 70ms linear,
+          top 70ms linear;
+        pointer-events: none;
+      }
+      .world-caption {
+        margin: 10px 0 16px;
+        color: var(--muted);
+      }
+      .map-view-controls {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--line);
+        background: color-mix(in srgb, var(--panel) 92%, var(--line));
+        color: var(--muted);
+        font-size: 11px;
+      }
+      .map-view-controls select {
+        width: auto;
+        min-width: 190px;
+        padding: 4px 24px 4px 7px;
+      }
+      .map-view-controls .map-hint {
+        min-width: 0;
+        margin-right: auto;
+        overflow: hidden;
+        color: var(--ink);
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .village-map-wrap {
+        position: relative;
+        width: 100%;
+        max-width: 100%;
+        overflow: auto;
+        border: 2px solid #171711;
+        background: #dce1b9;
+      }
+      .village-ascii-map {
+        display: grid;
+        gap: 0;
+        width: 100%;
+        min-width: 816px;
+        background: #8d8b76;
+      }
+      .village-cell {
+        display: grid;
+        place-items: center;
+        width: auto;
+        min-width: 16px;
+        min-height: 16px;
+        aspect-ratio: 1;
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        color: #5c6f43;
+        background: #dce1b9;
+        font-weight: 800;
+        font-size: 13px;
+      }
+      .village-cell.road_stone {
+        color: #4b4b45;
+        background: #c4c2b6;
+      }
+      .village-cell.road_dirt {
+        color: #654b2d;
+        background: #d7bd8b;
+      }
+      .village-cell.village_building {
+        color: #f6efdd;
+        background: #876947;
+      }
+      .village-cell.village_floor {
+        color: #4c3c2c;
+        background: #d8c6a5;
+      }
+      .village-cell.village_door_closed,
+      .village-cell.village_door_open {
+        color: #fff5d7;
+        background: #6d4c2e;
+      }
+      .village-cell.outdoor_tree {
+        color: #254d2c;
+        background: #c8d3a6;
+      }
+      .village-cell.outdoor_stump {
+        color: #54402d;
+        background: #c8d3a6;
+      }
+      .village-cell.village_pit {
+        color: #3f2d20;
+        background: #8a6b4b;
+      }
+      .village-cell.village_rubble,
+      .village-cell.village_material {
+        color: #fff0c4;
+        background: #8f7557;
+      }
+      .village-cell.village_sign {
+        color: #fff1bd;
+        background: #76502d;
+      }
+      .village-cell.village_furniture {
+        color: #fff0c4;
+        background: #6f5135;
+      }
+      .village-cell.village_person {
+        font-family: "Hiragino Sans", "PingFang SC", sans-serif;
+      }
+      .village-cell.village_person.npc-civilian {
+        color: #fff0df;
+        background: #a45f48;
+      }
+      .village-cell.village_person.npc-shopkeeper {
+        color: #2d2415;
+        background: #d5ae55;
+      }
+      .village-cell.village_person.npc-guard {
+        color: #f2f3df;
+        background: #536d42;
+      }
+      .village-cell.examine-target {
+        cursor: help;
+      }
+      .village-cell.talk-target {
+        cursor: pointer;
+      }
+      .village-cell.examine-target:hover,
+      .village-cell.talk-target:hover {
+        box-shadow: inset 0 0 0 2px #f2c14e;
+        z-index: 2;
+      }
+      .village-interaction-guide {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 18px;
+        align-items: center;
+        padding: 10px 12px;
+        border: 1px solid #8e846d;
+        background: #ede4cf;
+        font-size: 12px;
+      }
+      .village-interaction-guide strong {
+        color: #4d351d;
+      }
+      .actor-key {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px 16px;
+        align-items: center;
+        padding: 7px 10px;
+        border-bottom: 1px solid var(--line);
+        font-size: 11px;
+      }
+      .actor-key span::before {
+        content: "";
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+        margin-right: 5px;
+        border: 1px solid #27271f;
+        vertical-align: -1px;
+      }
+      .selection-panel {
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        z-index: 12;
+        display: grid;
+        grid-template-columns: minmax(180px, 1fr) auto;
+        gap: 8px 14px;
+        align-items: center;
+        padding: 10px 12px;
+        border: 1px solid #766744;
+        background: #171713;
+        box-shadow: 0 8px 22px #0008;
+      }
+      .selection-panel[hidden] {
+        display: none;
+      }
+      body.outside .selection-panel {
+        background: #f1ead2;
+        color: #241f16;
+        border-color: #897b5a;
+      }
+      .selection-copy strong,
+      .selection-copy span {
+        display: block;
+      }
+      .selection-copy span {
+        margin-top: 3px;
+        opacity: 0.82;
+      }
+      .selection-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .selection-actions button {
+        min-width: 72px;
+      }
+      .cell.selected-target,
+      .village-cell.selected-target {
+        box-shadow: inset 0 0 0 3px #f2c14e;
+        z-index: 2;
+      }
+      .inventory-row.selectable {
+        cursor: pointer;
+      }
+      .inventory-row.selected-target {
+        outline: 2px solid #f2c14e;
+      }
+      .key-party::before {
+        background: #b9d4d6;
+      }
+      .key-civilian::before {
+        background: #a45f48;
+      }
+      .key-shopkeeper::before {
+        background: #d5ae55;
+      }
+      .key-guard::before {
+        background: #536d42;
+      }
+      .key-hostile::before {
+        background: #7b241f;
+      }
+      .key-monster::before {
+        background: #40284c;
+      }
+      #village-interaction {
+        min-height: 48px;
+        padding: 11px 13px;
+        border-left: 4px solid #765328;
+        background: #f2ead8;
+        color: #302f27;
+      }
+      .village-cell.party-member {
+        color: #102f3d;
+        background: #b9d4d6;
+        font-family: "Hiragino Sans", "PingFang SC", sans-serif;
+      }
+      .village-cell.local-target,
+      .cell.local-target,
+      .world-cell.world-target {
+        cursor: pointer;
+      }
+      .village-cell.local-target:hover,
+      .cell.local-target:hover,
+      .world-cell.world-target:hover {
+        outline: 2px solid #2d3325;
+        z-index: 4;
+      }
+      .shop h3 {
+        margin: 0 0 3px;
+        color: var(--gold);
+      }
+      .shop-keeper {
+        color: var(--muted);
+        margin-bottom: 8px;
+      }
+      .shop-good {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 8px;
+        align-items: center;
+        border-top: 1px solid #273027;
+        padding: 8px 0;
+      }
+      .village-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      #shop-actions[hidden],
+      #shop-note[hidden] {
+        display: none;
+      }
       .slot-label {
         color: var(--muted);
         font-size: 10px;
@@ -610,16 +1291,23 @@
           animation: none;
         }
       }
-      @media (max-width: 900px) {
+      @media (max-width: 1050px) {
         main {
           grid-template-columns: 1fr;
         }
         aside {
-          order: -1;
-          position: static;
-          max-height: none;
-          overflow: visible;
-          padding-right: 0;
+          position: fixed;
+          top: 92px;
+          right: 10px;
+          bottom: 10px;
+          width: min(390px, calc(100vw - 20px));
+          overflow: auto;
+        }
+        .village-summary {
+          grid-template-columns: 1fr;
+        }
+        .village-utilities {
+          justify-content: space-between;
         }
       }
     </style>
@@ -627,50 +1315,55 @@
   <body>
     <header>
       <div>
-        <div class="eyebrow">Retro RPG · Solo turn engine</div>
+        <div class="eyebrow">Retro RPG · Party turn engine</div>
         <h1 id="title">Dungeon Rogue</h1>
         <div id="subtitle">Loading the dungeon…</div>
       </div>
-      <details class="game-menu" id="new-game-panel">
-        <summary>New game</summary>
-        <form class="new-run" id="new-run">
-          <input name="heroName" value="The Delver" aria-label="Hero name" />
-          <select name="heroClass" aria-label="Hero class">
-            <option value="fighter" selected>Fighter</option>
-            <option value="mage">Mage</option>
-            <option value="cleric">Cleric</option>
-          </select>
-          <input
-            name="seed"
-            value="the-river-below"
-            aria-label="Dungeon seed"
-          />
-          <select name="form" aria-label="Dungeon form">
-            <option value="auto">Auto theme</option>
-            <option value="fortress">Fortress</option>
-            <option value="temple">Temple</option>
-            <option value="crypt">Crypt</option>
-            <option value="rooms">Room complex</option>
-            <option value="natural_caves">Natural caves</option>
-            <option value="mine">Mine</option>
-            <option value="flooded_underways">Underground river</option>
-            <option value="hybrid" selected>Hybrid ruin</option>
-          </select>
-          <select name="size" aria-label="Floor size">
-            <option value="small" selected>Expansive · 56×40</option>
-            <option value="medium">Vast · 72×52</option>
-          </select>
-          <select name="levels" aria-label="Run length">
-            <option value="3">Delve · 3 levels</option>
-            <option value="5" selected>Expedition · 5 levels</option>
-            <option value="8">Campaign · 8 levels</option>
-          </select>
-          <button type="submit">Start new game</button>
-        </form>
-      </details>
+      <div class="header-actions">
+        <button id="inspector-toggle" type="button" aria-expanded="false">
+          Party &amp; records
+        </button>
+        <details class="game-menu" id="new-game-panel">
+          <summary>New game</summary>
+          <form class="new-run" id="new-run">
+            <input name="heroName" value="Mara Thorn" aria-label="Hero name" />
+            <select name="heroClass" aria-label="Hero class">
+              <option value="fighter" selected>Fighter</option>
+              <option value="mage">Mage</option>
+              <option value="cleric">Cleric</option>
+            </select>
+            <input
+              name="seed"
+              value="the-river-below"
+              aria-label="Dungeon seed"
+            />
+            <select name="form" aria-label="Dungeon form">
+              <option value="auto">Auto theme</option>
+              <option value="fortress">Fortress</option>
+              <option value="temple">Temple</option>
+              <option value="crypt">Crypt</option>
+              <option value="rooms">Room complex</option>
+              <option value="natural_caves">Natural caves</option>
+              <option value="mine">Mine</option>
+              <option value="flooded_underways">Underground river</option>
+              <option value="hybrid" selected>Hybrid ruin</option>
+            </select>
+            <select name="size" aria-label="Floor size">
+              <option value="small" selected>Expansive · 56×40</option>
+              <option value="medium">Vast · 72×52</option>
+            </select>
+            <select name="levels" aria-label="Run length">
+              <option value="3">Delve · 3 levels</option>
+              <option value="5" selected>Expedition · 5 levels</option>
+              <option value="8">Campaign · 8 levels</option>
+            </select>
+            <button type="submit">Start new game</button>
+          </form>
+        </details>
+      </div>
     </header>
     <main>
-      <section class="card">
+      <section class="card" id="dungeon-panel">
         <div class="stats">
           <div class="stat" id="health-stat">
             <label>Health</label><strong id="hp">—</strong>
@@ -692,9 +1385,138 @@
             <label>Experience</label><strong id="xp">—</strong>
           </div>
         </div>
+        <div class="exterior-controls" id="exterior-controls" hidden>
+          <div>
+            <strong>Rooted Keep approach</strong>
+            <span id="exterior-status"></span>
+          </div>
+          <div class="village-actions">
+            <button id="exterior-enter-dungeon">Return to the dungeon</button>
+            <button id="exterior-world">Open regional map</button>
+          </div>
+        </div>
+        <div class="map-view-controls">
+          <span class="map-hint" id="local-map-hint"
+            >Click an adjacent square or use directions</span
+          >
+          <label>Map view</label>
+          <select aria-label="Map camera mode">
+            <option selected>Static map · actors move</option>
+            <option disabled>Centered hero · planned</option>
+          </select>
+        </div>
+        <div class="actor-key" aria-label="Map actor colors">
+          <span class="key-party" id="dungeon-objective">Party</span>
+          <span class="key-hostile">Hostile person</span>
+          <span class="key-monster">Monster</span>
+        </div>
         <div class="map-wrap">
+          <section
+            class="selection-panel"
+            id="dungeon-selection"
+            aria-live="polite"
+            hidden
+          >
+            <div class="selection-copy"><strong></strong><span></span></div>
+            <div class="selection-actions"></div>
+          </section>
           <div id="combat-float" aria-live="assertive"></div>
           <div id="map" aria-label="Dungeon map"></div>
+        </div>
+      </section>
+      <section class="card" id="world-panel" hidden>
+        <div class="map-view-controls">
+          <span class="map-hint">Click any square or use directions</span>
+          <label>Map view</label>
+          <select aria-label="World map camera mode">
+            <option selected>Static map · party moves</option>
+            <option disabled>Centered party · planned</option>
+          </select>
+        </div>
+        <div class="world-map-wrap">
+          <div
+            class="world-ascii-map"
+            id="world-map"
+            aria-label="The Stonebridge March world map"
+          ></div>
+          <div
+            class="world-party-marker"
+            id="world-party"
+            title="The complete party"
+          >
+            群
+          </div>
+        </div>
+        <p class="world-caption" id="world-caption"></p>
+        <div class="village-actions">
+          <button id="world-travel"></button>
+          <button id="world-enter"></button>
+        </div>
+      </section>
+      <section class="card" id="village-panel" hidden>
+        <div class="map-view-controls">
+          <span class="map-hint"
+            >Move: click ground · Inspect/manipulate: right-click or Look
+            around</span
+          >
+          <label>Map view</label>
+          <select aria-label="Village map camera mode">
+            <option selected>Centered hero · map moves</option>
+            <option disabled>Static map · optional</option>
+          </select>
+        </div>
+        <div class="actor-key" aria-label="Town actor colors">
+          <span class="key-party" id="village-objective">Party</span>
+          <span class="key-civilian">Townsfolk</span>
+          <span class="key-shopkeeper">Shopkeeper</span>
+          <span class="key-guard">Guard / fighter</span>
+        </div>
+        <div class="village-map-wrap">
+          <section
+            class="selection-panel"
+            id="village-selection"
+            aria-live="polite"
+            hidden
+          >
+            <div class="selection-copy"><strong></strong><span></span></div>
+            <div class="selection-actions"></div>
+          </section>
+          <div
+            class="village-ascii-map"
+            id="village-map"
+            aria-label="Stonebridge village map"
+          ></div>
+        </div>
+        <div class="village-summary">
+          <div class="road-key" aria-label="Town map legend">
+            <span class="key-stone">Stone road</span>
+            <span class="key-dirt">Dirt path</span>
+            <span class="key-tree">Tree</span>
+            <span class="key-sign">Sign</span>
+          </div>
+          <div class="village-meta">
+            <h2 id="village-name">Stonebridge</h2>
+            <p id="village-description"></p>
+          </div>
+          <div class="village-utilities">
+            <span>Party purse: <strong id="village-gold">0 cp</strong></span>
+            <button id="village-examine">Look around</button>
+            <button id="village-party-mode">Disperse party</button>
+            <button id="village-world">Open regional map</button>
+          </div>
+          <p id="shop-context"></p>
+          <div class="village-actions" id="shop-actions">
+            <label for="shop-buyer">Buying for</label>
+            <select
+              id="shop-buyer"
+              aria-label="Party member buying equipment"
+            ></select>
+          </div>
+          <p class="equipment-note" id="shop-note">
+            Purchased gear belongs to the selected character and is equipped
+            immediately. Potions enter the shared expedition supplies.
+          </p>
+          <div class="shop-grid" id="shops"></div>
         </div>
       </section>
       <aside>
@@ -713,11 +1535,12 @@
           </button>
         </nav>
         <div class="side-panel" id="side-character">
-          <section class="card side-card">
+          <section class="card side-card" id="dungeon-actions">
             <h2>Actions</h2>
             <div class="theme" id="character"></div>
             <div class="actions">
               <button id="potion"><kbd>H</kbd>Drink potion</button>
+              <button id="stairs-up"><kbd>&lt;</kbd>Ascend / leave</button>
               <button id="stairs"><kbd>&gt;</kbd>Descend</button>
               <button id="death-save"><kbd>R</kbd>Death save</button>
               <button id="wait"><kbd>.</kbd>Wait</button>
@@ -732,6 +1555,26 @@
             <div class="quick-items" id="quick-items"></div>
             <div id="banner"></div>
             <div id="error"></div>
+          </section>
+          <section class="card side-card">
+            <h2>Party</h2>
+            <div class="equipment-note" id="party-mode"></div>
+            <div class="village-actions" aria-label="Party tactics">
+              <label for="party-formation">Formation</label>
+              <select id="party-formation">
+                <option value="column">Column</option>
+                <option value="line">Line</option>
+                <option value="wedge">Wedge</option>
+                <option value="scatter">Scatter</option>
+              </select>
+              <label for="party-strategy">Strategy</label>
+              <select id="party-strategy">
+                <option value="explore">Explore</option>
+                <option value="hold">Hold position</option>
+                <option value="advance">Advance</option>
+              </select>
+            </div>
+            <div class="inventory" id="party-members"></div>
           </section>
           <section class="card side-card" id="equipment-panel">
             <h2><kbd>I</kbd>Inventory &amp; Equipment</h2>
@@ -759,7 +1602,8 @@
               <div class="help">
                 Arrow keys, WASD, QEZC diagonals, or numpad move. Walk into an
                 enemy to attack. Walking toward a closed door opens it. Hidden
-                features are noticed automatically while exploring.
+                features are noticed automatically while exploring. On outdoor,
+                town and world maps, click a reachable square to travel there.
               </div>
             </div>
           </details>
@@ -812,12 +1656,25 @@
     <script>
       let state = null;
       let busy = false;
+      let examineMode = false;
+      let selectedTarget = null;
+      let combatTargetId = null;
+      let villageInteraction =
+        "Select a highlighted sign, person, or object to interact with it.";
       let bestiary = null;
       let lastFeedbackKey = null;
       let feedbackTimer = null;
       let eventHistory = [];
       let historyRunId = null;
       let lastHistoryKey = null;
+      const routineEventTypes = new Set([
+        "hero_move",
+        "companion_move",
+        "enemy_move",
+        "local_travel",
+        "noise",
+        "npc_move",
+      ]);
       const directions = {
         ArrowUp: "north",
         w: "north",
@@ -857,7 +1714,195 @@
         ]),
       );
       const $ = (id) => document.getElementById(id);
-      function selectSideTab(name) {
+      function commandButton(label, action, disabled = false) {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.textContent = label;
+        button.disabled = busy || disabled;
+        button.addEventListener("click", action);
+        return button;
+      }
+      function selectedEnemy() {
+        return state.map.cells.find(
+          (cell) =>
+            cell.enemy?.id === combatTargetId && cell.visibility === "visible",
+        )?.enemy;
+      }
+      function setSelection(target) {
+        selectedTarget = target;
+        if (target?.kind === "enemy") combatTargetId = target.id;
+        renderSelectionPanels();
+        document
+          .querySelectorAll(".selected-target")
+          .forEach((element) => element.classList.remove("selected-target"));
+        if (target?.element) target.element.classList.add("selected-target");
+      }
+      function targetAction(intent) {
+        act(intent);
+      }
+      function villageSelectionActions(target) {
+        if (target.kind === "item") return inventorySelectionActions(target);
+        const examine = commandButton(
+          target.kind === "sign" ? "Read" : "Look",
+          () =>
+            targetAction({ kind: "local_examine", x: target.x, y: target.y }),
+        );
+        const manipulate = {
+          outdoor_tree: ["Harvest", "harvest", "cut"],
+          outdoor_grass: ["Dig", "dig", "dig"],
+          road_dirt: ["Dig", "dig", "dig"],
+          village_building: ["Breach wall", "breach", "breach"],
+        }[target.tile];
+        if (target.material)
+          return [
+            examine,
+            commandButton("Collect", () =>
+              targetAction({
+                kind: "local_manipulate",
+                action: "collect",
+                x: target.x,
+                y: target.y,
+              }),
+            ),
+          ];
+        if (manipulate) {
+          const tool = state.hero.inventory.find((item) =>
+            item.toolTags?.includes(manipulate[2]),
+          );
+          return [
+            examine,
+            commandButton(
+              tool
+                ? `${manipulate[0]} · ${tool.name}`
+                : `${manipulate[0]} · tool required`,
+              () =>
+                targetAction({
+                  kind: "local_manipulate",
+                  action: manipulate[1],
+                  x: target.x,
+                  y: target.y,
+                }),
+              !tool,
+            ),
+          ];
+        }
+        if (target.kind !== "person") return [examine];
+        return [
+          examine,
+          commandButton("Talk", () =>
+            targetAction({ kind: "local_talk", x: target.x, y: target.y }),
+          ),
+        ];
+      }
+      function inventorySelectionActions(target) {
+        const item = state.hero.inventory.find(
+          (entry) => entry.id === target.id,
+        );
+        if (!item) return [];
+        const actions = [];
+        if (item.itemType === "equipment")
+          actions.push(
+            commandButton(
+              item.equipped ? "Equipped" : "Equip",
+              () => targetAction({ kind: "equip", itemId: item.id }),
+              item.equipped,
+            ),
+          );
+        if (item.kind === "healing_potion")
+          actions.push(
+            commandButton("Use", () =>
+              targetAction({ kind: "use_item", itemId: item.id }),
+            ),
+          );
+        if (["relic", "scroll", "wand"].includes(item.itemType)) {
+          const enemy = selectedEnemy();
+          actions.push(
+            commandButton(
+              item.itemType === "relic" ? "Read" : "Use",
+              () =>
+                targetAction({
+                  kind: "invoke_item",
+                  itemId: item.id,
+                  targetId: enemy?.id,
+                }),
+              ["scroll", "wand"].includes(item.itemType) && !enemy,
+            ),
+          );
+        }
+        if (item.thrownRange) {
+          const enemy = selectedEnemy();
+          actions.push(
+            commandButton(
+              `Throw${enemy ? ` at ${enemy.name}` : ""}`,
+              () =>
+                targetAction({
+                  kind: "throw_item",
+                  itemId: item.id,
+                  targetId: enemy.id,
+                }),
+              !enemy,
+            ),
+          );
+        }
+        return actions;
+      }
+      function dungeonSelectionActions(target) {
+        if (target.kind === "item") return inventorySelectionActions(target);
+        const actions = [
+          commandButton("Look", () =>
+            targetAction({ kind: "examine", x: target.x, y: target.y }),
+          ),
+        ];
+        if (target.kind !== "enemy") return actions;
+        const weapon = state.hero.inventory.find(
+          (item) => item.id === state.hero.equipment?.weapon,
+        );
+        if (weapon?.rangeSquares)
+          actions.push(
+            commandButton("Aim & fire", () =>
+              targetAction({ kind: "ranged_attack", targetId: target.id }),
+            ),
+          );
+        const throwable = state.hero.inventory.find((item) => item.thrownRange);
+        if (throwable)
+          actions.push(
+            commandButton(`Throw ${throwable.name}`, () =>
+              targetAction({
+                kind: "throw_item",
+                itemId: throwable.id,
+                targetId: target.id,
+              }),
+            ),
+          );
+        return actions;
+      }
+      function renderSelectionPanel(id, activeScope) {
+        const panel = $(id),
+          copy = panel.querySelector(".selection-copy"),
+          actions = panel.querySelector(".selection-actions"),
+          target =
+            selectedTarget?.scope === activeScope ? selectedTarget : null;
+        panel.hidden = !target;
+        if (!target) {
+          actions.replaceChildren();
+          return;
+        }
+        copy.querySelector("strong").textContent = target.name;
+        copy.querySelector("span").textContent = target.detail;
+        const buttons =
+          activeScope === "village"
+            ? villageSelectionActions(target)
+            : dungeonSelectionActions(target);
+        buttons.push(commandButton("Clear", () => setSelection(null)));
+        actions.replaceChildren(...buttons);
+      }
+      function renderSelectionPanels() {
+        renderSelectionPanel("dungeon-selection", "dungeon");
+        renderSelectionPanel("village-selection", "village");
+      }
+      function selectSideTab(name, openDrawer = true) {
+        document.body.classList.toggle("drawer-open", openDrawer);
+        $("inspector-toggle").setAttribute("aria-expanded", String(openDrawer));
         document
           .querySelectorAll("[data-side-tab]")
           .forEach((button) =>
@@ -870,10 +1915,24 @@
           $(`side-${panel}`).hidden = panel !== name;
         });
       }
+      function toggleInspector() {
+        const open = document.body.classList.toggle("drawer-open");
+        $("inspector-toggle").setAttribute("aria-expanded", String(open));
+      }
       const simpleEventText = {
         hero_move: () => `${state.hero.name} moves.`,
         hero_wait: () => `${state.hero.name} waits.`,
         enemy_move: (event) => `${event.actorName} approaches.`,
+        companion_move: (event) =>
+          event.reason === "take_formation_slot"
+            ? `${event.actorName} takes position.`
+            : event.reason === "withdraw_to_ranged_position"
+              ? `${event.actorName} withdraws to ranged position.`
+              : event.reason === "protect_ranged_ally"
+                ? `${event.actorName} moves to shield the rear line.`
+                : `${event.actorName} follows the leader.`,
+        formation_adopted: (event) =>
+          `${event.formation.replaceAll("_", " ")} formation: ${event.objective.replaceAll("_", " ")} strategy.`,
         attack: (event) =>
           event.hit
             ? `${event.actorName} hits ${event.targetName} for ${event.appliedDamage.hpDamage} ${event.appliedDamage.damageType} damage.`
@@ -882,6 +1941,12 @@
         hero_defeated: (event) => `${event.actorName} falls in the dungeon.`,
         hero_unconscious: (event) =>
           `${event.actorName} falls unconscious at 0 HP.`,
+        companion_unconscious: (event) =>
+          `${event.actorName} falls unconscious at 0 HP.`,
+        companion_defeated: (event) =>
+          `${event.actorName} is slain in the fighting.`,
+        companion_heal: (event) =>
+          `${event.actorName} restores ${event.healing} HP to ${event.targetName}.`,
         death_save: (event) =>
           `Death save ${event.roll.total}: ${event.result} (${event.death.successes} successes, ${event.death.failures} failures).`,
         treasure_collected: (event) =>
@@ -897,7 +1962,41 @@
         trap_triggered: (event) =>
           `${event.trapName} triggers${event.damage ? ` for ${event.damage.total} damage` : ", but you evade it"}.`,
         level_changed: (event) =>
-          `You descend to dungeon level ${event.depth}.`,
+          `You ${event.direction === "up" ? "ascend" : "descend"} to dungeon level ${event.depth}.`,
+        village_entered: (event) =>
+          `The party returns to ${event.villageName}.`,
+        exterior_entered: (event) =>
+          `The party emerges into ${event.areaName}.`,
+        world_map_opened: () => "The regional map opens.",
+        world_travel: (event) =>
+          `The company travels to ${event.destinationName}.`,
+        world_move: (event) =>
+          event.destinationName
+            ? `The company reaches ${event.destinationName}.`
+            : "The company explores the open country.",
+        local_travel: (event) =>
+          event.partyMovement === "dispersed"
+            ? "The leader explores while the companions remain dispersed."
+            : `The party explores the ${event.area === "village" ? "town" : "surrounding country"}.`,
+        local_examined: (event) => `${event.name}: ${event.detail}`,
+        local_talked: (event) =>
+          `${event.personName}, ${event.role}: “${event.dialogue}”`,
+        dungeon_examined: (event) => `${event.name}: ${event.detail}`,
+        item_thrown: (event) =>
+          `${state.hero.name} throws ${event.itemName} at ${event.targetName}.`,
+        world_manipulated: (event) =>
+          `${state.hero.name} uses ${event.toolName} to ${event.action}, producing ${event.quantity} × ${event.materialName}.`,
+        material_collected: (event) =>
+          `Collected ${event.quantity} × ${event.itemName}.`,
+        guard_reacted: (event) =>
+          `${event.personName} abandons patrol to investigate the damage. Town suspicion is now ${event.wantedLevel}.`,
+        party_movement_changed: (event) =>
+          event.mode === "dispersed"
+            ? "The company disperses. The leader now moves independently."
+            : "The leader calls the company back into following order.",
+        dungeon_entered: () => "The party enters the dungeon.",
+        item_purchased: (event) =>
+          `${event.actorName} buys ${event.itemName} for ${event.priceCp} cp.`,
         equipment_changed: (event) =>
           `${event.itemName} equipped in the ${event.slot} slot.`,
         equipment_removed: (event) =>
@@ -954,6 +2053,22 @@
           `${event.itemName} restores `,
           emphasized(event.healing, "healing-number"),
           " HP.",
+        ],
+        companion_heal: (event) => [
+          emphasized(event.actorName),
+          " restores ",
+          emphasized(event.healing, "healing-number"),
+          " HP to ",
+          emphasized(event.targetName),
+          ".",
+        ],
+        item_purchased: (event) => [
+          emphasized(event.actorName),
+          " buys ",
+          emphasized(event.itemName),
+          " for ",
+          emphasized(`${event.priceCp} cp`, "event-value"),
+          ".",
         ],
         spell_cast: (event) => [
           emphasized(event.spellName),
@@ -1080,8 +2195,11 @@
           lastHistoryKey = null;
         }
         if (lastHistoryKey !== feedbackKey) {
+          const noteworthyEvents = state.recentEvents.filter(
+            (event) => !routineEventTypes.has(event.type),
+          );
           eventHistory = [
-            ...state.recentEvents.map((event) => ({
+            ...noteworthyEvents.map((event) => ({
               ...event,
               turn: state.tick,
             })),
@@ -1108,7 +2226,14 @@
       }
       function renderHeroSummary() {
         $("title").textContent = state.title;
-        $("subtitle").textContent = state.theme.dominantFeature;
+        $("subtitle").textContent =
+          state.location === "village"
+            ? state.village.description
+            : state.location === "world"
+              ? "The party travels as one company between local adventure areas."
+              : state.location === "exterior"
+                ? "Ruined masonry, meadow and old roads surround the dungeon stair."
+                : state.theme.dominantFeature;
         $("hp").textContent = `${state.hero.hp}/${state.hero.maxHp}`;
         $("ac").textContent = state.hero.ac;
         $("gold").textContent = `${state.hero.goldCp} cp`;
@@ -1128,6 +2253,308 @@
         $("power-key").textContent = powerKey;
         $("power-name").textContent =
           `${state.hero.classPower.name} · ${state.hero.classPower.remaining}/${state.hero.classPower.uses}`;
+      }
+      function goodDetail(good) {
+        if (good.itemType === "consumable") return "Restores 2d4+2 HP";
+        if (good.slot === "weapon")
+          return `${good.damage} ${good.damageType} · +${good.attackBonus} attack${good.rangeSquares ? ` · range ${good.rangeSquares}` : ""}${good.thrownRange ? ` · thrown ${good.thrownRange}` : ""}`;
+        if (good.slot === "armor") return `AC ${good.ac}`;
+        return `+${good.acBonus} AC`;
+      }
+      function createShopGood(good) {
+        const row = document.createElement("div");
+        row.className = "shop-good";
+        const description = document.createElement("span");
+        description.textContent = good.name;
+        const detail = document.createElement("span");
+        detail.className = "item-detail";
+        detail.textContent = goodDetail(good);
+        description.append(detail);
+        const buy = document.createElement("button");
+        buy.textContent = `Buy · ${good.priceCp} cp`;
+        buy.disabled =
+          busy ||
+          !state.legalIntents.includes("shop_buy") ||
+          state.hero.goldCp < good.priceCp;
+        buy.addEventListener("click", () =>
+          act({
+            kind: "shop_buy",
+            actorId: $("shop-buyer").value,
+            itemKind: good.itemKind,
+          }),
+        );
+        row.append(description, buy);
+        return row;
+      }
+      function createShopSection(shop) {
+        const section = document.createElement("section");
+        section.className = "shop";
+        const heading = document.createElement("h3"),
+          keeper = document.createElement("div");
+        heading.textContent = shop.name;
+        keeper.className = "shop-keeper";
+        keeper.textContent = `Proprietor: ${shop.keeper}`;
+        section.append(heading, keeper, ...shop.goods.map(createShopGood));
+        return section;
+      }
+      function villageTarget(cell, element) {
+        if (cell.person)
+          return {
+            scope: "village",
+            kind: "person",
+            id: cell.person.id,
+            x: cell.x,
+            y: cell.y,
+            name: cell.person.name,
+            detail: `${cell.person.role} · ${cell.person.currentAction} · objective: ${cell.person.objective.replaceAll("_", " ")}`,
+            tile: cell.tile,
+            element,
+          };
+        if (cell.sign)
+          return {
+            scope: "village",
+            kind: "sign",
+            x: cell.x,
+            y: cell.y,
+            name: "Posted sign",
+            detail: "Choose Read to examine its writing.",
+            tile: cell.tile,
+            element,
+          };
+        const object = cell.furniture ?? cell.building;
+        if (!object && !cell.featureName && !cell.material) return null;
+        return {
+          scope: "village",
+          kind: cell.furniture ? "fixture" : "building",
+          x: cell.x,
+          y: cell.y,
+          name: cell.material?.name ?? object?.name ?? cell.featureName,
+          detail: "Choose Look to examine it closely.",
+          tile: cell.tile,
+          material: cell.material,
+          element,
+        };
+      }
+      function createVillageCell(cell) {
+        const button = document.createElement("button");
+        button.className = `village-cell ${cell.tile}`;
+        button.tabIndex = -1;
+        button.textContent = cell.glyph ?? baseCellSymbol(cell);
+        if (
+          selectedTarget?.scope === "village" &&
+          selectedTarget.x === cell.x &&
+          selectedTarget.y === cell.y
+        )
+          button.classList.add("selected-target");
+        if (cell.building) button.title = cell.building.name;
+        if (cell.sign) {
+          button.title = `Read sign: ${cell.sign.text}`;
+          button.setAttribute("aria-label", button.title);
+        }
+        if (cell.featureName) button.title = cell.featureName;
+        if (cell.furniture) button.title = cell.furniture.name;
+        if (cell.person) {
+          button.title = `Talk to ${cell.person.name} · ${cell.person.role}`;
+          button.setAttribute("aria-label", button.title);
+          button.classList.add("talk-target", `npc-${cell.person.category}`);
+        }
+        const inspectTarget = () =>
+          villageTarget(cell, button) ?? {
+            scope: "village",
+            kind: "ground",
+            x: cell.x,
+            y: cell.y,
+            name: cell.tile.replaceAll("_", " "),
+            detail: "Choose Look or a valid world action.",
+            tile: cell.tile,
+            material: cell.material,
+            element: button,
+          };
+        button.addEventListener("contextmenu", (event) => {
+          event.preventDefault();
+          setSelection(inspectTarget());
+        });
+        if (cell.partyMember) {
+          button.classList.add("party-member");
+          button.textContent = cell.partyMember.glyph;
+          button.title = cell.partyMember.name;
+        }
+        if (
+          state.village.heroPosition.x === cell.x &&
+          state.village.heroPosition.y === cell.y
+        ) {
+          button.classList.add("party-member");
+          button.textContent = "侠";
+          button.title = state.hero.name;
+        } else if (examineMode || villageTarget(cell, button)) {
+          button.classList.add("examine-target");
+          button.addEventListener("click", () => {
+            examineMode = false;
+            setSelection(inspectTarget());
+          });
+        } else if (
+          ![
+            "village_building",
+            "village_sign",
+            "outdoor_tree",
+            "village_pit",
+          ].includes(cell.tile)
+        ) {
+          button.classList.add("local-target");
+          button.addEventListener("click", () =>
+            animateLocalTravel({ x: cell.x, y: cell.y }),
+          );
+        }
+        return button;
+      }
+      function renderVillageMap() {
+        const map = $("village-map");
+        map.style.gridTemplateColumns = `repeat(${state.village.map.width}, minmax(16px, 1fr))`;
+        map.replaceChildren(...state.village.map.cells.map(createVillageCell));
+      }
+      function renderVillage() {
+        const inVillage = state.location === "village",
+          inExterior = state.location === "exterior",
+          inWorld = state.location === "world",
+          outside = inVillage || inExterior || inWorld;
+        document.body.classList.toggle("outside", outside);
+        $("dungeon-panel").hidden = inVillage || inWorld;
+        $("exterior-controls").hidden = !inExterior;
+        $("world-panel").hidden = !inWorld;
+        $("village-panel").hidden = !inVillage;
+        if (inExterior) {
+          $("exterior-enter-dungeon").disabled = busy;
+          $("exterior-world").disabled = busy || !state.exterior.safe;
+          $("exterior-world").title = state.exterior.safe
+            ? "Zoom out to the regional travel map."
+            : state.exterior.dangerReason;
+          $("exterior-status").textContent = state.exterior.safe
+            ? "The area is secure enough to travel."
+            : state.exterior.dangerReason;
+        }
+        if (inWorld) renderWorldMap();
+        if (!inVillage) return;
+        renderVillageMap();
+        $("village-name").textContent = state.village.name;
+        $("village-description").textContent = state.village.description;
+        $("village-gold").textContent = `${state.hero.goldCp} cp`;
+        $("village-world").disabled = busy;
+        $("village-examine").disabled = busy;
+        $("village-examine").textContent = examineMode
+          ? "Cancel looking"
+          : "Look around";
+        $("village-party-mode").disabled = busy;
+        $("village-party-mode").textContent =
+          state.village.partyMovement === "dispersed"
+            ? "Resume following"
+            : "Disperse party";
+        const currentShop = state.village.shops.find((shop) => shop.accessible),
+          buyer = $("shop-buyer"),
+          selected = buyer.value || state.hero.id,
+          movementNote =
+            state.village.partyMovement === "dispersed"
+              ? "You are exploring alone; companions remain where you left them."
+              : "The company is following the leader.";
+        $("shop-context").textContent = `${
+          currentShop
+            ? `Inside ${currentShop.name}. ${currentShop.keeper} is ready to trade.`
+            : "Explore the town, examine its people and objects, or enter a shop."
+        } ${movementNote}`;
+        $("shop-actions").hidden = !currentShop;
+        $("shop-note").hidden = !currentShop;
+        buyer.disabled = busy || !currentShop;
+        buyer.replaceChildren(
+          ...state.village.buyers.map(
+            (actor) => new Option(`${actor.name} · ${actor.class}`, actor.id),
+          ),
+        );
+        buyer.value = state.village.buyers.some(({ id }) => id === selected)
+          ? selected
+          : state.hero.id;
+        $("shops").replaceChildren(
+          ...(currentShop ? [createShopSection(currentShop)] : []),
+        );
+      }
+      function placeWorldMarker(position) {
+        const marker = $("world-party"),
+          index = position.y * state.world.map.width + position.x,
+          cell = $("world-map").children[index];
+        if (!cell) return;
+        marker.style.left = `${cell.offsetLeft + cell.offsetWidth / 2}px`;
+        marker.style.top = `${cell.offsetTop + cell.offsetHeight / 2}px`;
+      }
+      function worldCellSymbol(cell) {
+        if (cell.destination?.kind === "town") return "村";
+        if (cell.destination?.kind === "dungeon") return "城";
+        if (cell.tile === "road_stone") return "=";
+        if (cell.tile === "road_dirt") return ":";
+        if (cell.tile === "world_tree") return "T";
+        if (cell.tile === "world_water") return "~";
+        if (cell.tile === "world_mountain") return "^";
+        return ",";
+      }
+      function renderWorldMap() {
+        const current = state.world.nodes.find(
+            (node) => node.id === state.world.position,
+          ),
+          route = state.world.routes.find((entry) =>
+            [entry.from, entry.to].includes(state.world.position),
+          ),
+          destinationId = route
+            ? route.from === state.world.position
+              ? route.to
+              : route.from
+            : null,
+          destination = state.world.nodes.find(
+            (node) => node.id === destinationId,
+          ),
+          marker = $("world-party"),
+          map = $("world-map");
+        map.style.gridTemplateColumns = `repeat(${state.world.map.width}, minmax(18px, 1fr))`;
+        map.replaceChildren(
+          ...state.world.map.cells.map((cell) => {
+            const button = document.createElement("button");
+            button.className = `world-cell ${cell.tile}`;
+            button.classList.add("world-target");
+            button.textContent = worldCellSymbol(cell);
+            button.tabIndex = -1;
+            if (cell.destination) {
+              button.classList.add("destination");
+              button.title = `${cell.destination.name} · ${cell.destination.kind}`;
+              button.setAttribute(
+                "aria-label",
+                `${cell.destination.name}, ${cell.destination.kind}`,
+              );
+              if (
+                cell.destination.id !== state.world.position &&
+                destination?.id === cell.destination.id
+              ) {
+                button.tabIndex = 0;
+                button.addEventListener("click", () =>
+                  travelWorld(cell.destination.id),
+                );
+              } else if (cell.destination.id !== state.world.position) {
+                button.addEventListener("click", () => moveWorld(cell));
+              }
+            } else button.addEventListener("click", () => moveWorld(cell));
+            return button;
+          }),
+        );
+        placeWorldMarker(state.world.party.position);
+        marker.textContent = state.world.party.glyph;
+        marker.title = `${state.world.party.name} · ${state.world.party.glyph} (${state.world.party.glyphReading}), group · ${state.world.party.memberCount} members`;
+        $("world-caption").textContent =
+          `${state.world.party.glyph} (${state.world.party.glyphReading}) represents the complete ${state.world.party.memberCount}-member company${current ? ` at ${current.name}` : " exploring the open country"}. Click any square to travel.`;
+        $("world-travel").hidden = !destination;
+        if (destination) {
+          $("world-travel").textContent = `Follow road to ${destination.name}`;
+          $("world-travel").dataset.destination = destination.id;
+        }
+        $("world-travel").disabled = busy || !destination;
+        $("world-enter").textContent = current
+          ? `Enter ${current.name}`
+          : "Enter location";
+        $("world-enter").disabled = busy || !current;
       }
       function renderLore() {
         $("theme").textContent = state.currentRoom
@@ -1211,23 +2638,52 @@
         $("inventory").replaceChildren(
           ...state.hero.inventory
             .filter(
-              (item) => item.itemType === "equipment" && item.quantity > 0,
+              (item) =>
+                ["equipment", "material"].includes(item.itemType) &&
+                item.quantity > 0,
             )
             .map((item) => {
               const row = document.createElement("div");
-              row.className = "inventory-row";
+              row.className = "inventory-row selectable";
+              const selectionScope =
+                state.location === "village" ? "village" : "dungeon";
+              if (
+                selectedTarget?.scope === selectionScope &&
+                selectedTarget.id === item.id
+              )
+                row.classList.add("selected-target");
+              row.title = "Select this item to equip, use, or throw it.";
+              row.addEventListener("click", () =>
+                setSelection({
+                  scope: selectionScope,
+                  kind: "item",
+                  id: item.id,
+                  name: item.name,
+                  detail:
+                    item.itemType === "material"
+                      ? `Crafting material × ${item.quantity}`
+                      : item.slot === "weapon"
+                        ? `${item.damage} ${item.damageType}${item.rangeSquares ? ` · range ${item.rangeSquares}` : ""}${item.thrownRange ? ` · thrown ${item.thrownRange}` : ""}`
+                        : item.slot === "armor"
+                          ? `Armor Class ${item.ac}`
+                          : `Equipment for ${item.slot}`,
+                  element: row,
+                }),
+              );
               const copy = document.createElement("span");
               copy.textContent = item.name;
               const detail = document.createElement("span");
               detail.className = "item-detail";
               detail.textContent = item.itemType
-                ? item.itemType === "equipment" && item.slot === "weapon"
-                  ? `${item.damage} ${item.damageType}`
-                  : item.itemType === "equipment" && item.slot === "armor"
-                    ? `AC ${item.ac}`
-                    : item.itemType === "equipment"
-                      ? `+${item.acBonus} AC`
-                      : item.effect
+                ? item.itemType === "material"
+                  ? `Material × ${item.quantity}`
+                  : item.itemType === "equipment" && item.slot === "weapon"
+                    ? `${item.damage} ${item.damageType}`
+                    : item.itemType === "equipment" && item.slot === "armor"
+                      ? `AC ${item.ac}`
+                      : item.itemType === "equipment"
+                        ? `+${item.acBonus} AC`
+                        : item.effect
                 : `Consumable × ${item.quantity}`;
               copy.append(detail);
               row.append(copy);
@@ -1258,7 +2714,18 @@
             )
             .map((item) => {
               const row = document.createElement("div");
-              row.className = "quick-item";
+              row.className = "quick-item selectable";
+              row.title = "Select this item for contextual actions.";
+              row.addEventListener("click", () =>
+                setSelection({
+                  scope: "dungeon",
+                  kind: "item",
+                  id: item.id,
+                  name: item.name,
+                  detail: item.effect,
+                  element: row,
+                }),
+              );
               const copy = document.createElement("span");
               copy.textContent = item.name;
               const detail = document.createElement("span");
@@ -1292,7 +2759,11 @@
                   ? "Move until an enemy is visible, then use this item."
                   : item.effect;
               use.addEventListener("click", () =>
-                act({ kind: "invoke_item", itemId: item.id }),
+                act({
+                  kind: "invoke_item",
+                  itemId: item.id,
+                  targetId: selectedEnemy()?.id,
+                }),
               );
               row.append(copy, use);
               return row;
@@ -1329,20 +2800,35 @@
         }, 700);
       }
       function baseCellSymbol(cell) {
+        if (cell?.tile === "outdoor_tree") return "T";
+        if (cell?.tile === "outdoor_ruin") return "#";
+        if (cell?.tile === "outdoor_water") return "~";
+        if (cell?.tile === "outdoor_grass") return ",";
+        if (cell?.tile === "road_stone") return "=";
+        if (cell?.tile === "road_dirt") return ":";
         if (cell?.tile === "wall") return "#";
         if (["exit", "stairs_down"].includes(cell?.tile)) return ">";
+        if (cell?.tile === "stairs_up") return "<";
         if (cell?.tile.includes("door_closed")) return "+";
         if (cell?.tile.includes("door_open")) return "'";
         return cell?.tile === "difficult" ? "~" : "·";
       }
       function contentSymbol(cell, button) {
+        if (cell?.partyMember) {
+          button.classList.add("companion");
+          button.title = `${cell.partyMember.name} · ${cell.partyMember.class} · ${cell.partyMember.hp}/${cell.partyMember.maxHp} HP`;
+          return cell.partyMember.glyph;
+        }
         if (cell?.treasure) {
           button.classList.add("treasure");
           button.title = `${cell.treasure.name} · ${cell.treasure.valueCp} cp`;
           return "$";
         }
         if (cell?.enemy) {
-          button.classList.add("enemy");
+          button.classList.add(
+            "enemy",
+            cell.enemy.adversaryKind.replaceAll("_", "-"),
+          );
           button.title = `${cell.enemy.name} · ${cell.enemy.glyphReading} · ${cell.enemy.hp}/${cell.enemy.maxHp} HP`;
           return cell.enemy.glyph;
         }
@@ -1364,6 +2850,58 @@
         return cell.feature.spent ? "·" : "✦";
       }
       function addCellControl(button, cell, x, y) {
+        if (state.location === "exterior") {
+          const blocked = [
+            "outdoor_tree",
+            "outdoor_ruin",
+            "outdoor_water",
+          ].includes(cell?.tile);
+          if (!blocked && (state.hero.x !== x || state.hero.y !== y)) {
+            button.classList.add("local-target");
+            button.addEventListener("click", () =>
+              animateLocalTravel({ x, y }),
+            );
+          }
+          return;
+        }
+        if (state.location !== "dungeon") return;
+        const subject = cell?.enemy ?? cell?.feature ?? cell?.treasure;
+        const inspectableTile =
+          cell?.tile?.includes("door") ||
+          ["stairs_up", "stairs_down", "exit"].includes(cell?.tile);
+        if (cell?.visibility === "visible" && (subject || inspectableTile)) {
+          const kind = cell.enemy
+            ? "enemy"
+            : cell.feature
+              ? "feature"
+              : cell.treasure
+                ? "treasure"
+                : "terrain";
+          button.classList.add("examine-target");
+          if (
+            selectedTarget?.scope === "dungeon" &&
+            ((subject?.id && selectedTarget.id === subject.id) ||
+              (!subject?.id &&
+                selectedTarget.x === x &&
+                selectedTarget.y === y))
+          )
+            button.classList.add("selected-target");
+          button.addEventListener("click", () =>
+            setSelection({
+              scope: "dungeon",
+              kind,
+              id: subject?.id,
+              x,
+              y,
+              name: subject?.name ?? cell.tile.replaceAll("_", " "),
+              detail: cell.enemy
+                ? `${cell.enemy.role.replaceAll("_", " ")} · ${cell.enemy.hp}/${cell.enemy.maxHp} HP · choose Look, Aim, or Throw`
+                : "Choose Look to examine it closely.",
+              element: button,
+            }),
+          );
+          return;
+        }
         const direction =
           deltaToDirection[`${x - state.hero.x},${y - state.hero.y}`];
         if (!direction || state.status !== "active") return;
@@ -1404,6 +2942,16 @@
             state.map.cells.map((cell) => [`${cell.x},${cell.y}`, cell]),
           ),
           map = $("map");
+        $("local-map-hint").textContent =
+          state.location === "exterior"
+            ? "Click any reachable square or use directions"
+            : "Click an adjacent square or use directions";
+        map.setAttribute(
+          "aria-label",
+          state.location === "exterior"
+            ? "Above-ground local map"
+            : "Dungeon map",
+        );
         map.style.gridTemplateColumns = `repeat(${state.map.width}, 20px)`;
         map.replaceChildren();
         for (let y = 0; y < state.map.height; y++)
@@ -1413,7 +2961,6 @@
             );
       }
       function renderEngagement() {
-        $("events").replaceChildren(...eventHistory.map(createEventRow));
         const engaged = engagedCreature();
         if (engaged && bestiary) {
           $("monster-select").value = engaged.template;
@@ -1423,6 +2970,37 @@
           $("engagement-label").textContent = "No creature in sight";
           if (bestiary && !$("manual").childElementCount) renderManual();
         }
+      }
+      function renderParty() {
+        const party = state.groups.party;
+        $("dungeon-objective").textContent =
+          `Party · ${party.order.objective.replaceAll("_", " ")} · ${party.tactics.phase}`;
+        $("village-objective").textContent =
+          `Party · ${party.order.objective.replaceAll("_", " ")} · ${state.village.partyMovement}`;
+        $("party-mode").textContent =
+          `${party.order.formation.replaceAll("_", " ")} · ${party.order.objective.replaceAll("_", " ")} · ${party.tactics.phase}`;
+        $("party-formation").value = party.order.formation;
+        if (["explore", "hold", "advance"].includes(party.order.objective))
+          $("party-strategy").value = party.order.objective;
+        $("party-formation").disabled = busy || state.location !== "dungeon";
+        $("party-strategy").disabled = busy || state.location !== "dungeon";
+        $("party-members").replaceChildren(
+          ...party.memberStatus.map((member, index) => {
+            const row = document.createElement("div");
+            row.className = "inventory-row";
+            const identity = document.createElement("span");
+            identity.textContent = `${index === 0 ? "侠" : member.glyph} ${member.name}`;
+            const detail = document.createElement("span");
+            detail.className = "item-detail";
+            const condition = member.conditions.includes("unconscious")
+              ? " · unconscious"
+              : "";
+            detail.textContent = `${member.role.replaceAll("_", " ")} · ${member.hp}/${member.maxHp} HP · AC ${member.ac}${condition}`;
+            identity.append(detail);
+            row.append(identity);
+            return row;
+          }),
+        );
       }
       function renderRunStatus() {
         const banner = $("banner");
@@ -1439,25 +3017,34 @@
                   : "";
       }
       function renderActionAvailability() {
+        const dungeonActive =
+            state.status === "active" && state.location === "dungeon",
+          movementActive = state.status === "active";
+        $("dungeon-actions").hidden = state.location !== "dungeon";
+        document
+          .querySelectorAll("button[data-direction]")
+          .forEach((button) => (button.disabled = busy || !movementActive));
         document
           .querySelectorAll(
-            "button[data-direction], #wait, #rest, #potion, #stairs, #class-power",
+            "#wait, #rest, #potion, #stairs-up, #stairs, #class-power",
           )
-          .forEach(
-            (button) => (button.disabled = busy || state.status !== "active"),
-          );
+          .forEach((button) => (button.disabled = busy || !dungeonActive));
         $("stairs").disabled = busy || !state.legalIntents.includes("stairs");
+        $("stairs-up").disabled =
+          busy || !state.legalIntents.includes("stairs_up");
         $("potion").disabled =
           busy ||
+          !dungeonActive ||
           state.hero.hp >= state.hero.maxHp ||
           !state.hero.inventory.some(
             (item) => item.kind === "healing_potion" && item.quantity > 0,
           );
         $("death-save").disabled = busy || state.status !== "dying";
         $("rest-name").textContent =
-          `Short rest · ${state.rest.remaining} × d${state.rest.die}`;
-        $("rest").disabled =
-          busy || state.status !== "active" || !state.rest.available;
+          state.location === "village"
+            ? "Short rest · visit the inn"
+            : `Short rest · ${state.rest.remaining} × d${state.rest.die}`;
+        $("rest").disabled = busy || !dungeonActive || !state.rest.available;
         $("rest").title =
           state.rest.reason ?? "Spend one Hit Die to recover health.";
         const needsTarget = state.hero.classPower.key === "magic_missile",
@@ -1469,7 +3056,7 @@
           );
         $("class-power").disabled =
           busy ||
-          state.status !== "active" ||
+          !dungeonActive ||
           state.hero.classPower.remaining <= 0 ||
           (needsTarget && !hasTarget) ||
           (needsHealing && state.hero.hp >= state.hero.maxHp);
@@ -1478,17 +3065,49 @@
         if (!state) return;
         const { feedbackEvents, heroHit, heroHeal, combatHit } =
           updateHistory();
+        const interaction = feedbackEvents.find((event) =>
+          ["local_examined", "local_talked"].includes(event.type),
+        );
+        if (interaction) {
+          villageInteraction = eventText(interaction);
+          if (selectedTarget) selectedTarget.detail = villageInteraction;
+        }
+        const dungeonExamination = feedbackEvents.find(
+          (event) => event.type === "dungeon_examined",
+        );
+        if (dungeonExamination && selectedTarget)
+          selectedTarget.detail = dungeonExamination.detail;
+        if (
+          feedbackEvents.some((event) =>
+            ["world_manipulated", "material_collected"].includes(event.type),
+          )
+        )
+          selectedTarget = null;
+        const eventRows = eventHistory.map(createEventRow);
+        if (!eventRows.length) {
+          const empty = document.createElement("p");
+          empty.className = "event-empty";
+          empty.textContent =
+            "No significant events yet. Movement is intentionally omitted.";
+          eventRows.push(empty);
+        }
+        $("events").replaceChildren(...eventRows);
         renderHeroSummary();
+        renderVillage();
         renderLore();
         renderHealth(heroHit, heroHeal);
         renderEquipment();
         renderInventory();
         renderQuickItems();
         renderCombatFeedback(heroHit, heroHeal, combatHit);
-        renderMap(feedbackEvents);
-        renderEngagement();
+        if (["dungeon", "exterior"].includes(state.location)) {
+          renderMap(feedbackEvents);
+          if (state.location === "dungeon") renderEngagement();
+        }
+        renderParty();
         renderRunStatus();
         renderActionAvailability();
+        renderSelectionPanels();
       }
       function renderManual() {
         if (!bestiary) return;
@@ -1546,8 +3165,165 @@
           render();
         }
       }
+      const localBlockedTiles = new Set([
+        "outdoor_tree",
+        "outdoor_ruin",
+        "outdoor_water",
+        "village_sign",
+        "village_building",
+        "village_furniture",
+        "village_person",
+        "village_door_closed",
+      ]);
+      function localTravelCells() {
+        return state.location === "village"
+          ? state.village.map.cells
+          : state.map.cells;
+      }
+      function localTravelPath(target) {
+        const start = { x: state.hero.x, y: state.hero.y },
+          cells = new Map(
+            localTravelCells().map((cell) => [`${cell.x},${cell.y}`, cell]),
+          ),
+          queue = [start],
+          parents = new Map([[`${start.x},${start.y}`, null]]);
+        while (queue.length) {
+          const current = queue.shift();
+          if (current.x === target.x && current.y === target.y) {
+            const path = [];
+            for (
+              let step = current;
+              step;
+              step = parents.get(`${step.x},${step.y}`)
+            )
+              path.unshift(step);
+            return path;
+          }
+          for (const [dx, dy] of Object.values(directionDeltas)) {
+            const next = { x: current.x + dx, y: current.y + dy },
+              key = `${next.x},${next.y}`,
+              cell = cells.get(key);
+            if (!cell || parents.has(key) || localBlockedTiles.has(cell.tile))
+              continue;
+            parents.set(key, current);
+            queue.push(next);
+          }
+        }
+        return [];
+      }
+      async function sendAnimatedLocalStep(position) {
+        const result = await api("/api/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            intent: { kind: "local_move", x: position.x, y: position.y },
+          }),
+        });
+        state = result.view;
+        render();
+        await new Promise((resolve) => setTimeout(resolve, 90));
+      }
+      async function animateLocalTravel(target) {
+        if (busy || !["village", "exterior"].includes(state.location)) return;
+        const targetCell = localTravelCells().find(
+            (cell) => cell.x === target.x && cell.y === target.y,
+          ),
+          isDoor = targetCell?.tile === "village_door_closed",
+          path = isDoor ? [state.hero, target] : localTravelPath(target);
+        if (path.length < 2) return;
+        busy = true;
+        $("error").textContent = "";
+        render();
+        try {
+          for (const position of path.slice(1)) {
+            await sendAnimatedLocalStep(position);
+            if (!["village", "exterior"].includes(state.location)) break;
+          }
+        } catch (error) {
+          $("error").textContent = error.message;
+        } finally {
+          busy = false;
+          render();
+        }
+      }
+      function straightPath(from, to) {
+        const steps = Math.max(
+          Math.abs(to.x - from.x),
+          Math.abs(to.y - from.y),
+        );
+        if (!steps) return [from];
+        return Array.from({ length: steps + 1 }, (_, index) => ({
+          x: Math.round(from.x + ((to.x - from.x) * index) / steps),
+          y: Math.round(from.y + ((to.y - from.y) * index) / steps),
+        }));
+      }
+      async function animateWorldTravel(path, intent) {
+        if (busy || state.location !== "world" || path.length < 2) return;
+        busy = true;
+        $("error").textContent = "";
+        renderWorldMap();
+        try {
+          for (const position of path.slice(1)) {
+            placeWorldMarker(position);
+            await new Promise((resolve) => setTimeout(resolve, 90));
+          }
+          const result = await api("/api/action", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ intent }),
+          });
+          state = result.view;
+        } catch (error) {
+          $("error").textContent = error.message;
+        } finally {
+          busy = false;
+          render();
+        }
+      }
+      function moveWorld(cell) {
+        const from = state.world.party.position,
+          to = { x: cell.x, y: cell.y };
+        return animateWorldTravel(straightPath(from, to), {
+          kind: "world_move",
+          x: cell.worldX,
+          y: cell.worldY,
+        });
+      }
+      function travelWorld(destination) {
+        const selectedRoute = state.world.routes.find(
+          (entry) =>
+            [entry.from, entry.to].includes(state.world.position) &&
+            [entry.from, entry.to].includes(destination),
+        );
+        if (!selectedRoute) {
+          $("error").textContent = "No known road reaches that destination.";
+          return;
+        }
+        const path =
+          selectedRoute.from === state.world.position
+            ? selectedRoute.path
+            : [...selectedRoute.path].reverse();
+        return animateWorldTravel(path, { kind: "world_travel", destination });
+      }
       function directionalIntent(direction) {
         const delta = directionDeltas[direction];
+        if (state.location === "world") {
+          const position = state.world.party.position,
+            cell = state.world.map.cells.find(
+              (candidate) =>
+                candidate.x === position.x + delta[0] &&
+                candidate.y === position.y + delta[1],
+            );
+          return cell
+            ? { kind: "world_move", x: cell.worldX, y: cell.worldY }
+            : null;
+        }
+        if (["exterior", "village"].includes(state.location))
+          return {
+            kind: "local_move",
+            x: state.hero.x + delta[0],
+            y: state.hero.y + delta[1],
+          };
         const target =
           delta &&
           state?.map.cells.find(
@@ -1563,11 +3339,37 @@
       document
         .querySelectorAll("button[data-direction]")
         .forEach((button) =>
-          button.addEventListener("click", () =>
-            act(directionalIntent(button.dataset.direction)),
+          button.addEventListener(
+            "click",
+            () =>
+              directionalIntent(button.dataset.direction) &&
+              act(directionalIntent(button.dataset.direction)),
           ),
         );
       $("wait").addEventListener("click", () => act({ kind: "wait" }));
+      function issuePartyOrder(changes) {
+        const party = state.groups.party,
+          order = party.order;
+        act({
+          kind: "command",
+          groupId: party.id,
+          issuerId: party.leaderId,
+          expectedCommandRevision: party.commandRevision,
+          objective: changes.objective ?? order.objective,
+          formation: changes.formation ?? order.formation,
+          targetId: changes.objective ? null : order.targetId,
+          destination: order.destination,
+          resourcePolicy: order.resourcePolicy,
+          retreatThreshold: order.retreatThreshold,
+          movementMode: order.movementMode,
+        });
+      }
+      $("party-formation").addEventListener("change", (event) =>
+        issuePartyOrder({ formation: event.target.value }),
+      );
+      $("party-strategy").addEventListener("change", (event) =>
+        issuePartyOrder({ objective: event.target.value }),
+      );
       $("rest").addEventListener("click", () => act({ kind: "short_rest" }));
       const usePotion = () => {
         const potion = state.hero.inventory.find(
@@ -1576,7 +3378,38 @@
         if (potion) act({ kind: "use_item", itemId: potion.id });
       };
       $("potion").addEventListener("click", usePotion);
+      $("stairs-up").addEventListener("click", () =>
+        act({ kind: "stairs_up" }),
+      );
       $("stairs").addEventListener("click", () => act({ kind: "stairs" }));
+      $("exterior-enter-dungeon").addEventListener("click", () =>
+        act({ kind: "enter_dungeon" }),
+      );
+      $("exterior-world").addEventListener("click", () =>
+        act({ kind: "open_world" }),
+      );
+      $("village-world").addEventListener("click", () =>
+        act({ kind: "open_world" }),
+      );
+      $("village-examine").addEventListener("click", () => {
+        examineMode = !examineMode;
+        renderVillage();
+      });
+      $("village-party-mode").addEventListener("click", () =>
+        act({
+          kind: "set_party_movement",
+          mode:
+            state.village.partyMovement === "dispersed"
+              ? "follow"
+              : "dispersed",
+        }),
+      );
+      $("world-travel").addEventListener("click", (event) =>
+        travelWorld(event.currentTarget.dataset.destination),
+      );
+      $("world-enter").addEventListener("click", () =>
+        act({ kind: "enter_location" }),
+      );
       $("death-save").addEventListener("click", () =>
         act({ kind: "death_save" }),
       );
@@ -1590,6 +3423,7 @@
             selectSideTab(button.dataset.sideTab),
           ),
         );
+      $("inspector-toggle").addEventListener("click", toggleInspector);
       $("monster-select").addEventListener("change", renderManual);
       function useQuickItem(event, itemType) {
         const item = state.hero.inventory.find(
@@ -1636,9 +3470,16 @@
           return;
         const key = event.key.toLowerCase(),
           quickItems = { t: "relic", v: "scroll", g: "wand" };
-        if (directions[event.key] && !event.shiftKey) {
+        if (
+          event.key === "Escape" &&
+          document.body.classList.contains("drawer-open")
+        ) {
           event.preventDefault();
-          act(directionalIntent(directions[event.key]));
+          toggleInspector();
+        } else if (directions[event.key] && !event.shiftKey) {
+          event.preventDefault();
+          const intent = directionalIntent(directions[event.key]);
+          if (intent) act(intent);
         } else if (event.key === "." || event.key === " ") {
           event.preventDefault();
           act({ kind: "wait" });
@@ -1654,6 +3495,9 @@
         else if (event.key === ">") {
           event.preventDefault();
           act({ kind: "stairs" });
+        } else if (event.key === "<") {
+          event.preventDefault();
+          act({ kind: "stairs_up" });
         }
       }
       document.addEventListener("keydown", handleKeydown);
@@ -1680,7 +3524,7 @@
       });
       const requestedPanel = new URLSearchParams(location.search).get("panel");
       if (["character", "events", "lore", "manual"].includes(requestedPanel))
-        selectSideTab(requestedPanel);
+        selectSideTab(requestedPanel, false);
       api("/api/state")
         .then((value) => {
           state = value;
