@@ -72,16 +72,6 @@ function villageActorEvent(state, type, npc, details = {}) {
   };
 }
 
-function navigationBounds(from, to) {
-  const margin = 20;
-  return {
-    minX: Math.min(from.x, to.x) - margin,
-    maxX: Math.max(from.x, to.x) + margin,
-    minY: Math.min(from.y, to.y) - margin,
-    maxY: Math.max(from.y, to.y) + margin,
-  };
-}
-
 function occupiedVillageCells(state, actorId) {
   return new Set(
     [
@@ -98,7 +88,7 @@ export function planVillageRoute(state, npc, target, terrainAt, adjacent) {
   return weightedRoute({
     from: npc.position,
     to: target,
-    bounds: navigationBounds(npc.position, target),
+    maxVisited: 8192,
     occupied: occupiedVillageCells(state, npc.id),
     adjacent,
     isBlocked: (position) => villageMovementCost(terrainAt(position)) == null,
@@ -137,16 +127,18 @@ function applyNpcNavigation(state, npc, objective, terrainAt, events) {
     );
     return;
   }
-  if (result.path.length > 1) npc.position = { ...result.path[1] };
+  const moved = result.path.length > 1;
+  if (moved) npc.position = { ...result.path[1] };
   if (
     objective.nextIndex != null &&
     key(npc.position) === key(objective.target)
   )
     npc.routeIndex = objective.nextIndex;
   events.push(
-    villageActorEvent(state, "npc_move", npc, {
+    villageActorEvent(state, moved ? "npc_move" : "npc_wait", npc, {
       destination: { ...result.destination },
       routeCost: result.cost,
+      ...(moved ? {} : { reason: "destination_reached" }),
     }),
   );
 }

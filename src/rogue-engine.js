@@ -3337,6 +3337,19 @@ const VILLAGE_SIGNS = [
   { x: 38, y: 20, text: "South Road Stable · mounts and tack" },
 ];
 
+export const villagePrincipalRoadAt = (x, y) =>
+  y === 11 || y === 12 || x === 19 || x === 20;
+
+export function villageRoadBuildingConflicts() {
+  const conflicts = [];
+  for (const building of VILLAGE_BUILDINGS)
+    for (let y = building.y; y < building.y + building.h; y += 1)
+      for (let x = building.x; x < building.x + building.w; x += 1)
+        if (villagePrincipalRoadAt(x, y))
+          conflicts.push({ buildingKey: building.key, x, y });
+  return conflicts;
+}
+
 const VILLAGE_PARTITIONS = [
   { buildingKey: "smithy", axis: "x", at: 9, from: 2, to: 8, gaps: [5] },
   { buildingKey: "apothecary", axis: "y", at: 5, from: 26, to: 38, gaps: [32] },
@@ -3635,7 +3648,7 @@ function villageTree(state, x, y) {
 }
 
 function villagePathAt(x, y) {
-  if (y === 11 || y === 12 || x === 19 || x === 20) return "road_stone";
+  if (villagePrincipalRoadAt(x, y)) return "road_stone";
   const onApproach = VILLAGE_BUILDINGS.some(({ door }) => {
     const verticalDistance = Math.abs(door.y - 11),
       horizontalDistance = Math.abs(door.x - 19);

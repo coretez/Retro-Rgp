@@ -9,10 +9,12 @@ import {
   parseRogueState,
   rogueRunView,
   serializeRogueState,
+  villageRoadBuildingConflicts,
 } from "../src/rogue-engine.js";
 import { isUuid } from "../src/identity.js";
 import { RogueStore } from "../src/rogue-store.js";
 import {
+  planVillageRoute,
   villageIntentAdvancesSimulation,
   villageMovementCost,
 } from "../src/village-simulation.js";
@@ -297,6 +299,22 @@ test("M-2 blocked destinations return a reason instead of a route", () => {
   });
 });
 
+test("M-2 village routing can detour beyond the former fixed margin", () => {
+  const npc = { id: "moving-npc", position: { x: 0, y: 0 } },
+    state = {
+      village: {
+        heroPosition: { x: 100, y: 100 },
+        companionPositions: [],
+        npcStates: [npc],
+      },
+    },
+    terrainAt = ({ x, y }) =>
+      x === 1 && y >= -20 && y <= 20 ? "village_building" : "road_stone",
+    result = planVillageRoute(state, npc, { x: 2, y: 0 }, terrainAt, false);
+  assert.equal(result.ok, true);
+  assert.ok(result.path.some(({ y }) => Math.abs(y) === 21));
+});
+
 test("M-2 village terrain declares costs and impassable objects", () => {
   for (const tile of [
     "outdoor_tree",
@@ -323,6 +341,7 @@ test("M-2 Stonebridge principal roads are two cells wide and unobstructed", () =
     );
   assert.ok(principalRoad.length > 150);
   assert.ok(principalRoad.every((cell) => cell.tile === "road_stone"));
+  assert.deepEqual(villageRoadBuildingConflicts(), []);
 });
 
 test("M-2 moving residents use both road lanes without stacking", () => {
@@ -375,9 +394,25 @@ test("M-2 unreachable NPC work emits a stable blocking reason", () => {
     blocked = outcome.events.find(
       (event) => event.type === "npc_blocked" && event.actorId === guard.id,
     );
-  assert.equal(blocked.reason, "no_path");
+  assert.equal(blocked.reason, "search_limit");
   assert.deepEqual(blocked.destination, { x: 11, y: 3 });
   assert.deepEqual(guard.position, { x: 20, y: 9 });
+});
+
+test("M-2 an NPC already in position waits instead of claiming movement", () => {
+  const state = stonebridgeState(),
+    guard = state.village.npcStates.find((npc) => npc.personKey === "watchman"),
+    axe = state.hero.inventory.find((item) => item.kind === "hand_axe"),
+    before = { ...guard.position };
+  Object.assign(guard, {
+    actionReason: "player_crime",
+    actionTarget: { x: 20, y: 10 },
+  });
+  const outcome = applyRogueTurn(state, { kind: "equip", itemId: axe.id }),
+    event = outcome.events.find((candidate) => candidate.actorId === guard.id);
+  assert.equal(event.type, "npc_wait");
+  assert.equal(event.reason, "destination_reached");
+  assert.deepEqual(guard.position, before);
 });
 
 test("M-2 the guard completes an entire continuous patrol circuit", () => {

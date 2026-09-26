@@ -177,8 +177,14 @@ work.
 - Automated gates cover cheaper-road selection, static blockers, blocked-route
   reasons, two-actor passing, collision prevention, and a complete 16-turn
   guard patrol circuit.
-- The full suite passes with 57 tests. Live browser turns showed continuous
-  guard movement without a browser console error.
+- Navigation has no fixed coordinate boundary. A bounded work budget reports
+  `search_limit` distinctly from a proven `no_path`, and the regression suite
+  covers a valid detour beyond the former 20-cell margin.
+- Zero-step routes emit `npc_wait` rather than claiming movement. Full building
+  footprints are checked directly against principal-road geometry.
+- The full suite passes with 59 tests. In a clean isolated live run, the guard
+  completed all 16 orthogonal patrol steps, used the passing lane, returned to
+  its starting cell, and produced no browser console error.
 
 ## M-3 — Smart objects and unified interactions
 

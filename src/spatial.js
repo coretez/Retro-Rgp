@@ -169,6 +169,7 @@ export function weightedRoute({
   terrainCost,
   occupied = new Set(),
   adjacent = false,
+  maxVisited = Infinity,
 }) {
   const unavailable = (position) =>
       !withinBounds(position, bounds) ||
@@ -183,9 +184,12 @@ export function weightedRoute({
   if (!goals.size) return navigationFailure("destination_unreachable", to);
   const costs = new Map([[key(from), 0]]),
     previous = new Map(),
-    queue = [{ ...from }];
-  while (queue.length) {
+    queue = [{ ...from }],
+    settled = new Set();
+  while (queue.length && settled.size < maxVisited) {
     const current = takeLowestCost(queue, costs);
+    if (settled.has(key(current))) continue;
+    settled.add(key(current));
     if (goals.has(key(current)))
       return {
         ok: true,
@@ -202,6 +206,7 @@ export function weightedRoute({
       queue.push(next);
     }
   }
+  if (queue.length) return navigationFailure("search_limit", to);
   return navigationFailure("no_path", to);
 }
 
