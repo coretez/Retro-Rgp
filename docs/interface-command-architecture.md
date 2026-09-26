@@ -22,7 +22,7 @@ The interaction model combines two useful patterns:
 │                                                                      │
 │  selected subject                                         alerts    │
 │  name · health · current action · objective                          │
-│  [Look] [Talk] [Move] [Attack] [Use…] [More…]                        │
+│  [Examine] [Talk] [Move] [Attack] [Use…] [More…]                     │
 └──────────────────────────────────────────────────────────────────────┘
                     optional drawer: details / events / lore
 ```

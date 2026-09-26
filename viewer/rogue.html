@@ -1627,8 +1627,8 @@
       <section class="card" id="village-panel" hidden>
         <div class="map-view-controls">
           <span class="map-hint"
-            >Move: click ground · Inspect/manipulate: right-click or Look
-            around</span
+            >Move: click ground · Select a target: right-click · Inspect any
+            terrain: use Inspect terrain</span
           >
           <label>Map view</label>
           <select aria-label="Village map camera mode">
@@ -1673,7 +1673,12 @@
             </div>
             <div class="village-utilities">
               <span>Party purse: <strong id="village-gold">0 cp</strong></span>
-              <button id="village-examine">Look around</button>
+              <button
+                id="village-examine"
+                title="Select any visible map cell for examination or a terrain action."
+              >
+                Inspect terrain
+              </button>
               <button id="village-party-mode">Disperse party</button>
               <button id="village-world">Open regional map</button>
             </div>
@@ -1917,7 +1922,7 @@
       function villageSelectionActions(target) {
         if (target.kind === "item") return inventorySelectionActions(target);
         const examine = commandButton(
-          target.kind === "sign" ? "Read" : "Look",
+          target.kind === "sign" ? "Read" : "Examine",
           () =>
             targetAction({ kind: "local_examine", x: target.x, y: target.y }),
         );
@@ -2023,7 +2028,7 @@
       function dungeonSelectionActions(target) {
         if (target.kind === "item") return inventorySelectionActions(target);
         const actions = [
-          commandButton("Look", () =>
+          commandButton("Examine", () =>
             targetAction({ kind: "examine", x: target.x, y: target.y }),
           ),
         ];
@@ -2503,7 +2508,7 @@
           x: cell.x,
           y: cell.y,
           name: cell.material?.name ?? object?.name ?? cell.featureName,
-          detail: "Choose Look to examine it closely.",
+          detail: "Choose Examine to inspect it closely.",
           tile: cell.tile,
           material: cell.material,
           element,
@@ -2539,7 +2544,7 @@
             x: cell.x,
             y: cell.y,
             name: cell.tile.replaceAll("_", " "),
-            detail: "Choose Look or a valid world action.",
+            detail: "Choose Examine or an available terrain action.",
             tile: cell.tile,
             material: cell.material,
             element: button,
@@ -2615,8 +2620,8 @@
         $("village-world").disabled = busy;
         $("village-examine").disabled = busy;
         $("village-examine").textContent = examineMode
-          ? "Cancel looking"
-          : "Look around";
+          ? "Cancel inspection"
+          : "Inspect terrain";
         $("village-party-mode").disabled = busy;
         $("village-party-mode").textContent =
           state.village.partyMovement === "dispersed"
@@ -3069,8 +3074,8 @@
               y,
               name: subject?.name ?? cell.tile.replaceAll("_", " "),
               detail: cell.enemy
-                ? `${cell.enemy.role.replaceAll("_", " ")} · ${cell.enemy.hp}/${cell.enemy.maxHp} HP · choose Look, Aim, or Throw`
-                : "Choose Look to examine it closely.",
+                ? `${cell.enemy.role.replaceAll("_", " ")} · ${cell.enemy.hp}/${cell.enemy.maxHp} HP · choose Examine, Aim, or Throw`
+                : "Choose Examine to inspect it closely.",
               element: button,
             }),
           );
