@@ -187,7 +187,7 @@ test("M-5 delivery is condition-driven and schema 12 gains logistics", () => {
     migratedCarter = migrated.village.npcStates.find(
       (npc) => npc.personKey === "carter",
     );
-  assert.equal(migrated.schemaVersion, 13);
+  assert.equal(migrated.schemaVersion, 14);
   assert.equal(migrated.village.stockpiles.length, 2);
   assert.ok(migratedCarter.capabilityTags.includes("haul"));
   assert.ok(

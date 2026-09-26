@@ -1,5 +1,21 @@
 # Changelog
 
+## Interactive Version 1 · Dungeon parity through M-5
+
+- Added a dedicated dungeon simulation seam while preserving the existing
+  authoritative turn, combat, party, persistence, and event contracts.
+- Added per-level persistent jobs and reservations plus monster capabilities,
+  work permissions, current actions, and deterministic assignment.
+- Converted revealed dungeon doors, stairs, treasure, traps, shrines, and items
+  into UUID-backed smart-object projections with shared affordance queries.
+- Routed player and monster door opening through the same interaction executor.
+- Added the first autonomous dungeon plan: monster groups hear noise, reserve an
+  investigation, navigate one legal step per turn, block at locked access,
+  survive save/load, resume, open doors, and complete the investigation.
+- Made Unity location-aware so it renders the active dungeon with native move,
+  examine, wait, door, and stair controls while retaining the retro ASCII look.
+- Migrated saves to schema 14 and expanded the regression suite to 90 tests.
+
 ## Interactive Version 1 · M-5
 
 - Added persistent UUID-backed stable cargo and smithy stock with deterministic
@@ -11,7 +27,8 @@
   when restored.
 - Added meaningful delivery activity plus actor action and objective details to
   the Unity HUD without reducing the map viewport.
-- Migrated saves to schema 13 and expanded the regression suite to 85 tests.
+- Migrated saves to schema 13 and expanded the regression suite to 85 tests;
+  the dungeon-parity checkpoint subsequently advances the schema to 14.
 
 ## Interactive Version 1 · Unity client foundation
 

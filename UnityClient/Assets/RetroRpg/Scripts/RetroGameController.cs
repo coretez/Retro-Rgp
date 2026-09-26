@@ -38,6 +38,7 @@ namespace RetroRpg
             HandleZoom();
             if (Input.GetMouseButtonDown(0)) HandleClick();
             HandleKeyboard();
+            HandleDungeonCommands();
         }
 
         private void HandleClick()
@@ -47,7 +48,12 @@ namespace RetroRpg
             selected = cell;
             mapRenderer.Select(cell, view);
             if (Mathf.Max(Mathf.Abs(cell.x - view.hero.x), Mathf.Abs(cell.y - view.hero.y)) == 1)
-                StartCoroutine(Move(cell));
+            {
+                var selectedCell = SelectedCell();
+                if (view.location == "dungeon" && selectedCell?.objectKind == "door")
+                    StartCoroutine(DungeonAction("open", cell));
+                else StartCoroutine(Move(cell));
+            }
         }
 
         private void HandleKeyboard()
@@ -64,8 +70,45 @@ namespace RetroRpg
         private IEnumerator Move(Vector2Int target)
         {
             busy = true;
-            yield return api.Move(target.x, target.y, ApplyView, ShowError);
+            yield return api.Move(view, target.x, target.y, ApplyView, ShowError);
             busy = false;
+        }
+
+        private void HandleDungeonCommands()
+        {
+            if (view.location != "dungeon") return;
+            if (Input.GetKeyDown(KeyCode.Space)) StartCoroutine(DungeonAction("wait"));
+            if (Input.GetKeyDown(KeyCode.X) && selected.HasValue)
+                StartCoroutine(DungeonAction("examine", selected.Value));
+            if (Input.GetKeyDown(KeyCode.Period)) StartCoroutine(DungeonAction("stairs"));
+            if (Input.GetKeyDown(KeyCode.Comma)) StartCoroutine(DungeonAction("stairs_up"));
+        }
+
+        private IEnumerator DungeonAction(string kind, Vector2Int? target = null)
+        {
+            busy = true;
+            var intent = new MoveIntent { kind = kind };
+            if (target.HasValue)
+            {
+                intent.x = target.Value.x;
+                intent.y = target.Value.y;
+                if (kind == "open")
+                    intent.direction = Direction(target.Value.x - view.hero.x, target.Value.y - view.hero.y);
+            }
+            yield return api.Act(intent, ApplyView, ShowError);
+            busy = false;
+        }
+
+        private static string Direction(int x, int y)
+        {
+            if (x == 0 && y == -1) return "north";
+            if (x == 1 && y == -1) return "northeast";
+            if (x == 1 && y == 0) return "east";
+            if (x == 1 && y == 1) return "southeast";
+            if (x == 0 && y == 1) return "south";
+            if (x == -1 && y == 1) return "southwest";
+            if (x == -1 && y == 0) return "west";
+            return "northwest";
         }
 
         private void ApplyView(UnityView next)
@@ -172,7 +215,10 @@ namespace RetroRpg
             var status = error ?? (busy ? "Resolving turn…" : view.activity);
             if (!string.IsNullOrEmpty(status))
                 GUI.Label(new Rect(panel.x + 18f, panel.y + 9f, panel.width * 0.48f, 24f), status, bodyStyle);
-            GUI.Label(new Rect(panel.x + panel.width * 0.5f, panel.y + 10f, panel.width * 0.47f, 22f), "WASD Move  ·  Click Select  ·  Wheel Zoom", subtleStyle);
+            var controls = view.location == "dungeon"
+                ? "WASD Move  ·  X Examine  ·  Space Wait  ·  , / . Stairs"
+                : "WASD Move  ·  Click Select  ·  Wheel Zoom";
+            GUI.Label(new Rect(panel.x + panel.width * 0.5f, panel.y + 10f, panel.width * 0.47f, 22f), controls, subtleStyle);
         }
 
         private CellView SelectedCell()

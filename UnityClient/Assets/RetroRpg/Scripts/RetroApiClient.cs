@@ -22,9 +22,20 @@ namespace RetroRpg
             ReadResponse(request, success, failure);
         }
 
-        public IEnumerator Move(int x, int y, Action<UnityView> success, Action<string> failure)
+        public IEnumerator Move(UnityView view, int x, int y, Action<UnityView> success, Action<string> failure)
         {
-            var json = JsonUtility.ToJson(new MoveEnvelope(x, y));
+            var json = JsonUtility.ToJson(new MoveEnvelope(view, x, y));
+            using var request = new UnityWebRequest($"{baseUrl}/api/unity/action", "POST");
+            request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+            yield return request.SendWebRequest();
+            ReadResponse(request, success, failure);
+        }
+
+        public IEnumerator Act(MoveIntent intent, Action<UnityView> success, Action<string> failure)
+        {
+            var json = JsonUtility.ToJson(new ActionEnvelope(intent));
             using var request = new UnityWebRequest($"{baseUrl}/api/unity/action", "POST");
             request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
             request.downloadHandler = new DownloadHandlerBuffer();

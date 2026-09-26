@@ -32,23 +32,33 @@ export function transitionJob(job, status, tick, reason = null) {
   return job;
 }
 
+function workStore(state, scope = "village") {
+  if (scope === "village") return state.village;
+  if (scope === "dungeon") return state.levels[state.depth - 1];
+  throw new Error(`Unknown work scope: ${scope}`);
+}
+
 export function createJob(state, input) {
-  const duplicate = state.village.jobs.find(
-    (job) =>
-      !TERMINAL_STATES.has(job.status) &&
-      job.jobType === input.jobType &&
-      job.targetId === input.targetId,
-  );
+  const scope = input.scope ?? "village",
+    store = workStore(state, scope),
+    duplicate = store.jobs.find(
+      (job) =>
+        !TERMINAL_STATES.has(job.status) &&
+        job.jobType === input.jobType &&
+        job.targetId === input.targetId,
+    );
   if (duplicate) return { job: duplicate, created: false };
   const job = {
     id: input.id ?? newInstanceId(),
     definitionId: definitionId("job", input.jobType),
     entityType: "job",
+    scope,
     jobType: input.jobType,
     name: input.name,
     status: "available",
     priority: input.priority ?? 50,
     targetId: input.targetId,
+    groupId: input.groupId ?? null,
     targetPosition: { ...input.targetPosition },
     sourceId: input.sourceId ?? null,
     sourcePosition: input.sourcePosition ? { ...input.sourcePosition } : null,
@@ -68,7 +78,7 @@ export function createJob(state, input) {
     updatedAtTick: state.tick,
     completedAtTick: null,
   };
-  state.village.jobs.push(job);
+  store.jobs.push(job);
   return { job, created: true };
 }
 
@@ -79,7 +89,8 @@ function reservationKey(reservation) {
 }
 
 export function reserveAll(state, job, claims) {
-  const active = state.village.reservations.filter(
+  const store = workStore(state, job.scope),
+    active = store.reservations.filter(
       (reservation) => reservation.state === "held",
     ),
     occupied = new Set(active.map(reservationKey)),
@@ -94,13 +105,19 @@ export function reserveAll(state, job, claims) {
     createdAtTick: state.tick,
     ...claim,
   }));
-  state.village.reservations.push(...reservations);
+  store.reservations.push(...reservations);
   return { ok: true, reservations };
 }
 
-export function releaseJobReservations(state, jobId, reason) {
+export function releaseJobReservations(
+  state,
+  jobId,
+  reason,
+  scope = "village",
+) {
+  const store = workStore(state, scope);
   const released = [];
-  for (const reservation of state.village.reservations) {
+  for (const reservation of store.reservations) {
     if (reservation.jobId !== jobId || reservation.state !== "held") continue;
     reservation.state = "released";
     reservation.releasedAtTick = state.tick;
@@ -168,7 +185,7 @@ export function cancelJob(state, job, reason = "cancelled") {
   if (TERMINAL_STATES.has(job.status)) return false;
   restoreJobTransfer(state, job);
   transitionJob(job, "cancelled", state.tick, reason);
-  releaseJobReservations(state, job.id, reason);
+  releaseJobReservations(state, job.id, reason, job.scope);
   job.assignedActorId = null;
   return true;
 }

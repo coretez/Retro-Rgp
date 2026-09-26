@@ -15,6 +15,7 @@ import {
   neighbors,
   paths,
   route,
+  weightedRoute,
 } from "./spatial.js";
 import {
   createGroup,
@@ -30,6 +31,7 @@ import {
   newInstanceId,
 } from "./identity.js";
 import { advanceVillageSimulation } from "./village-simulation.js";
+import { advanceDungeonSimulation } from "./dungeon-simulation.js";
 import { createEntityIndex, describeAffordances } from "./world-objects.js";
 import { createJob, jobView } from "./job-board.js";
 
@@ -1238,11 +1240,12 @@ function reconcilePartyLeader(state, events) {
   });
 }
 
-function resolveEnemies(state, dice, events) {
+function resolveEnemies(state, dice, events, workingActors = new Set()) {
   reconcileEnemyLeaders(state, events);
   const enemies = aliveEnemies(state).sort((a, b) => a.id.localeCompare(b.id));
   for (const enemy of enemies) {
     if (!livingParty(state).length) break;
+    if (workingActors.has(enemy.id)) continue;
     resolveEnemy(state, enemy, dice, events);
   }
   reconcilePartyLeader(state, events);
@@ -1251,6 +1254,30 @@ function resolveEnemies(state, dice, events) {
     if (!state.hero.conditions.includes("unconscious"))
       state.hero.conditions.push("unconscious");
   }
+}
+
+function dungeonWorkRoute(state, actor, target, adjacent) {
+  const level = active(state),
+    occupied = new Set(
+      [...aliveEnemies(state), ...livingParty(state)]
+        .filter((candidate) => candidate.id !== actor.id)
+        .map(key),
+    );
+  return weightedRoute({
+    from: actor,
+    to: target,
+    bounds: {
+      minX: 0,
+      minY: 0,
+      maxX: level.map.width - 1,
+      maxY: level.map.height - 1,
+    },
+    isBlocked: (position) => blocked(level.map, position),
+    terrainCost: (position) =>
+      level.map.difficult.some((cell) => same(cell, position)) ? 2 : 1,
+    occupied,
+    adjacent,
+  });
 }
 
 function positionInRoom(room, offset = 0) {
@@ -1348,6 +1375,11 @@ function enemyActor(template, room, memberIndex, packId, ordinal) {
     lastKnown: null,
     homeRoomId: room.id,
     packId,
+    capabilityTags: ["investigate"],
+    workPermissions: { allowedJobTypes: ["investigate_noise"] },
+    workState: "available",
+    lastJobType: null,
+    currentAction: "Guarding its territory",
   };
 }
 
@@ -1451,6 +1483,11 @@ function buildLevel(input, depth, maxDepth) {
       lastKnown: null,
       homeRoomId: room.id,
       packId: newInstanceId(),
+      capabilityTags: ["investigate"],
+      workPermissions: { allowedJobTypes: ["investigate_noise"] },
+      workState: "available",
+      lastJobType: null,
+      currentAction: "Guarding the reliquary",
     });
   }
   const enemyGroups = buildEnemyGroups(enemies, depth);
@@ -1574,6 +1611,8 @@ function buildLevel(input, depth, maxDepth) {
     stairs: depth < maxDepth ? "down" : "surface_exit",
     enemies,
     enemyGroups,
+    jobs: [],
+    reservations: [],
     doors,
     features,
     treasures: candidates
@@ -1627,7 +1666,7 @@ export function newRogueRun(input) {
     heroId = newInstanceId(),
     companions = createCompanions();
   const state = {
-    schemaVersion: 13,
+    schemaVersion: 14,
     ruleset: ROGUE_RULESET,
     id: runId,
     revision: 0,
@@ -2048,6 +2087,13 @@ function throwItem(state, intent, dice, events) {
 function examineDungeon(state, intent, events) {
   const cell = cellView(state, intent, visibility(state));
   check(cell?.visibility === "visible", "NOT_VISIBLE", "You cannot see that.");
+  const object = dungeonWorldObjectAt(state, intent.x, intent.y);
+  if (object)
+    return executeDungeonInteraction(
+      state,
+      { actorId: state.hero.id, objectId: object.id, action: "examine" },
+      events,
+    );
   const subject = cell.enemy ?? cell.feature ?? cell.treasure;
   const name = subject?.name ?? cell.tile.replaceAll("_", " ");
   const detail = cell.enemy
@@ -2058,6 +2104,145 @@ function examineDungeon(state, intent, events) {
         ? `${cell.feature.name} is ${cell.feature.spent ? "spent or inactive" : "ready to be approached and used"}.`
         : `You study the ${name}.`;
   events.push({ type: "dungeon_examined", name, detail, position: intent });
+}
+
+function dungeonObject(entity, kind, name, description, affordanceKeys) {
+  return {
+    id: entity.id,
+    definitionId: entity.definitionId,
+    entityType: entity.entityType,
+    kind,
+    name,
+    description,
+    position: { x: entity.x, y: entity.y },
+    state: entity.state ?? null,
+    affordanceKeys,
+  };
+}
+
+export function dungeonWorldObjectAt(state, x, y) {
+  const level = active(state),
+    position = { x, y },
+    door = level.doors.find((entry) => entry.revealed && same(entry, position));
+  if (door)
+    return dungeonObject(
+      door,
+      "door",
+      door.secret ? "Secret door" : "Dungeon door",
+      `A ${door.state} ${door.secret ? "concealed" : "stone-bound"} door.`,
+      ["examine", "open"],
+    );
+  const feature = level.features.find(
+    (entry) => !entry.collected && !entry.hidden && same(entry, position),
+  );
+  if (feature)
+    return dungeonObject(
+      feature,
+      feature.kind,
+      feature.name,
+      `${feature.name} is ${feature.spent ? "spent" : "ready"}.`,
+      ["examine"],
+    );
+  const treasure = level.treasures.find(
+    (entry) => !entry.collected && !entry.hidden && same(entry, position),
+  );
+  if (treasure)
+    return dungeonObject(
+      treasure,
+      "treasure",
+      treasure.name,
+      `${treasure.name} is worth ${treasure.valueCp} copper pieces.`,
+      ["examine"],
+    );
+  if (same(position, level.entrance))
+    return dungeonObject(
+      {
+        id: namedUuid(level.id, "stairs:up"),
+        definitionId: definitionId("feature", "stairs-up"),
+        entityType: "feature",
+        ...position,
+      },
+      "stairs",
+      "Stairs upward",
+      "Stone steps lead toward the previous level.",
+      ["examine"],
+    );
+  if (same(position, level.exit))
+    return dungeonObject(
+      {
+        id: namedUuid(level.id, "stairs:down"),
+        definitionId: definitionId("feature", "stairs-down"),
+        entityType: "feature",
+        ...position,
+      },
+      "stairs",
+      state.depth < state.maxDepth ? "Stairs downward" : "Dungeon exit",
+      state.depth < state.maxDepth
+        ? "Stone steps descend into deeper darkness."
+        : "The final passage leads beyond the dungeon.",
+      ["examine"],
+    );
+  return null;
+}
+
+function dungeonEntityIndex(state) {
+  const level = active(state),
+    objects = new Map(),
+    add = (object) => {
+      if (object) objects.set(object.id, object);
+    };
+  for (const door of level.doors)
+    if (door.revealed) add(dungeonWorldObjectAt(state, door.x, door.y));
+  for (const item of [...level.features, ...level.treasures]) {
+    const object = dungeonWorldObjectAt(state, item.x, item.y);
+    add(object);
+  }
+  for (const position of [level.entrance, level.exit])
+    add(dungeonWorldObjectAt(state, position.x, position.y));
+  return createEntityIndex([
+    ...objects.values(),
+    ...level.enemies,
+    ...partyActors(state),
+  ]);
+}
+
+function executeDungeonInteraction(state, input, events) {
+  const actor = partyActors(state)
+      .concat(active(state).enemies)
+      .find((candidate) => candidate.id === input.actorId),
+    object = dungeonEntityIndex(state).get(input.objectId);
+  check(actor, "ACTOR_NOT_FOUND", "That dungeon actor does not exist.");
+  check(object, "OBJECT_NOT_FOUND", "That dungeon object does not exist.");
+  const affordance = describeAffordances(actor, object, {
+    visible: true,
+    position: { x: actor.x, y: actor.y },
+  }).find((candidate) => candidate.key === input.action);
+  check(
+    affordance,
+    "ACTION_UNSUPPORTED",
+    "That object does not support this action.",
+  );
+  check(affordance.available, "ACTION_UNAVAILABLE", affordance.reason);
+  if (input.action === "examine")
+    return events.push({
+      type: "dungeon_examined",
+      actorId: actor.id,
+      objectId: object.id,
+      name: object.name,
+      detail: object.description,
+      position: { ...object.position },
+    });
+  if (input.action === "open") {
+    const door = active(state).doors.find((entry) => entry.id === object.id);
+    door.state = "open";
+    events.push({
+      type: "door_opened",
+      actorId: actor.id,
+      doorId: door.id,
+      position: { ...object.position },
+    });
+    addNoise(state, events, 5, object.position, "door");
+  }
 }
 
 function useClassPower(state, dice, events) {
@@ -2941,10 +3126,11 @@ function openDoor(state, intent, events) {
       (entry) => same(entry, target) && entry.revealed,
     );
   check(door, "NO_DOOR", "There is no known door there.");
-  check(door.state === "closed", "DOOR_OPEN", "That door is already open.");
-  door.state = "open";
-  events.push({ type: "door_opened", doorId: door.id, position: target });
-  addNoise(state, events, 5, target, "door");
+  executeDungeonInteraction(
+    state,
+    { actorId: state.hero.id, objectId: door.id, action: "open" },
+    events,
+  );
 }
 
 function completeDungeon(state, events) {
@@ -3126,6 +3312,22 @@ export function applyRogueTurn(state, intent, dice = new Dice()) {
   const events = [];
   if (state.status === "dying") resolveDyingTurn(state, intent, dice, events);
   else resolveActiveTurn(state, intent, dice, events);
+  const workingActors =
+    state.location === "dungeon" && state.status === "active"
+      ? advanceDungeonSimulation(state, intent, events, {
+          level: active(state),
+          route: (actor, target, adjacent) =>
+            dungeonWorkRoute(state, actor, target, adjacent),
+          objectAt: (position) =>
+            dungeonWorldObjectAt(state, position.x, position.y),
+          executeInteraction: (actorId, objectId, action, interactionEvents) =>
+            executeDungeonInteraction(
+              state,
+              { actorId, objectId, action },
+              interactionEvents,
+            ),
+        })
+      : new Set();
   if (
     state.location === "dungeon" &&
     ["active", "dying"].includes(state.status)
@@ -3136,7 +3338,7 @@ export function applyRogueTurn(state, intent, dice = new Dice()) {
     state.location === "dungeon" &&
     ["active", "dying"].includes(state.status)
   )
-    resolveEnemies(state, dice, events);
+    resolveEnemies(state, dice, events, workingActors);
   state.tick += 1;
   if (state.location === "dungeon") visibility(state);
   return { events };
@@ -3234,6 +3436,14 @@ function cellView(state, position, currentVisible) {
       name: feature.name,
       spent: feature.spent,
     };
+  const object = dungeonWorldObjectAt(state, position.x, position.y);
+  if (object) {
+    cell.object = object;
+    cell.affordances = describeAffordances(state.hero, object, {
+      visible: true,
+      position: { x: state.hero.x, y: state.hero.y },
+    });
+  }
   return cell;
 }
 
@@ -4490,6 +4700,95 @@ function unityVillageMap(state) {
   return { ...UNITY_VILLAGE_VIEWPORT, origin, cells };
 }
 
+function dungeonGlyph(state, cell) {
+  if (same(cell, state.hero)) return "勇";
+  if (cell.partyMember) return cell.partyMember.glyph;
+  if (cell.enemy) return cell.enemy.glyph;
+  if (cell.treasure) return "$";
+  if (cell.feature?.kind === "trap") return "^";
+  if (cell.feature?.kind === "shrine") return "Ω";
+  if (cell.feature?.kind === "item") return "!";
+  if (cell.tile === "stairs_up") return "<";
+  if (["stairs_down", "exit"].includes(cell.tile)) return ">";
+  if (cell.tile.includes("door_closed")) return "+";
+  if (cell.tile.includes("door_open")) return "/";
+  if (cell.tile === "wall") return "#";
+  return " ";
+}
+
+function unityDungeonCell(state, position, currentVisible) {
+  const cell = cellView(state, position, currentVisible) ?? {
+      ...position,
+      tile: "unexplored",
+    },
+    actor = cell.partyMember
+      ? {
+          entityId: cell.partyMember.id,
+          entityKind: "party",
+          entityName: cell.partyMember.name,
+        }
+      : cell.enemy
+        ? {
+            entityId: cell.enemy.id,
+            entityKind: "monster",
+            entityName: cell.enemy.name,
+            entityObjective: "investigate_and_defend",
+            entityAction: active(state).enemies.find(
+              (enemy) => enemy.id === cell.enemy.id,
+            )?.currentAction,
+          }
+        : same(position, state.hero)
+          ? {
+              entityId: state.hero.id,
+              entityKind: "party",
+              entityName: state.hero.name,
+            }
+          : null;
+  return {
+    x: position.x,
+    y: position.y,
+    tile: cell.tile,
+    glyph: dungeonGlyph(state, cell),
+    objectKind: cell.object?.kind ?? null,
+    ...(actor
+      ? {
+          entityId: actor.entityId,
+          entityKind: actor.entityKind,
+          entityName: actor.entityName,
+          ...(actor.entityObjective
+            ? { entityObjective: actor.entityObjective }
+            : {}),
+          ...(actor.entityAction ? { entityAction: actor.entityAction } : {}),
+        }
+      : {}),
+  };
+}
+
+function unityDungeonMap(state) {
+  const level = active(state),
+    width = Math.min(UNITY_VILLAGE_VIEWPORT.width, level.map.width),
+    height = Math.min(UNITY_VILLAGE_VIEWPORT.height, level.map.height),
+    origin = {
+      x: Math.max(
+        0,
+        Math.min(level.map.width - width, state.hero.x - Math.floor(width / 2)),
+      ),
+      y: Math.max(
+        0,
+        Math.min(
+          level.map.height - height,
+          state.hero.y - Math.floor(height / 2),
+        ),
+      ),
+    },
+    visible = visibility(state),
+    cells = [];
+  for (let y = origin.y; y < origin.y + height; y++)
+    for (let x = origin.x; x < origin.x + width; x++)
+      cells.push(unityDungeonCell(state, { x, y }, visible));
+  return { width, height, origin, cells };
+}
+
 function unityActivityMessage(event) {
   if (event.type === "job_started") return `Work started: ${event.jobName}.`;
   if (event.type === "job_reserved")
@@ -4518,7 +4817,14 @@ export function rogueUnityView(state, recentEvents = []) {
       ...npc,
       name: VILLAGE_PEOPLE.find((person) => person.key === npc.personKey).name,
     })),
-    map = unityVillageMap(state);
+    dungeon = state.location === "dungeon",
+    map = dungeon ? unityDungeonMap(state) : unityVillageMap(state),
+    level = active(state),
+    jobs = dungeon
+      ? level.jobs.map((job) => jobView(job, level.reservations, level.enemies))
+      : state.village.jobs.map((job) =>
+          jobView(job, state.village.reservations, jobActors),
+        );
   return {
     protocolVersion: 1,
     runId: state.id,
@@ -4526,25 +4832,20 @@ export function rogueUnityView(state, recentEvents = []) {
     tick: state.tick,
     status: state.status,
     location: state.location,
-    title: state.location === "village" ? VILLAGE.name : "Retro RPG",
+    title: dungeon ? level.theme.title : VILLAGE.name,
     activity: unityActivity(recentEvents),
-    message:
-      state.location === "village"
-        ? VILLAGE.description
-        : "Unity Client V1 currently renders the Stonebridge local map.",
+    message: dungeon ? level.theme.atmosphere : VILLAGE.description,
     hero: {
       id: state.hero.id,
       name: state.hero.name,
       hp: state.hero.hp,
       maxHp: state.hero.maxHp,
       goldCp: state.hero.goldCp,
-      x: state.village.heroPosition.x,
-      y: state.village.heroPosition.y,
+      x: dungeon ? state.hero.x : state.village.heroPosition.x,
+      y: dungeon ? state.hero.y : state.village.heroPosition.y,
     },
     map,
-    jobs: state.village.jobs.map((job) =>
-      jobView(job, state.village.reservations, jobActors),
-    ),
+    jobs,
     events: recentEvents.slice(-12),
   };
 }
@@ -4579,6 +4880,12 @@ export function rogueRunView(state, recentEvents = []) {
     status: state.status,
     location: state.location,
     village,
+    dungeon: {
+      entityCount: dungeonEntityIndex(state).size,
+      jobs: level.jobs.map((job) =>
+        jobView(job, level.reservations, level.enemies),
+      ),
+    },
     world: worldView(state),
     exterior: outside,
     ruleset: state.ruleset,
@@ -4881,6 +5188,13 @@ function migrateEnemies(level, roomIds, actorId, objectId) {
     enemy.homeRoomId = roomIds.get(enemy.homeRoomId) ?? enemy.homeRoomId;
     if (enemy.packId && !isUuid(enemy.packId))
       enemy.packId = objectId("enemy-pack", enemy.packId);
+    enemy.capabilityTags ??= ["investigate"];
+    enemy.workPermissions ??= {
+      allowedJobTypes: ["investigate_noise"],
+    };
+    enemy.workState ??= "available";
+    enemy.lastJobType ??= null;
+    enemy.currentAction ??= "Guarding its territory";
   }
 }
 
@@ -4923,6 +5237,9 @@ function migrateLevelIdentity(level, migration) {
     level.theme?.archetype ?? "dungeon",
   );
   level.entityType = "dungeon-level";
+  level.jobs ??= [];
+  level.reservations ??= [];
+  for (const job of level.jobs) job.scope = "dungeon";
   const roomIds = migrateRooms(level, migration.objectId);
   migrateConnections(level, roomIds, migration.objectId);
   migrateEnemies(level, roomIds, migration.actorId, migration.objectId);
@@ -5030,7 +5347,7 @@ function migrateIdentity(value) {
   for (const level of value.levels) {
     assignEnemyGroups(level, value, migration.actorIds);
   }
-  value.schemaVersion = 13;
+  value.schemaVersion = 14;
   value.location ??= "dungeon";
   value.villageVisits ??= 0;
   value.world ??= {
@@ -5057,6 +5374,7 @@ function migrateIdentity(value) {
   value.village.wantedLevel ??= 0;
   value.village.jobs ??= [];
   value.village.reservations ??= [];
+  for (const job of value.village.jobs) job.scope ??= "village";
   const stockpileDefaults = createVillageStockpiles(value.id);
   value.village.stockpiles = stockpileDefaults.map((fallback) => {
     const existing = value.village.stockpiles?.find(

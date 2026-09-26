@@ -36,6 +36,7 @@ The public engine contracts remain stable while the internals change:
 | M-3 · Smart objects and interactions | Complete |
 | M-4 · Job board and reservations     | Complete |
 | M-5 · Carter delivery                | Complete |
+| D-M1–D-M5 · Dungeon parity           | Complete |
 | M-6 · Reactive guard work            | Next     |
 | M-7 through M-10                     | Planned  |
 
@@ -366,6 +367,41 @@ Other professions, general needs, or companion autonomy.
 - The full regression suite passes with 85 tests. Focused M-5 coverage verifies
   a complete delivery, legal movement, conservation, blocked save/resume,
   cancellation recovery, stock-threshold posting, and schema migration.
+
+## D-M1 through D-M5 — Dungeon parity checkpoint
+
+### Player-visible result
+
+Dungeon play uses the same simulation concepts as Stonebridge and is available
+in the Unity client. Doors, dungeon features, monster objectives, autonomous
+work, blocked access, and meaningful activity are inspectable instead of being
+separate legacy behavior.
+
+### Completion evidence
+
+- Dungeon turns now pass through a dedicated simulation seam while preserving
+  the authoritative `applyRogueTurn` contract and one-tick-per-intent rule.
+- Dungeon work uses deterministic weighted, orthogonal navigation. Autonomous
+  investigators move at most one cell per tick and return truthful route or
+  access blocking reasons.
+- Revealed doors, stairs, treasure, traps, shrines, and loose items project as
+  UUID-backed smart objects. Player and monster door opening executes through
+  the same affordance definition and interaction executor.
+- Every dungeon level owns persistent jobs and reservations. Monsters declare
+  capabilities and work permissions; investigation assignments reserve their
+  job and destination and release claims on completion.
+- Noise creates one scoped `investigate_noise` plan per hearing group. The plan
+  assigns an eligible monster, navigates toward the source, blocks at locked
+  access, survives save/load, resumes when access changes, opens a closed door,
+  and completes at the investigation destination.
+- The Unity projection is location-aware and renders the active dungeon rather
+  than Stonebridge. Native controls support dungeon movement, door opening by
+  click, examination, waiting, and ascending or descending stairs.
+- Save schema 14 migrates dungeon work ledgers and monster worker profiles. The
+  full regression suite passes with 90 tests, including focused determinism,
+  dungeon smart
+  object, investigation, migration, legal-movement, Unity projection, complete
+  depth traversal, exit, and re-entry coverage.
 
 ## M-6 — Reactive guard work
 

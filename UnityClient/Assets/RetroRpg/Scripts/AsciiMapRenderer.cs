@@ -184,6 +184,15 @@ namespace RetroRpg
                 "village_floor" => new Color(0.30f, 0.25f, 0.17f),
                 "village_building" => new Color(0.16f, 0.14f, 0.11f),
                 "village_door_open" => new Color(0.34f, 0.25f, 0.13f),
+                "floor" => new Color(0.13f, 0.14f, 0.12f),
+                "difficult" => new Color(0.18f, 0.16f, 0.12f),
+                "wall" => new Color(0.055f, 0.06f, 0.055f),
+                "door_closed" => new Color(0.24f, 0.17f, 0.10f),
+                "door_open" => new Color(0.16f, 0.13f, 0.09f),
+                "stairs_up" => new Color(0.20f, 0.23f, 0.20f),
+                "stairs_down" => new Color(0.20f, 0.23f, 0.20f),
+                "exit" => new Color(0.22f, 0.28f, 0.18f),
+                "unexplored" => new Color(0.018f, 0.02f, 0.018f),
                 _ => new Color(0.20f, 0.30f, 0.17f),
             };
             var distance = Mathf.Max(Mathf.Abs(cell.x - hero.x), Mathf.Abs(cell.y - hero.y));
@@ -196,6 +205,7 @@ namespace RetroRpg
             "guard" => new Color(0.72f, 0.86f, 0.50f),
             "shopkeeper" => new Color(1f, 0.77f, 0.30f),
             "civilian" => new Color(0.89f, 0.63f, 0.49f),
+            "monster" => new Color(0.92f, 0.34f, 0.27f),
             _ when cell.objectKind == "sign" => new Color(1f, 0.80f, 0.26f),
             _ when cell.objectKind == "tree" => new Color(0.55f, 0.85f, 0.42f),
             _ => new Color(0.84f, 0.82f, 0.69f),

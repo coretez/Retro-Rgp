@@ -70,3 +70,15 @@ test("Unity activity selects the newest meaningful delivery message", () => {
   ]);
   assert.equal(view.activity, "Bram Eder accepted Deliver smithy supplies.");
 });
+
+test("Unity protocol projects the active dungeon instead of Stonebridge", () => {
+  const state = newRogueRun(input),
+    view = rogueUnityView(state);
+  assert.equal(view.location, "dungeon");
+  assert.equal(view.hero.x, state.hero.x);
+  assert.equal(view.hero.y, state.hero.y);
+  assert.equal(view.map.cells.length, view.map.width * view.map.height);
+  assert.ok(view.map.cells.some((cell) => cell.entityId === state.hero.id));
+  assert.ok(view.map.cells.some((cell) => cell.tile === "wall"));
+  assert.notEqual(view.title, "Stonebridge");
+});
