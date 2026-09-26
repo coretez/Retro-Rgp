@@ -226,6 +226,7 @@ const VILLAGE = {
 };
 
 const UNITY_VILLAGE_VIEWPORT = { width: 76, height: 46 };
+const UNITY_DUNGEON_VIEWPORT = { width: 30, height: 20 };
 
 const WORLD = {
   name: "The Stonebridge March",
@@ -2245,7 +2246,7 @@ function executeDungeonInteraction(state, input, events) {
   }
 }
 
-function useClassPower(state, dice, events) {
+function useClassPower(state, intent, dice, events) {
   const power = state.hero.classPower;
   check(
     power.remaining > 0,
@@ -2253,7 +2254,7 @@ function useClassPower(state, dice, events) {
     `${power.name} has no uses left.`,
   );
   if (power.key === "magic_missile") {
-    const enemy = nearestVisibleEnemy(state);
+    const enemy = visibleEnemyTarget(state, intent.targetId);
     check(enemy, "NO_VISIBLE_TARGET", "No enemy is visible for Magic Missile.");
     magicalDamage(state, enemy, dice, events, {
       name: "Magic Missile",
@@ -3282,7 +3283,7 @@ function resolveActiveTurn(state, intent, dice, events) {
     case "examine":
       return examineDungeon(state, intent, events);
     case "class_power":
-      return useClassPower(state, dice, events);
+      return useClassPower(state, intent, dice, events);
     case "short_rest":
       return shortRest(state, dice, events);
     case "equip":
@@ -4766,20 +4767,11 @@ function unityDungeonCell(state, position, currentVisible) {
 
 function unityDungeonMap(state) {
   const level = active(state),
-    width = Math.min(UNITY_VILLAGE_VIEWPORT.width, level.map.width),
-    height = Math.min(UNITY_VILLAGE_VIEWPORT.height, level.map.height),
+    width = Math.min(UNITY_DUNGEON_VIEWPORT.width, level.map.width),
+    height = Math.min(UNITY_DUNGEON_VIEWPORT.height, level.map.height),
     origin = {
-      x: Math.max(
-        0,
-        Math.min(level.map.width - width, state.hero.x - Math.floor(width / 2)),
-      ),
-      y: Math.max(
-        0,
-        Math.min(
-          level.map.height - height,
-          state.hero.y - Math.floor(height / 2),
-        ),
-      ),
+      x: state.hero.x - Math.floor(width / 2),
+      y: state.hero.y - Math.floor(height / 2),
     },
     visible = visibility(state),
     cells = [];
@@ -4812,6 +4804,70 @@ function unityActivity(recentEvents) {
   return [...recentEvents].reverse().map(unityActivityMessage).find(Boolean);
 }
 
+function unityDungeonIntents(state, level) {
+  return [
+    "move",
+    "command",
+    "open",
+    "wait",
+    "search",
+    "use_item",
+    "invoke_item",
+    "ranged_attack",
+    "throw_item",
+    "examine",
+    "class_power",
+    "short_rest",
+    "equip",
+    "unequip",
+    ...(same(state.hero, level.entrance) ? ["stairs_up"] : []),
+    ...(same(state.hero, level.exit) && state.depth < state.maxDepth
+      ? ["stairs"]
+      : []),
+  ];
+}
+
+function unityInventory(state) {
+  return state.hero.inventory
+    .filter((item) => (item.quantity ?? item.charges ?? 1) > 0)
+    .map((item) => ({
+      id: item.id,
+      name: item.name,
+      kind: item.kind,
+      itemType: item.itemType ?? item.kind,
+      slot: item.slot ?? null,
+      quantity: item.quantity ?? 0,
+      charges: item.charges ?? 0,
+      equipped: Boolean(item.equipped),
+      throwable: Boolean(item.thrownRange),
+      invokable: ["relic", "scroll", "wand"].includes(item.itemType),
+    }));
+}
+
+function unityPartyOrder(state) {
+  const group = state.partyGroup;
+  return {
+    id: group.id,
+    leaderId: group.leaderId,
+    commandRevision: group.commandRevision,
+    ...group.order,
+  };
+}
+
+function unityTargets(state) {
+  const visible = visibility(state);
+  return aliveEnemies(state)
+    .filter((enemy) => visible.has(key(enemy)))
+    .map((enemy) => ({
+      id: enemy.id,
+      name: enemy.name,
+      x: enemy.x,
+      y: enemy.y,
+      hp: enemy.hp,
+      maxHp: enemy.maxHp,
+    }));
+}
+
 export function rogueUnityView(state, recentEvents = []) {
   const jobActors = state.village.npcStates.map((npc) => ({
       ...npc,
@@ -4834,6 +4890,7 @@ export function rogueUnityView(state, recentEvents = []) {
     location: state.location,
     title: dungeon ? level.theme.title : VILLAGE.name,
     activity: unityActivity(recentEvents),
+    legalIntents: dungeon ? unityDungeonIntents(state, level) : ["local_move"],
     message: dungeon ? level.theme.atmosphere : VILLAGE.description,
     hero: {
       id: state.hero.id,
@@ -4846,6 +4903,10 @@ export function rogueUnityView(state, recentEvents = []) {
     },
     map,
     jobs,
+    inventory: dungeon ? unityInventory(state) : [],
+    targets: dungeon ? unityTargets(state) : [],
+    partyOrder: dungeon ? unityPartyOrder(state) : null,
+    classPower: dungeon ? structuredClone(state.hero.classPower) : null,
     events: recentEvents.slice(-12),
   };
 }

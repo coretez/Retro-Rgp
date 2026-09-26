@@ -1,5 +1,20 @@
 # Changelog
 
+## Interactive Version 1 · D-M5.1 Unity dungeon playability
+
+- Replaced the full-floor dungeon projection with a rolling 30×20 viewport so
+  visible rooms and nearby threats occupy useful screen space.
+- Added engine-declared dungeon intents plus compact inventory, visible-target,
+  class-power, and revisioned party-order projections for the native client.
+- Added native contextual commands for search, waiting, healing, class powers,
+  short rests, inventory/equipment management, and party objectives and
+  formations without introducing permanent sidebars.
+- Added UUID-targeted ranged attacks, thrown items, invokable items, and Magic
+  Missile while retaining the authoritative engine rules.
+- Kept all 90 regression tests green and produced a successful macOS Unity
+  player build. A 252-turn three-level dive through the Unity action protocol
+  reached victory with all four party members alive.
+
 ## Interactive Version 1 · Dungeon parity through M-5
 
 - Added a dedicated dungeon simulation seam while preserving the existing

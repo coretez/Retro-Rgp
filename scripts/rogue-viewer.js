@@ -190,6 +190,7 @@ async function handleRequest(request, response) {
 }
 
 const server = http.createServer(handleRequest);
+let shuttingDown = false;
 
 server.listen(port, "127.0.0.1", () => {
   console.log(`Party roguelike ready: http://127.0.0.1:${port}`);
@@ -198,6 +199,8 @@ server.listen(port, "127.0.0.1", () => {
 });
 
 async function shutdown() {
+  if (shuttingDown) return;
+  shuttingDown = true;
   server.close();
   unityStore.close();
   await client.close();

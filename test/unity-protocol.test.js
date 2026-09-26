@@ -75,10 +75,24 @@ test("Unity protocol projects the active dungeon instead of Stonebridge", () => 
   const state = newRogueRun(input),
     view = rogueUnityView(state);
   assert.equal(view.location, "dungeon");
+  assert.deepEqual(
+    { width: view.map.width, height: view.map.height },
+    { width: 30, height: 20 },
+  );
   assert.equal(view.hero.x, state.hero.x);
   assert.equal(view.hero.y, state.hero.y);
   assert.equal(view.map.cells.length, view.map.width * view.map.height);
   assert.ok(view.map.cells.some((cell) => cell.entityId === state.hero.id));
   assert.ok(view.map.cells.some((cell) => cell.tile === "wall"));
   assert.notEqual(view.title, "Stonebridge");
+  assert.ok(view.legalIntents.includes("search"));
+  assert.ok(view.legalIntents.includes("command"));
+  assert.ok(view.legalIntents.includes("ranged_attack"));
+  assert.ok(view.legalIntents.includes("equip"));
+  assert.ok(view.inventory.some((item) => item.itemType === "equipment"));
+  assert.ok(view.inventory.some((item) => item.kind === "healing_potion"));
+  assert.equal(view.partyOrder.id, state.partyGroup.id);
+  assert.equal(view.partyOrder.commandRevision, 0);
+  assert.equal(view.classPower.name, state.hero.classPower.name);
+  assert.ok(Array.isArray(view.targets));
 });

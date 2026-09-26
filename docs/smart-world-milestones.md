@@ -37,6 +37,7 @@ The public engine contracts remain stable while the internals change:
 | M-4 · Job board and reservations     | Complete |
 | M-5 · Carter delivery                | Complete |
 | D-M1–D-M5 · Dungeon parity           | Complete |
+| D-M5.1 · Unity dungeon playability   | Complete |
 | M-6 · Reactive guard work            | Next     |
 | M-7 through M-10                     | Planned  |
 
@@ -402,6 +403,35 @@ separate legacy behavior.
   dungeon smart
   object, investigation, migration, legal-movement, Unity projection, complete
   depth traversal, exit, and re-entry coverage.
+
+## D-M5.1 — Unity dungeon playability gate
+
+### Player-visible result
+
+The native client presents a useful local dungeon viewport and exposes the
+complete tactical action set without shrinking the map behind permanent side
+panels.
+
+### Completion evidence
+
+- Unity receives a rolling 30×20 dungeon viewport centered on the party leader
+  instead of fitting an entire unseen 56×40 floor into the window.
+- The dungeon projection declares its legal intents and provides compact
+  inventory, visible-target, class-power, and revisioned party-order data.
+- A thin contextual command bar exposes search, wait, healing, powers, rest,
+  inventory, and party orders. Inventory and order controls are dismissible
+  overlays rather than permanent columns.
+- Selecting a visible enemy supplies the authoritative instance UUID to ranged
+  attacks, thrown items, invokable items, and Magic Missile. Equipment can be
+  equipped and offhand gear removed through native controls.
+- Automated protocol coverage verifies viewport dimensions and every new
+  command projection. All 90 tests pass and the macOS Unity player builds
+  successfully.
+- A clean three-level fortress dive completed through `/api/unity/action` in
+  252 turns: the party opened 10 doors, fought 24 attacks, changed depth twice,
+  collected treasure and an item, used healing and a class power, and reached
+  the final exit with all four members alive. Native smoke checks separately
+  verified movement, search, inventory/equipment, and a revisioned party order.
 
 ## M-6 — Reactive guard work
 

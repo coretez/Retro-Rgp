@@ -2,6 +2,8 @@
 import { randomUUID } from "node:crypto";
 
 const baseUrl = process.env.ROGUE_SIM_URL ?? "http://127.0.0.1:4321";
+const unityProtocol = process.env.ROGUE_SIM_PROTOCOL === "unity";
+const gameLimit = Number(process.env.ROGUE_SIM_GAMES ?? 3);
 const directions = [
   [0, -1, "north"],
   [1, 0, "east"],
@@ -45,14 +47,22 @@ async function createGame(config, index) {
 }
 
 async function act(intent) {
-  return request("/api/action", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Origin: baseUrl,
+  const projected = await request(
+    unityProtocol ? "/api/unity/action" : "/api/action",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Origin: baseUrl,
+      },
+      body: JSON.stringify({ intent, requestId: randomUUID() }),
     },
-    body: JSON.stringify({ intent, requestId: randomUUID() }),
-  });
+  );
+  if (!unityProtocol) return projected;
+  return {
+    events: projected.events ?? [],
+    view: await request("/api/state"),
+  };
 }
 
 function knownCells(view) {
@@ -255,7 +265,7 @@ async function play(config, index) {
 }
 
 const results = [];
-for (let index = 0; index < games.length; index++) {
+for (let index = 0; index < Math.min(gameLimit, games.length); index++) {
   const result = await play(games[index], index);
   results.push(result);
   console.log(JSON.stringify(result));

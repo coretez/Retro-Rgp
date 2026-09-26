@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using UnityEngine;
 
@@ -11,6 +12,8 @@ namespace RetroRpg
         private UnityView view;
         private string error;
         private bool busy;
+        private bool inventoryOpen;
+        private bool partyOpen;
         private Vector2Int? selected;
         private GUIStyle titleStyle;
         private GUIStyle headingStyle;
@@ -78,8 +81,14 @@ namespace RetroRpg
         {
             if (view.location != "dungeon") return;
             if (Input.GetKeyDown(KeyCode.Space)) StartCoroutine(DungeonAction("wait"));
+            if (Input.GetKeyDown(KeyCode.Q)) StartCoroutine(DungeonAction("search"));
             if (Input.GetKeyDown(KeyCode.X) && selected.HasValue)
                 StartCoroutine(DungeonAction("examine", selected.Value));
+            if (Input.GetKeyDown(KeyCode.H)) UseFirstPotion();
+            if (Input.GetKeyDown(KeyCode.P)) StartCoroutine(DungeonAction("class_power"));
+            if (Input.GetKeyDown(KeyCode.R)) AttackSelected("ranged_attack");
+            if (Input.GetKeyDown(KeyCode.I)) inventoryOpen = !inventoryOpen;
+            if (Input.GetKeyDown(KeyCode.C)) partyOpen = !partyOpen;
             if (Input.GetKeyDown(KeyCode.Period)) StartCoroutine(DungeonAction("stairs"));
             if (Input.GetKeyDown(KeyCode.Comma)) StartCoroutine(DungeonAction("stairs_up"));
         }
@@ -97,6 +106,47 @@ namespace RetroRpg
             }
             yield return api.Act(intent, ApplyView, ShowError);
             busy = false;
+        }
+
+        private void SendIntent(MoveIntent intent)
+        {
+            if (!busy) StartCoroutine(SendIntentRoutine(intent));
+        }
+
+        private IEnumerator SendIntentRoutine(MoveIntent intent)
+        {
+            busy = true;
+            yield return api.Act(intent, ApplyView, ShowError);
+            busy = false;
+        }
+
+        private string SelectedTargetId()
+        {
+            var cell = SelectedCell();
+            return cell?.entityKind == "monster" ? cell.entityId : null;
+        }
+
+        private void AttackSelected(string kind, string itemId = null)
+        {
+            var targetId = SelectedTargetId();
+            if (string.IsNullOrEmpty(targetId))
+            {
+                error = "Select a visible enemy first.";
+                return;
+            }
+            SendIntent(new MoveIntent { kind = kind, targetId = targetId, itemId = itemId });
+        }
+
+        private void UseFirstPotion()
+        {
+            var items = view.inventory ?? Array.Empty<InventoryItemView>();
+            var potion = Array.Find(items, item => item.kind == "healing_potion" && item.quantity > 0);
+            if (potion == null)
+            {
+                error = "No healing potion is available.";
+                return;
+            }
+            SendIntent(new MoveIntent { kind = "use_item", itemId = potion.id });
         }
 
         private static string Direction(int x, int y)
@@ -166,6 +216,8 @@ namespace RetroRpg
             DrawTopBar();
             DrawInspector();
             DrawCommandBar();
+            DrawInventoryOverlay();
+            DrawPartyOverlay();
         }
 
         private void DrawTopBar()
@@ -209,16 +261,124 @@ namespace RetroRpg
 
         private void DrawCommandBar()
         {
-            var width = Mathf.Min(680f, Screen.width - 24f);
-            var panel = new Rect((Screen.width - width) * 0.5f, Screen.height - 52f, width, 40f);
+            var width = Mathf.Min(1060f, Screen.width - 24f);
+            var panel = new Rect((Screen.width - width) * 0.5f, Screen.height - 54f, width, 42f);
             DrawPanel(panel);
             var status = error ?? (busy ? "Resolving turn…" : view.activity);
             if (!string.IsNullOrEmpty(status))
-                GUI.Label(new Rect(panel.x + 18f, panel.y + 9f, panel.width * 0.48f, 24f), status, bodyStyle);
-            var controls = view.location == "dungeon"
-                ? "WASD Move  ·  X Examine  ·  Space Wait  ·  , / . Stairs"
-                : "WASD Move  ·  Click Select  ·  Wheel Zoom";
-            GUI.Label(new Rect(panel.x + panel.width * 0.5f, panel.y + 10f, panel.width * 0.47f, 22f), controls, subtleStyle);
+                GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, 310f, 22f), status, bodyStyle);
+            if (view.location == "dungeon") DrawDungeonCommands(panel);
+            else GUI.Label(new Rect(panel.x + 330f, panel.y + 11f, panel.width - 344f, 22f),
+                "WASD Move  ·  Click Select  ·  Wheel Zoom", subtleStyle);
+        }
+
+        private void DrawDungeonCommands(Rect panel)
+        {
+            var x = panel.x + 322f;
+            CommandButton(ref x, panel, "Search [Q]", "search", () => SendIntent(new MoveIntent { kind = "search" }));
+            CommandButton(ref x, panel, "Wait", "wait", () => SendIntent(new MoveIntent { kind = "wait" }));
+            CommandButton(ref x, panel, "Potion [H]", "use_item", UseFirstPotion);
+            CommandButton(ref x, panel, "Power [P]", "class_power", UseClassPower);
+            CommandButton(ref x, panel, "Rest", "short_rest", () => SendIntent(new MoveIntent { kind = "short_rest" }));
+            if (GUI.Button(new Rect(x, panel.y + 7f, 76f, 28f), "Items [I]")) inventoryOpen = !inventoryOpen;
+            x += 80f;
+            if (GUI.Button(new Rect(x, panel.y + 7f, 76f, 28f), "Party [C]")) partyOpen = !partyOpen;
+        }
+
+        private void CommandButton(ref float x, Rect panel, string label, string intent, Action action)
+        {
+            if (!Can(intent)) return;
+            var width = Mathf.Max(58f, GUI.skin.button.CalcSize(new GUIContent(label)).x + 12f);
+            if (GUI.Button(new Rect(x, panel.y + 7f, width, 28f), label)) action();
+            x += width + 4f;
+        }
+
+        private bool Can(string intent) =>
+            Array.IndexOf(view.legalIntents ?? Array.Empty<string>(), intent) >= 0;
+
+        private void UseClassPower()
+        {
+            SendIntent(new MoveIntent { kind = "class_power", targetId = SelectedTargetId() });
+        }
+
+        private void DrawInventoryOverlay()
+        {
+            if (!inventoryOpen || view.location != "dungeon") return;
+            var items = view.inventory ?? Array.Empty<InventoryItemView>();
+            var height = Mathf.Min(430f, 58f + items.Length * 42f);
+            var panel = new Rect(Screen.width - 382f, 68f, 370f, height);
+            DrawPanel(panel);
+            GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, 260f, 24f), "INVENTORY & EQUIPMENT", headingStyle);
+            if (GUI.Button(new Rect(panel.x + 328f, panel.y + 8f, 28f, 24f), "×")) inventoryOpen = false;
+            for (var index = 0; index < items.Length && index < 9; index++)
+                DrawInventoryItem(panel, items[index], index);
+        }
+
+        private void DrawInventoryItem(Rect panel, InventoryItemView item, int index)
+        {
+            var y = panel.y + 40f + index * 42f;
+            var count = item.charges > 0 ? $" · {item.charges} charges" : item.quantity > 1 ? $" · ×{item.quantity}" : "";
+            var state = item.equipped ? " · EQUIPPED" : count;
+            GUI.Label(new Rect(panel.x + 14f, y, 190f, 20f), item.name + state, bodyStyle);
+            var x = panel.x + 208f;
+            if (item.itemType == "equipment" && !item.equipped)
+                ItemButton(ref x, y, "Equip", () => SendIntent(new MoveIntent { kind = "equip", itemId = item.id }));
+            if (item.equipped && item.slot == "offhand")
+                ItemButton(ref x, y, "Remove", () => SendIntent(new MoveIntent { kind = "unequip", slot = "offhand" }));
+            if (item.kind == "healing_potion")
+                ItemButton(ref x, y, "Use", () => SendIntent(new MoveIntent { kind = "use_item", itemId = item.id }));
+            if (item.invokable)
+                ItemButton(ref x, y, "Invoke", () => SendIntent(new MoveIntent { kind = "invoke_item", itemId = item.id, targetId = SelectedTargetId() }));
+            if (item.throwable)
+                ItemButton(ref x, y, "Throw", () => AttackSelected("throw_item", item.id));
+        }
+
+        private static void ItemButton(ref float x, float y, string label, Action action)
+        {
+            var width = label.Length * 7f + 16f;
+            if (GUI.Button(new Rect(x, y - 3f, width, 26f), label)) action();
+            x += width + 4f;
+        }
+
+        private void DrawPartyOverlay()
+        {
+            if (!partyOpen || view.location != "dungeon" || view.partyOrder == null) return;
+            var panel = new Rect(12f, 68f, 422f, 176f);
+            DrawPanel(panel);
+            GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, 250f, 24f), "PARTY ORDERS", headingStyle);
+            if (GUI.Button(new Rect(panel.x + 380f, panel.y + 8f, 28f, 24f), "×")) partyOpen = false;
+            GUI.Label(new Rect(panel.x + 14f, panel.y + 38f, 310f, 20f),
+                $"{Readable(view.partyOrder.objective)} · {Readable(view.partyOrder.formation)}", bodyStyle);
+            var objectives = string.IsNullOrEmpty(SelectedTargetId())
+                ? new[] { "explore", "hold", "advance", "retreat" }
+                : new[] { "explore", "hold", "advance", "retreat", "focus" };
+            DrawOrderRow(panel, panel.y + 68f, "Objective", objectives, true);
+            DrawOrderRow(panel, panel.y + 112f, "Formation", new[] { "column", "line", "wedge", "scatter" }, false);
+        }
+
+        private void DrawOrderRow(Rect panel, float y, string label, string[] values, bool objective)
+        {
+            GUI.Label(new Rect(panel.x + 14f, y, 80f, 18f), label.ToUpperInvariant(), subtleStyle);
+            var x = panel.x + 14f;
+            foreach (var value in values)
+            {
+                if (GUI.Button(new Rect(x, y + 19f, 74f, 25f), Readable(value))) SendPartyOrder(value, objective);
+                x += 78f;
+            }
+        }
+
+        private void SendPartyOrder(string value, bool objective)
+        {
+            var order = view.partyOrder;
+            SendIntent(new MoveIntent {
+                kind = "command", groupId = order.id, issuerId = order.leaderId,
+                expectedCommandRevision = order.commandRevision,
+                objective = objective ? value : order.objective,
+                formation = objective ? order.formation : value,
+                targetId = objective ? value == "focus" ? SelectedTargetId() : null : order.targetId,
+                resourcePolicy = order.resourcePolicy,
+                retreatThreshold = order.retreatThreshold, movementMode = order.movementMode
+            });
         }
 
         private CellView SelectedCell()

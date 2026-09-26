@@ -14,9 +14,14 @@ namespace RetroRpg
         public string title;
         public string message;
         public string activity;
+        public string[] legalIntents;
         public HeroView hero;
         public MapView map;
         public JobView[] jobs;
+        public InventoryItemView[] inventory;
+        public TargetView[] targets;
+        public PartyOrderView partyOrder;
+        public PowerView classPower;
     }
 
     [Serializable]
@@ -91,6 +96,55 @@ namespace RetroRpg
     }
 
     [Serializable]
+    public sealed class InventoryItemView
+    {
+        public string id;
+        public string name;
+        public string kind;
+        public string itemType;
+        public string slot;
+        public int quantity;
+        public int charges;
+        public bool equipped;
+        public bool throwable;
+        public bool invokable;
+    }
+
+    [Serializable]
+    public sealed class TargetView
+    {
+        public string id;
+        public string name;
+        public int x;
+        public int y;
+        public int hp;
+        public int maxHp;
+    }
+
+    [Serializable]
+    public sealed class PartyOrderView
+    {
+        public string id;
+        public string leaderId;
+        public int commandRevision;
+        public string objective;
+        public string formation;
+        public string targetId;
+        public string resourcePolicy;
+        public int retreatThreshold;
+        public string movementMode;
+    }
+
+    [Serializable]
+    public sealed class PowerView
+    {
+        public string key;
+        public string name;
+        public int uses;
+        public int remaining;
+    }
+
+    [Serializable]
     public sealed class MoveEnvelope
     {
         public MoveIntent intent;
@@ -130,6 +184,18 @@ namespace RetroRpg
         public string direction;
         public int x;
         public int y;
+        public string itemId;
+        public string targetId;
+        public string actorId;
+        public string slot;
+        public string groupId;
+        public string issuerId;
+        public int expectedCommandRevision;
+        public string objective;
+        public string formation;
+        public string resourcePolicy;
+        public int retreatThreshold;
+        public string movementMode;
     }
 
     [Serializable]
