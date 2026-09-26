@@ -1116,6 +1116,36 @@ test("town interaction changes terrain, creates materials, and alerts the guard"
   assert.equal(guard.objective, "protect_town");
 });
 
+test("town guards walk between patrol waypoints without teleporting", () => {
+  const state = newRogueRun(input);
+  state.location = "village";
+  const guard = state.village.npcStates.find(
+    (npc) => npc.personKey === "watchman",
+  );
+  const positions = [{ ...guard.position }];
+  for (const destination of [
+    { x: 19, y: 13 },
+    { x: 19, y: 12 },
+    { x: 19, y: 13 },
+    { x: 19, y: 12 },
+  ]) {
+    applyRogueTurn(state, { kind: "local_move", ...destination });
+    positions.push({ ...guard.position });
+  }
+  for (let index = 1; index < positions.length; index += 1) {
+    const dx = Math.abs(positions[index].x - positions[index - 1].x),
+      dy = Math.abs(positions[index].y - positions[index - 1].y);
+    assert.equal(dx + dy, 1);
+  }
+  assert.deepEqual(positions, [
+    { x: 20, y: 9 },
+    { x: 20, y: 10 },
+    { x: 20, y: 11 },
+    { x: 21, y: 11 },
+    { x: 22, y: 11 },
+  ]);
+});
+
 test("search reveals nearby hidden treasure and a potion restores health", () => {
   const state = newRogueRun(input);
   state.enemies = [];

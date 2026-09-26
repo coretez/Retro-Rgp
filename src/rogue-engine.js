@@ -2891,14 +2891,20 @@ function stepNpcToward(npc, target) {
   };
 }
 
+function advanceNpcPatrol(npc, route) {
+  const nextIndex = (npc.routeIndex + 1) % route.length,
+    [x, y] = route[nextIndex];
+  stepNpcToward(npc, { x, y });
+  if (npc.position.x === x && npc.position.y === y) npc.routeIndex = nextIndex;
+}
+
 function advanceVillageNpc(npc, events) {
   if (npc.actionReason === "player_crime" && npc.actionTarget)
     stepNpcToward(npc, npc.actionTarget);
   else {
     const route = VILLAGE_ROUTES[npc.personKey];
     if (!route) return;
-    npc.routeIndex = (npc.routeIndex + 1) % route.length;
-    npc.position = { x: route[npc.routeIndex][0], y: route[npc.routeIndex][1] };
+    advanceNpcPatrol(npc, route);
   }
   events.push({
     type: "npc_move",
