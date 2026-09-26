@@ -48,6 +48,7 @@ namespace RetroRpg
             if (Input.GetMouseButtonDown(0)) HandleClick();
             HandleKeyboard();
             HandleDungeonCommands();
+            HandleVillageCommands();
         }
 
         private void HandleClick()
@@ -126,6 +127,16 @@ namespace RetroRpg
             if (Input.GetKeyDown(KeyCode.C)) partyOpen = !partyOpen;
             if (Can("stairs") && Input.GetKeyDown(KeyCode.Period)) StartCoroutine(DungeonAction("stairs"));
             if (Can("stairs_up") && Input.GetKeyDown(KeyCode.Comma)) StartCoroutine(DungeonAction("stairs_up"));
+        }
+
+        private void HandleVillageCommands()
+        {
+            if (view.location == "dungeon") return;
+            if (Input.GetKeyDown(KeyCode.B)) InteractWithAction("breach");
+            if (Input.GetKeyDown(KeyCode.T)) InteractWithAction("talk");
+            if (Input.GetKeyDown(KeyCode.X)) InteractWithAction("examine");
+            if (Input.GetKeyDown(KeyCode.E)) InteractWithAction("read");
+            if (Input.GetKeyDown(KeyCode.U)) InteractWithAction("use");
         }
 
         private IEnumerator DungeonAction(string kind, Vector2Int? target = null)
@@ -310,7 +321,8 @@ namespace RetroRpg
         {
             var cell = SelectedCell();
             if (cell == null) return;
-            var panel = new Rect(12f, Screen.height - 230f, 300f, 166f);
+            var height = string.IsNullOrEmpty(cell.entityReason) ? 166f : 188f;
+            var panel = new Rect(12f, Screen.height - 64f - height, 300f, height);
             DrawPanel(panel);
             GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, 238f, 18f), "SELECTED", headingStyle);
             GUI.Label(new Rect(panel.x + 14f, panel.y + 32f, 238f, 24f), SelectionName(cell), titleStyle);
@@ -323,6 +335,8 @@ namespace RetroRpg
                 GUI.Label(new Rect(panel.x + 14f, panel.y + 126f, 272f, 18f), cell.entityAction, bodyStyle);
             if (!string.IsNullOrEmpty(cell.entityObjective))
                 GUI.Label(new Rect(panel.x + 14f, panel.y + 146f, 272f, 16f), Readable(cell.entityObjective), subtleStyle);
+            if (!string.IsNullOrEmpty(cell.entityReason))
+                GUI.Label(new Rect(panel.x + 14f, panel.y + 166f, 272f, 16f), $"WHY  {Readable(cell.entityReason)}", subtleStyle);
         }
 
         private void DrawActivityLog()
@@ -354,8 +368,63 @@ namespace RetroRpg
             if (!string.IsNullOrEmpty(status))
                 GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, 310f, 22f), status, bodyStyle);
             if (view.location == "dungeon") DrawDungeonCommands(panel);
-            else GUI.Label(new Rect(panel.x + 330f, panel.y + 11f, panel.width - 344f, 22f),
-                "WASD Move  ·  Click Select  ·  Wheel Zoom", subtleStyle);
+            else DrawVillageCommands(panel);
+        }
+
+        private void DrawVillageCommands(Rect panel)
+        {
+            var cell = SelectedCell();
+            var actions = cell?.actions?.Length > 0 ? cell.actions : NearbyActions();
+            if (actions.Length == 0)
+            {
+                GUI.Label(new Rect(panel.x + 330f, panel.y + 11f, panel.width - 344f, 22f),
+                    "WASD Move  ·  Select an adjacent person or object", subtleStyle);
+                return;
+            }
+            var x = panel.x + 322f;
+            foreach (var action in actions)
+            {
+                var label = VillageActionLabel(action);
+                var width = Mathf.Max(62f, GUI.skin.button.CalcSize(new GUIContent(label)).x + 14f);
+                if (GUI.Button(new Rect(x, panel.y + 7f, width, 28f), label))
+                    InteractWithAction(action);
+                x += width + 4f;
+            }
+        }
+
+        private string[] NearbyActions()
+        {
+            var priority = new[] { "talk", "read", "open", "collect", "breach", "harvest", "dig", "use", "examine" };
+            return Array.FindAll(priority, action => VillageCellForAction(action) != null);
+        }
+
+        private static string VillageActionLabel(string action) => action switch
+        {
+            "breach" => "Breach [B]",
+            "talk" => "Talk [T]",
+            "examine" => "Examine [X]",
+            "read" => "Read [E]",
+            "use" => "Use [U]",
+            _ => Readable(action)
+        };
+
+        private CellView VillageCellForAction(string action)
+        {
+            var chosen = SelectedCell();
+            if (chosen?.actions != null && Array.IndexOf(chosen.actions, action) >= 0) return chosen;
+            return Array.Find(view.map.cells, cell =>
+                cell.actions != null && Array.IndexOf(cell.actions, action) >= 0);
+        }
+
+        private void InteractWithAction(string action)
+        {
+            var cell = VillageCellForAction(action);
+            if (cell == null || string.IsNullOrEmpty(cell.objectId)) return;
+            SendIntent(new MoveIntent
+            {
+                kind = "world_interact", action = action, objectId = cell.objectId,
+                x = cell.x, y = cell.y
+            });
         }
 
         private void DrawDungeonCommands(Rect panel)

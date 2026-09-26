@@ -186,7 +186,9 @@ test("M-4 invalid job targets release every claim deterministically", () => {
   assert.equal(job.assignedActorId, null);
   assert.equal(actor.workState, "available");
   assert.ok(
-    state.village.reservations.every((claim) => claim.state === "released"),
+    state.village.reservations
+      .filter((claim) => claim.jobId === job.id)
+      .every((claim) => claim.state === "released"),
   );
 });
 
@@ -213,7 +215,7 @@ test("M-4 save migration preserves jobs, claims, and actor work data", () => {
   reserveAll(state, job, [{ kind: "job", targetId: job.id }]);
   const restored = parseRogueState(serializeRogueState(state)),
     view = rogueRunView(restored).village.jobs[0];
-  assert.equal(restored.schemaVersion, 14);
+  assert.equal(restored.schemaVersion, 15);
   assert.equal(restored.village.jobs[0].assignedActorId, actor.id);
   assert.equal(restored.village.reservations[0].jobId, job.id);
   assert.deepEqual(restored.village.npcStates[0].capabilityTags, ["inspect"]);
@@ -234,7 +236,7 @@ test("M-4 schema-11 saves acquire empty work state and actor profiles", () => {
     delete actor.risk;
   }
   const migrated = parseRogueState(legacy);
-  assert.equal(migrated.schemaVersion, 14);
+  assert.equal(migrated.schemaVersion, 15);
   assert.deepEqual(migrated.village.jobs, []);
   assert.deepEqual(migrated.village.reservations, []);
   assert.ok(

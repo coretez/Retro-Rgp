@@ -39,8 +39,9 @@ The public engine contracts remain stable while the internals change:
 | D-M1–D-M5 · Dungeon parity           | Complete |
 | D-M5.1 · Unity dungeon playability   | Complete |
 | D-M5.2 · Native dungeon hardening    | Complete |
-| M-6 · Reactive guard work            | Next     |
-| M-7 through M-10                     | Planned  |
+| M-6 · Reactive guard work            | Complete |
+| M-7 · Working residents and economy  | Next     |
+| M-8 through M-10                     | Planned  |
 
 ## Target architecture
 
@@ -506,6 +507,33 @@ appropriate job.
 
 Full law, arrest, trial, imprisonment, or faction reputation systems.
 
+### Completion evidence
+
+- Patrol is persistent priority-20 work. Property damage creates one
+  priority-90 evidence-backed investigation, while reported danger creates
+  priority-100 response work.
+- Guard perception is deterministic and uses observation plus distance. An
+  accepted incident records stable UUID references to its evidence, offender,
+  guard, and resulting job.
+- Higher-priority guard work suspends patrol and releases its reservations.
+  Once the interruption resolves, eligible suspended work is reserved again
+  and resumes rather than being recreated.
+- The investigation plan navigates toward the evidence object, examines it
+  through the shared interaction executor, warns the offender, escalates a
+  repeat offense to escort, then releases all incident and job claims. Missing
+  evidence cancels cleanly and also permits patrol to resume.
+- The Unity village inspector exposes each resident's current reason. Nearby
+  smart-object affordances create visible contextual commands with keyboard
+  shortcuts without adding a permanent panel or altering the frozen dungeon
+  interface.
+- Save schema 15 migrates incident state and expanded guard capabilities. The
+  full regression suite passes with 101 tests and the macOS Unity player builds
+  successfully.
+- The native manual gate passed: breaching the armorer wall through Unity
+  suspended the active patrol, produced a single investigation, displayed the
+  guard's reaction in the activity feed, then showed the guard investigate,
+  warn, complete the work, and resume patrol using only visible Unity controls.
+
 ## M-7 — Working residents and local economy
 
 ### Player-visible result
@@ -658,7 +686,7 @@ The first smart-world release is complete when all of the following are true:
 
 ## Immediate next objective
 
-Implement **M-6 only**: convert guard patrol and investigation into competing
-jobs, then prove that danger can interrupt routine work and that the guard can
-resume appropriate work afterward. Preserve the accepted D-M5.2 Unity dungeon
+Implement **M-7 only**: give residents condition-driven production, hauling,
+rest, and social work, then prove that their completed jobs create persistent,
+inspectable changes in Stonebridge. Preserve the accepted D-M5.2 Unity dungeon
 interface unless a later milestone explicitly reopens it.

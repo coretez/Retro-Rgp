@@ -14,7 +14,13 @@ export const JOB_STATES = Object.freeze([
 const TERMINAL_STATES = new Set(["completed", "cancelled"]);
 const TRANSITIONS = Object.freeze({
   available: new Set(["reserved", "blocked", "cancelled"]),
-  reserved: new Set(["active", "blocked", "available", "cancelled"]),
+  reserved: new Set([
+    "active",
+    "blocked",
+    "suspended",
+    "available",
+    "cancelled",
+  ]),
   active: new Set(["blocked", "suspended", "completed", "cancelled"]),
   blocked: new Set(["available", "active", "cancelled"]),
   suspended: new Set(["active", "available", "cancelled"]),

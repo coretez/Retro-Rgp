@@ -1,5 +1,25 @@
 # Changelog
 
+## Interactive Version 1 · M-6 reactive guard work
+
+- Converted the Stonebridge watch patrol into persistent low-priority work and
+  added higher-priority, UUID-backed crime investigation and danger-response
+  jobs.
+- Added deterministic guard perception, evidence reservations, priority-based
+  suspension and resumption, investigation, warning, and repeat-offense escort
+  behavior.
+- Routed evidence inspection through the shared smart-object interaction
+  executor and made invalid or completed incidents release every work claim.
+- Added compact Unity village interaction commands and an inspect-panel reason
+  so nearby objects can be examined, used, read, breached, or discussed while
+  selected residents explain what they are doing and why.
+- Migrated saves to schema 15 and expanded the regression suite to 101 passing
+  tests. The macOS Unity player builds successfully.
+- Completed the native M-6 playability gate: property damage interrupted a
+  patrol, the guard investigated and warned the offender, and the suspended
+  patrol resumed through visible Unity controls. The accepted D-M5.2 dungeon
+  interface remains frozen.
+
 ## Interactive Version 1 · D-M5.2 native dungeon hardening
 
 - Made Unity dungeon commands state-aware so actions appear only when their

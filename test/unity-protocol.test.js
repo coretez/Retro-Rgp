@@ -28,6 +28,16 @@ test("Unity protocol projects one compact retained-mode village snapshot", () =>
     ),
   );
   assert.ok(view.map.cells.some((cell) => cell.entityKind === "party"));
+  const interactive = view.map.cells.filter((cell) => cell.actions?.length);
+  assert.ok(interactive.length > 0 && interactive.length <= 9);
+  assert.ok(interactive.every((cell) => cell.objectId));
+  assert.ok(
+    view.map.cells.some(
+      (cell) =>
+        cell.entityName === "Friedel Koch" &&
+        cell.entityReason === "personal_routine",
+    ),
+  );
   assert.ok(
     view.map.cells
       .filter(
@@ -69,6 +79,22 @@ test("Unity activity selects the newest meaningful delivery message", () => {
     { type: "npc_move" },
   ]);
   assert.equal(view.activity, "Bram Eder accepted Deliver smithy supplies.");
+});
+
+test("Unity activity explains a guard job interruption", () => {
+  const state = newRogueRun(input);
+  state.location = "village";
+  const view = rogueUnityView(state, [
+    {
+      type: "job_suspended",
+      jobName: "Patrol Stonebridge",
+      actorName: "Friedel Koch",
+    },
+  ]);
+  assert.equal(
+    view.activity,
+    "Friedel Koch's patrol stonebridge is interrupted.",
+  );
 });
 
 test("Unity activity describes a player-opened dungeon door", () => {

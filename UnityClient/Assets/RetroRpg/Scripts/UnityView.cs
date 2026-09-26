@@ -62,11 +62,14 @@ namespace RetroRpg
         public string tile;
         public string glyph;
         public string objectKind;
+        public string objectId;
+        public string[] actions;
         public string entityId;
         public string entityKind;
         public string entityName;
         public string entityObjective;
         public string entityAction;
+        public string entityReason;
         public int entityHp;
         public int entityMaxHp;
     }
@@ -200,10 +203,12 @@ namespace RetroRpg
     public sealed class MoveIntent
     {
         public string kind;
+        public string action;
         public string direction;
         public int x;
         public int y;
         public string itemId;
+        public string objectId;
         public string targetId;
         public string actorId;
         public string slot;

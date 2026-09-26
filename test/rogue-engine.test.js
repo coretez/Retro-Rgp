@@ -1112,7 +1112,7 @@ test("town interaction changes terrain, creates materials, and alerts the guard"
   const guard = state.village.npcStates.find(
     (npc) => npc.personKey === "watchman",
   );
-  assert.equal(guard.actionReason, "player_crime");
+  assert.equal(guard.actionReason, "property_damage_reported");
   assert.equal(guard.objective, "protect_town");
 });
 

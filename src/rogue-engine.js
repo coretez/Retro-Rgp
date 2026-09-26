@@ -30,7 +30,10 @@ import {
   namedUuid,
   newInstanceId,
 } from "./identity.js";
-import { advanceVillageSimulation } from "./village-simulation.js";
+import {
+  advanceVillageSimulation,
+  reportVillageIncident,
+} from "./village-simulation.js";
 import { advanceDungeonSimulation } from "./dungeon-simulation.js";
 import { createEntityIndex, describeAffordances } from "./world-objects.js";
 import { createJob, jobView } from "./job-board.js";
@@ -1667,7 +1670,7 @@ export function newRogueRun(input) {
     heroId = newInstanceId(),
     companions = createCompanions();
   const state = {
-    schemaVersion: 14,
+    schemaVersion: 15,
     ruleset: ROGUE_RULESET,
     id: runId,
     revision: 0,
@@ -1693,6 +1696,7 @@ export function newRogueRun(input) {
       modifications: [],
       looseMaterials: [],
       wantedLevel: 0,
+      incidents: [],
       jobs: [],
       reservations: [],
       stockpiles: createVillageStockpiles(runId),
@@ -2921,20 +2925,17 @@ function collectMaterial(state, actor, material, events) {
 
 function alertTownGuard(state, target, events) {
   state.village.wantedLevel += 1;
-  const guard = state.village.npcStates.find(
-    (npc) => npc.personKey === "watchman",
+  const evidence = villageWorldObjectAt(state, target.x, target.y);
+  reportVillageIncident(
+    state,
+    {
+      kind: "property_damage",
+      evidenceId: evidence.id,
+      position: target,
+      offenderId: state.hero.id,
+    },
+    events,
   );
-  guard.objective = "protect_town";
-  guard.currentAction = "Investigating damage to town property";
-  guard.actionReason = "player_crime";
-  guard.actionTarget = { ...target };
-  events.push({
-    type: "guard_reacted",
-    personId: guard.id,
-    personName: "Friedel Koch",
-    wantedLevel: state.village.wantedLevel,
-    position: { ...guard.position },
-  });
 }
 
 function manipulateVillage(state, intent, events) {
@@ -3813,13 +3814,26 @@ function villageWorkerProfile(personKey) {
       watchman: 2,
       delver: 2,
     }[personKey] ?? 1;
+  const guard = personKey === "watchman";
   return {
-    capabilityTags: personKey === "carter" ? ["inspect", "haul"] : ["inspect"],
+    capabilityTags:
+      personKey === "carter"
+        ? ["inspect", "haul"]
+        : guard
+          ? ["inspect", "patrol", "investigate", "warn", "escort", "respond"]
+          : ["inspect"],
     workPermissions: {
       allowedJobTypes:
         personKey === "carter"
           ? ["inspect_object", "deliver_goods"]
-          : ["inspect_object"],
+          : guard
+            ? [
+                "inspect_object",
+                "patrol_route",
+                "investigate_crime",
+                "respond_danger",
+              ]
+            : ["inspect_object"],
     },
     skills: { observation },
     workState: "available",
@@ -4639,6 +4653,7 @@ function unityCellActor(state, cell) {
       entityName: cell.person.name,
       entityObjective: cell.person.objective,
       entityAction: cell.person.currentAction,
+      entityReason: cell.person.actionReason,
     };
   return null;
 }
@@ -4654,14 +4669,25 @@ function unityObjectKind(cell) {
   return "terrain";
 }
 
+function unityVillageInteraction(state, cell) {
+  if (gridDistance("square", state.village.heroPosition, cell) > 1) return {};
+  const object = villageWorldObjectAt(state, cell.x, cell.y),
+    actions = villageObjectAffordances(state, state.hero.id, object)
+      .filter((affordance) => affordance.available)
+      .map((affordance) => affordance.key);
+  return actions.length ? { objectId: object.id, actions } : {};
+}
+
 function unityCell(state, cell) {
-  const actor = unityCellActor(state, cell);
+  const actor = unityCellActor(state, cell),
+    interaction = unityVillageInteraction(state, cell);
   return {
     x: cell.x,
     y: cell.y,
     tile: cell.tile,
     glyph: unityGlyph(cell, actor),
     objectKind: unityObjectKind(cell),
+    ...interaction,
     ...(actor
       ? {
           entityId: actor.entityId,
@@ -4671,6 +4697,7 @@ function unityCell(state, cell) {
             ? { entityObjective: actor.entityObjective }
             : {}),
           ...(actor.entityAction ? { entityAction: actor.entityAction } : {}),
+          ...(actor.entityReason ? { entityReason: actor.entityReason } : {}),
         }
       : {}),
   };
@@ -4858,6 +4885,23 @@ function unityExplorationActivity(event) {
 }
 
 function unityWorkActivity(event) {
+  if (event.type === "job_suspended")
+    return {
+      text: `${event.actorName}'s ${event.jobName.toLowerCase()} is interrupted.`,
+      tone: "danger",
+    };
+  if (event.type === "guard_investigated")
+    return {
+      text: `${event.actorName} examines the reported damage.`,
+      tone: "discovery",
+    };
+  if (event.type === "guard_warned")
+    return { text: `${event.actorName} warns the offender.`, tone: "danger" };
+  if (event.type === "guard_escorted")
+    return {
+      text: `${event.actorName} escorts the repeat offender.`,
+      tone: "danger",
+    };
   if (event.type === "job_started")
     return { text: `Work started: ${event.jobName}.`, tone: "subtle" };
   if (event.type === "job_reserved")
@@ -4886,6 +4930,8 @@ function unityWorkActivity(event) {
     return { text: `New work: ${event.jobName}.`, tone: "subtle" };
   if (event.type === "job_resumed")
     return { text: `Work resumed: ${event.jobName}.`, tone: "subtle" };
+  if (event.type === "job_cancelled")
+    return { text: `Work cancelled: ${event.jobName}.`, tone: "subtle" };
   return null;
 }
 
@@ -5590,7 +5636,7 @@ function migrateIdentity(value) {
   for (const level of value.levels) {
     assignEnemyGroups(level, value, migration.actorIds);
   }
-  value.schemaVersion = 14;
+  value.schemaVersion = 15;
   value.location ??= "dungeon";
   value.villageVisits ??= 0;
   value.world ??= {
@@ -5615,6 +5661,7 @@ function migrateIdentity(value) {
   value.village.modifications ??= [];
   value.village.looseMaterials ??= [];
   value.village.wantedLevel ??= 0;
+  value.village.incidents ??= [];
   value.village.jobs ??= [];
   value.village.reservations ??= [];
   for (const job of value.village.jobs) job.scope ??= "village";
