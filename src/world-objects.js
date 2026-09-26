@@ -64,6 +64,13 @@ export const WORLD_AFFORDANCES = Object.freeze({
     effect: "use_fixture",
     duration: 1,
   },
+  request_stocktake: {
+    key: "request_stocktake",
+    label: "Request stocktake",
+    requirements: { visible: true },
+    effect: "post_inspection_job",
+    duration: 0,
+  },
 });
 
 function requirementFailure(actor, object, definition, context) {

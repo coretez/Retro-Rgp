@@ -94,7 +94,7 @@ test("M-3 converted object types advertise distinct contextual actions", () => {
   assert.deepEqual(actionsFor("tree"), ["examine", "harvest"]);
   assert.deepEqual(actionsFor("forge"), ["examine", "use"]);
   assert.deepEqual(actionsFor("counter"), ["examine", "use"]);
-  assert.deepEqual(actionsFor("cart"), ["examine", "use"]);
+  assert.deepEqual(actionsFor("cart"), ["examine", "use", "request_stocktake"]);
   assert.deepEqual(actionsFor("resident"), ["examine", "talk"]);
 });
 

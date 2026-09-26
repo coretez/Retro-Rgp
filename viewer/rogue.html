@@ -1195,6 +1195,26 @@
         margin: 0 0 3px;
         color: var(--gold);
       }
+      .job-board {
+        margin-top: 10px;
+        border-top: 1px solid var(--line);
+        padding-top: 8px;
+      }
+      .job-board summary {
+        cursor: pointer;
+        color: var(--gold);
+      }
+      .job-row {
+        display: grid;
+        grid-template-columns: minmax(170px, 1fr) auto;
+        gap: 4px 12px;
+        padding: 8px 0;
+        border-top: 1px solid var(--line);
+      }
+      .job-row small {
+        grid-column: 1 / -1;
+        color: var(--muted);
+      }
       .shop-keeper {
         color: var(--muted);
         margin-bottom: 8px;
@@ -1695,6 +1715,10 @@
               immediately. Potions enter the shared expedition supplies.
             </p>
             <div class="shop-grid" id="shops"></div>
+            <details class="job-board" open>
+              <summary>Stonebridge work orders</summary>
+              <div id="village-jobs"></div>
+            </details>
           </div>
         </details>
       </section>
@@ -2551,6 +2575,41 @@
         map.style.gridTemplateColumns = `repeat(${state.village.map.width}, minmax(16px, 1fr))`;
         map.replaceChildren(...state.village.map.cells.map(createVillageCell));
       }
+      function jobRow(job) {
+        const row = document.createElement("div"),
+          name = document.createElement("strong"),
+          status = document.createElement("span"),
+          detail = document.createElement("small"),
+          progress = `${job.progress.completed}/${job.progress.total} ${job.progress.unit}`;
+        row.className = "job-row";
+        name.textContent = job.name;
+        status.textContent = job.status;
+        detail.textContent = [
+          job.assignedActorName
+            ? `Assigned to ${job.assignedActorName}`
+            : "Unassigned",
+          `Progress ${progress}`,
+          job.blockingReason ? `Blocked: ${job.blockingReason}` : null,
+          job.destination
+            ? `Destination ${job.destination.x},${job.destination.y}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+        row.append(name, status, detail);
+        return row;
+      }
+
+      function renderVillageJobs() {
+        const jobs = state.village.jobs ?? [],
+          board = $("village-jobs");
+        board.replaceChildren(
+          ...(jobs.length
+            ? jobs.map(jobRow)
+            : [document.createTextNode("No work orders have been posted.")]),
+        );
+      }
+
       function renderVillage() {
         const inVillage = state.location === "village",
           inExterior = state.location === "exterior",
@@ -2574,6 +2633,7 @@
         if (inWorld) renderWorldMap();
         if (!inVillage) return;
         renderVillageMap();
+        renderVillageJobs();
         $("village-name").textContent = state.village.name;
         $("village-description").textContent = state.village.description;
         $("village-gold").textContent = `${state.hero.goldCp} cp`;

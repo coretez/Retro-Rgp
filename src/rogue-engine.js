@@ -31,6 +31,7 @@ import {
 } from "./identity.js";
 import { advanceVillageSimulation } from "./village-simulation.js";
 import { createEntityIndex, describeAffordances } from "./world-objects.js";
+import { createJob, jobView } from "./job-board.js";
 
 export const ROGUE_RULESET = "party-roguelike-v9";
 export const DIRECTIONS = {
@@ -1624,7 +1625,7 @@ export function newRogueRun(input) {
     heroId = newInstanceId(),
     companions = createCompanions();
   const state = {
-    schemaVersion: 11,
+    schemaVersion: 12,
     ruleset: ROGUE_RULESET,
     id: runId,
     revision: 0,
@@ -1650,6 +1651,8 @@ export function newRogueRun(input) {
       modifications: [],
       looseMaterials: [],
       wantedLevel: 0,
+      jobs: [],
+      reservations: [],
       npcStates: createVillageNpcStates(runId),
       doors: VILLAGE_BUILDINGS.map((building) => ({
         id: newInstanceId(),
@@ -2865,6 +2868,9 @@ function resolveVillageTurn(state, intent, events) {
   const result = resolveVillageAction(state, intent, events);
   advanceVillageSimulation(state, intent, events, {
     terrainAt: ({ x, y }) => villageTile(state, x, y, false).tile,
+    objectAt: ({ x, y }) => villageWorldObjectAt(state, x, y),
+    executeInteraction: (input, interactionEvents) =>
+      executeVillageInteraction(state, input, interactionEvents),
   });
   return result;
 }
@@ -3548,6 +3554,25 @@ const VILLAGE_OBJECTIVES = {
   innkeeper: ["work_trade", "Serving the common room"],
 };
 
+function villageWorkerProfile(personKey) {
+  const observation =
+    {
+      carter: 4,
+      porter: 3,
+      hostler: 3,
+      watchman: 2,
+      delver: 2,
+    }[personKey] ?? 1;
+  return {
+    capabilityTags: ["inspect"],
+    workPermissions: { allowedJobTypes: ["inspect_object"] },
+    skills: { observation },
+    workState: "available",
+    lastJobType: null,
+    risk: 0,
+  };
+}
+
 function createVillageNpcStates(runId) {
   return VILLAGE_PEOPLE.map((person) => {
     const [objective, currentAction] = VILLAGE_OBJECTIVES[person.key] ?? [
@@ -3562,6 +3587,7 @@ function createVillageNpcStates(runId) {
       currentAction,
       actionReason: "personal_routine",
       routeIndex: 0,
+      ...villageWorkerProfile(person.key),
     };
   });
 }
@@ -3780,7 +3806,10 @@ function fixtureObject(state, terrain, position) {
     {
       name: fixture.name,
       description: fixture.description,
-      affordanceKeys: ["examine", "use"],
+      affordanceKeys:
+        fixtureKind === "cart"
+          ? ["examine", "use", "request_stocktake"]
+          : ["examine", "use"],
       actionLabels: { use: useLabels[fixtureKind] },
     },
   );
@@ -3993,6 +4022,25 @@ function applyVillageAffordance(state, actor, object, affordance, events) {
       affordance.key,
       events,
     );
+  if (affordance.key === "request_stocktake") {
+    const { job, created } = createJob(state, {
+      jobType: "inspect_object",
+      name: `Stocktake ${object.name}`,
+      targetId: object.id,
+      targetPosition: object.position,
+      requiredCapabilities: ["inspect"],
+      reason: "player_request",
+      progressUnit: "inspection",
+    });
+    events.push({
+      type: created ? "job_posted" : "job_already_posted",
+      jobId: job.id,
+      objectId: object.id,
+      jobName: job.name,
+      position: { ...object.position },
+    });
+    return;
+  }
   events.push({
     type: "object_used",
     actorId: actor.id,
@@ -4094,7 +4142,11 @@ function villageView(state) {
       origin,
     ).map((cell) => villageObjectCell(state, cell)),
     entityIndex = createEntityIndex(cells.map((cell) => cell.object)),
-    currentShopKey = villageShopAt(state.village.heroPosition)?.shopKey ?? null;
+    currentShopKey = villageShopAt(state.village.heroPosition)?.shopKey ?? null,
+    jobActors = state.village.npcStates.map((npc) => ({
+      ...npc,
+      name: VILLAGE_PEOPLE.find((person) => person.key === npc.personKey).name,
+    }));
   return {
     name: VILLAGE.name,
     description: VILLAGE.description,
@@ -4102,6 +4154,9 @@ function villageView(state) {
     partyMovement: state.village.partyMovement,
     heroPosition: { ...state.village.heroPosition },
     entityCount: entityIndex.size,
+    jobs: state.village.jobs.map((job) =>
+      jobView(job, state.village.reservations, jobActors),
+    ),
     map: {
       width: VILLAGE.width,
       height: VILLAGE.height,
@@ -4775,7 +4830,7 @@ function migrateIdentity(value) {
   for (const level of value.levels) {
     assignEnemyGroups(level, value, migration.actorIds);
   }
-  value.schemaVersion = 11;
+  value.schemaVersion = 12;
   value.location ??= "dungeon";
   value.villageVisits ??= 0;
   value.world ??= {
@@ -4800,11 +4855,20 @@ function migrateIdentity(value) {
   value.village.modifications ??= [];
   value.village.looseMaterials ??= [];
   value.village.wantedLevel ??= 0;
+  value.village.jobs ??= [];
+  value.village.reservations ??= [];
   value.village.npcStates ??= createVillageNpcStates(value.id);
   for (const npc of value.village.npcStates) {
     npc.id ??= namedUuid(value.id, `townsperson:${npc.personKey}`);
     npc.actionReason ??= "personal_routine";
     npc.routeIndex ??= 0;
+    const profile = villageWorkerProfile(npc.personKey);
+    npc.capabilityTags ??= profile.capabilityTags;
+    npc.workPermissions ??= profile.workPermissions;
+    npc.skills ??= profile.skills;
+    npc.workState ??= profile.workState;
+    npc.lastJobType ??= profile.lastJobType;
+    npc.risk ??= profile.risk;
   }
   for (const toolKind of ["hand_axe", "field_shovel"])
     if (!value.hero.inventory.some((item) => item.kind === toolKind))

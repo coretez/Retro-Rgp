@@ -1,5 +1,18 @@
 # Changelog
 
+## Interactive Version 1 · M-4
+
+- Added persistent UUID-backed jobs with guarded lifecycle transitions.
+- Added atomic reservations for jobs, world objects, items, and work positions.
+- Added explicit resident capabilities, permissions, skills, work state, and
+  deterministic assignment scoring.
+- Added a real stable-cart stocktake job using legal navigation and the shared
+  smart-object interaction executor.
+- Added an overlay work-order inspector with assignment, progress, destination,
+  and blocking information.
+- Migrated saves to schema 12 and added cancellation, invalidation, replay,
+  serialization, MCP-schema, and full-lifecycle tests.
+
 ## Interactive Version 1 · M-3
 
 - Added UUID-backed smart world objects and spatial entity indexing for town

@@ -50,6 +50,9 @@ test("real rogue MCP creates, advances, retries and resumes a solo run", async (
     "rogue_run_export",
     "rogue_run_get",
   ]);
+  const actTool = tools.tools.find((tool) => tool.name === "rogue_act");
+  assert.match(JSON.stringify(actTool.inputSchema), /world_interact/);
+  assert.match(JSON.stringify(actTool.inputSchema), /request_stocktake/);
   const bestiary = await call("rogue_bestiary_get", {});
   assert.equal(bestiary.creatures.length, 25);
   assert.ok(bestiary.creatures.every((entry) => entry.lore.length === 2));

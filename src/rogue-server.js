@@ -7,6 +7,7 @@ import { z } from "zod";
 import { DUNGEON_FORMS } from "./dungeon-generator.js";
 import { bestiaryView } from "./rogue-bestiary.js";
 import { RogueStore, rogueError } from "./rogue-store.js";
+import { WORLD_AFFORDANCES } from "./world-objects.js";
 import {
   GROUP_FORMATIONS,
   GROUP_MOVEMENT_MODES,
@@ -166,6 +167,15 @@ export function buildRogueServer(store) {
               .object({
                 kind: z.literal("local_manipulate"),
                 action: z.enum(["dig", "harvest", "breach", "collect"]),
+                x: z.number().int(),
+                y: z.number().int(),
+              })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("world_interact"),
+                objectId: id,
+                action: z.enum(Object.keys(WORLD_AFFORDANCES)),
                 x: z.number().int(),
                 y: z.number().int(),
               })

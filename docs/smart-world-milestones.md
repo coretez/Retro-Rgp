@@ -34,8 +34,9 @@ The public engine contracts remain stable while the internals change:
 | M-1 · Contracts and simulation seam  | Complete |
 | M-2 · Navigation and credible roads  | Complete |
 | M-3 · Smart objects and interactions | Complete |
-| M-4 · Job board and reservations     | Next     |
-| M-5 through M-10                     | Planned  |
+| M-4 · Job board and reservations     | Complete |
+| M-5 · Carter delivery                | Next     |
+| M-6 through M-10                     | Planned  |
 
 ## Target architecture
 
@@ -252,13 +253,17 @@ persistent objects rather than descriptive text.
 
 ### Build
 
-- Add UUID-backed jobs with lifecycle states.
-- Add exclusive reservations for jobs, objects, items, and work positions.
+- Add UUID-backed jobs with explicit legal lifecycle transitions, including
+  blocked, suspended, completed, and cancelled states.
+- Add atomic exclusive reservations for jobs, objects, items, and work
+  positions.
 - Add capability and work-permission checks.
-- Add deterministic assignment scoring using priority, path cost, skill,
-  continuity, and risk.
+- Add deterministic assignment ordering using priority, continuity, skill,
+  risk, path cost, and actor UUID.
 - Add inspect projections for current job, destination, progress, and reason.
-- Add save migration for job and reservation state.
+- Add save-schema-12 migration for jobs, reservations, and actor work data.
+- Add one real single-action stocktake job that navigates to the stable cart
+  and executes its M-3 examine affordance.
 
 ### Automated gate
 
@@ -268,15 +273,41 @@ persistent objects rather than descriptive text.
 - Incapable or forbidden actors never receive incompatible jobs.
 - Assignment ties have deterministic UUID-based resolution.
 - Save/load preserves jobs, reservations, and assignments.
+- Illegal lifecycle transitions are rejected; cancellation releases claims
+  exactly once.
+- Request replay and repeated posting cannot duplicate an open job.
 
 ### Manual gate
 
-- Open the job inspector and follow a manually posted haul job through its
-  available, reserved, active, and completed states.
+- Request a stable-cart stocktake and follow it through available, reserved,
+  active, and completed states in the work-order inspector.
 
 ### Not included
 
-General autonomous schedules, needs, or a complete delivery chain.
+General autonomous schedules, needs, cargo transfer, or a complete delivery
+chain.
+
+### Completion evidence
+
+- UUID-backed jobs and typed reservations persist as authoritative village
+  state. Jobs own their actor reference; actor views derive assignments.
+- Reservation batches are atomic and exclusive across jobs, objects, items,
+  and location-scoped work positions. Release history retains tick and reason.
+- Actor capability tags, permissions, skills, availability, continuity, route
+  cost, risk, and UUID tie-breaking drive deterministic assignment.
+- The stable cart posts an idempotent stocktake. A worker reserves the job,
+  cart, and work position; navigates legally; executes the shared M-3 examine
+  affordance; completes; and releases all claims.
+- Missing targets release both worker and claims. Suspension and cancellation
+  are distinct from environmental blocking, and illegal transitions fail.
+- Save schema 12 migrates existing runs and preserves job, reservation, and
+  actor work data through serialization and SQLite persistence.
+- The MCP action schema now accepts the M-3/M-4 `world_interact` envelope and
+  every registered affordance, with a regression assertion on its published
+  tool schema.
+- The full suite passes with 78 tests. The live browser gate posted and
+  completed a stocktake, displayed its assignment to Otto Kern and 1/1
+  progress, released every held claim, and retained the full map viewport.
 
 ## M-5 — First living-world vertical slice: carter delivery
 
@@ -500,6 +531,6 @@ The first smart-world release is complete when all of the following are true:
 
 ## Immediate next objective
 
-Implement **M-1 only**. Its purpose is to create a safe simulation seam and
-contract tests before changing navigation or behavior. M-2 begins only after
-the M-1 gates pass and the existing town remains playable.
+Implement **M-5 only**: the first multi-step living-world job. Extend the M-4
+contracts with cargo and stock state plus a `deliver_goods` plan; do not add
+other professions, needs, or continuous time yet.
