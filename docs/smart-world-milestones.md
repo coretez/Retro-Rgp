@@ -27,6 +27,14 @@ The public engine contracts remain stable while the internals change:
 6. New simulation functions should normally remain below 20–30 executable
    statements. Content data does not count toward this limit.
 
+## Status
+
+| Milestone                           | State    |
+| ----------------------------------- | -------- |
+| M-1 · Contracts and simulation seam | Complete |
+| M-2 · Navigation and credible roads | Next     |
+| M-3 through M-10                    | Planned  |
+
 ## Target architecture
 
 ```text
@@ -74,7 +82,7 @@ src/
 This structure is introduced gradually. A milestone should not move unrelated
 dungeon or combat code merely to make the directory tree look complete.
 
-## Milestone 0 — Contracts and simulation seam
+## M-1 — Contracts and simulation seam
 
 ### Player-visible result
 
@@ -108,7 +116,7 @@ No intended gameplay change. The current game behaves exactly as it does now.
 
 Weighted pathfinding, jobs, smart objects, new routines, or UI redesign.
 
-## Milestone 1 — Navigation and credible roads
+## M-2 — Navigation and credible roads
 
 ### Player-visible result
 
@@ -147,7 +155,7 @@ orthogonal cell per turn, avoid blocked terrain, and prefer roads and paths.
 The guard still has a prescribed patrol objective. Residents do not yet choose
 work.
 
-## Milestone 2 — Smart objects and unified interactions
+## M-3 — Smart objects and unified interactions
 
 ### Player-visible result
 
@@ -184,7 +192,7 @@ interaction definitions.
 
 Autonomous job selection or multi-step production.
 
-## Milestone 3 — Job board and reservations
+## M-4 — Job board and reservations
 
 ### Player-visible result
 
@@ -220,7 +228,7 @@ persistent objects rather than descriptive text.
 
 General autonomous schedules, needs, or a complete delivery chain.
 
-## Milestone 4 — First living-world vertical slice: carter delivery
+## M-5 — First living-world vertical slice: carter delivery
 
 ### Player-visible result
 
@@ -257,7 +265,7 @@ stage and decision.
 
 Other professions, general needs, or companion autonomy.
 
-## Milestone 5 — Reactive guard work
+## M-6 — Reactive guard work
 
 ### Player-visible result
 
@@ -290,7 +298,7 @@ appropriate job.
 
 Full law, arrest, trial, imprisonment, or faction reputation systems.
 
-## Milestone 6 — Working residents and local economy
+## M-7 — Working residents and local economy
 
 ### Player-visible result
 
@@ -326,7 +334,7 @@ people and stock rather than being permanently available menus.
 Town-wide economic balancing, prices driven by supply and demand, or complex
 social relationships.
 
-## Milestone 7 — Autonomous dispersed companions
+## M-8 — Autonomous dispersed companions
 
 ### Player-visible result
 
@@ -362,7 +370,7 @@ danger interrupts those objectives and returns the party to leadership control.
 Companion romance, deep personality simulation, or unsupervised major
 financial decisions.
 
-## Milestone 8 — Needs, schedules, and social life
+## M-9 — Needs, schedules, and social life
 
 ### Player-visible result
 
@@ -398,7 +406,7 @@ the inspector.
 Generative-AI dialogue, family simulation, politics, or a complete sociology
 model.
 
-## Milestone 9 — Continuous simulation controls
+## M-10 — Continuous simulation controls
 
 ### Player-visible result
 
@@ -442,6 +450,6 @@ The first smart-world release is complete when all of the following are true:
 
 ## Immediate next objective
 
-Implement **Milestone 0 only**. Its purpose is to create a safe simulation seam
-and contract tests before changing navigation or behavior. Milestone 1 begins
-only after the Milestone 0 gates pass and the existing town remains playable.
+Implement **M-1 only**. Its purpose is to create a safe simulation seam and
+contract tests before changing navigation or behavior. M-2 begins only after
+the M-1 gates pass and the existing town remains playable.

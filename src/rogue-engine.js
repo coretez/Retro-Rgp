@@ -29,6 +29,7 @@ import {
   namedUuid,
   newInstanceId,
 } from "./identity.js";
+import { advanceVillageSimulation } from "./village-simulation.js";
 
 export const ROGUE_RULESET = "party-roguelike-v9";
 export const DIRECTIONS = {
@@ -2882,51 +2883,9 @@ function resolveVillageAction(state, intent, events) {
   throw new RuleError("VILLAGE_INTENT_REQUIRED", "Choose a village action.");
 }
 
-function stepNpcToward(npc, target) {
-  const dx = Math.sign(target.x - npc.position.x),
-    dy = Math.sign(target.y - npc.position.y);
-  npc.position = {
-    x: npc.position.x + (dx || 0),
-    y: npc.position.y + (dx ? 0 : dy),
-  };
-}
-
-function advanceNpcPatrol(npc, route) {
-  const nextIndex = (npc.routeIndex + 1) % route.length,
-    [x, y] = route[nextIndex];
-  stepNpcToward(npc, { x, y });
-  if (npc.position.x === x && npc.position.y === y) npc.routeIndex = nextIndex;
-}
-
-function advanceVillageNpc(npc, events) {
-  if (npc.actionReason === "player_crime" && npc.actionTarget)
-    stepNpcToward(npc, npc.actionTarget);
-  else {
-    const route = VILLAGE_ROUTES[npc.personKey];
-    if (!route) return;
-    advanceNpcPatrol(npc, route);
-  }
-  events.push({
-    type: "npc_move",
-    actorId: npc.id,
-    objective: npc.objective,
-    currentAction: npc.currentAction,
-    position: { ...npc.position },
-  });
-}
-
-function advanceVillageNpcs(state, events) {
-  for (const npc of state.village.npcStates) advanceVillageNpc(npc, events);
-}
-
 function resolveVillageTurn(state, intent, events) {
   const result = resolveVillageAction(state, intent, events);
-  if (
-    ["local_move", "local_manipulate", "shop_buy", "equip"].includes(
-      intent.kind,
-    )
-  )
-    advanceVillageNpcs(state, events);
+  advanceVillageSimulation(state, intent, events);
   return result;
 }
 
@@ -3586,35 +3545,6 @@ const VILLAGE_OBJECTIVES = {
   herbalist: ["work_trade", "Preparing remedies"],
   armorer: ["work_trade", "Repairing armor"],
   innkeeper: ["work_trade", "Serving the common room"],
-};
-
-const VILLAGE_ROUTES = {
-  watchman: [
-    [20, 9],
-    [20, 10],
-    [20, 11],
-    [22, 11],
-    [24, 11],
-    [22, 11],
-    [20, 11],
-    [20, 10],
-  ],
-  child: [
-    [15, 15],
-    [16, 15],
-    [17, 15],
-    [18, 15],
-    [19, 15],
-    [19, 14],
-  ],
-  porter: [
-    [19, 14],
-    [19, 13],
-    [19, 12],
-    [19, 11],
-    [20, 11],
-    [21, 11],
-  ],
 };
 
 function createVillageNpcStates(runId) {
