@@ -1,5 +1,16 @@
 # Changelog
 
+## Interactive Version 1 · Unity client foundation
+
+- Added a Unity 6000.5 client while preserving the retro ASCII visual language.
+- Rendered the visible map with one vertex-shaded terrain mesh and one colored
+  glyph mesh instead of thousands of browser DOM controls.
+- Added a compact, versioned Unity state/action protocol backed by the same
+  authoritative simulation, persistence, and revision checks as the HTML client.
+- Added keyboard and adjacent-cell click movement, selection, camera fitting,
+  zoom, status HUD, distance shading, and a custom animated ground shader.
+- Added protocol size and identity tests and retained the complete 80-test suite.
+
 ## Interactive Version 1 · M-4
 
 - Added persistent UUID-backed jobs with guarded lifecycle transitions.

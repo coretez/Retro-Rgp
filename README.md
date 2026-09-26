@@ -1,7 +1,7 @@
 # Retro RPG: Dungeon Rogue
 
 A persistent, party-based dungeon roguelike with D&D SRD 5.1-compatible combat
-rules, a dedicated Model Context Protocol server, and an HTML play surface.
+rules, a dedicated Model Context Protocol server, and Unity and HTML clients.
 
 Version 0.1 is the frozen solo baseline. It includes themed multi-level
 dungeons, large fog-of-war maps, rooms, doors, noise, passive searching, traps,
@@ -9,10 +9,10 @@ secret doors, treasure, equipment, class powers, spells, consumables, rests,
 experience and leveling, 25 behavioral creatures, dungeon lore, and a searchable
 Monster Manual.
 
-This repository contains only the roguelike. It intentionally excludes the
-separate general campaign engine, Unity client, historical campaign material,
-world atlas, item repository, and other game projects from the development
-workspace.
+This repository contains only the roguelike, including its Unity client. It
+intentionally excludes the separate general campaign engine, historical
+campaign material, world atlas, item repository, and other game projects from
+the development workspace.
 
 ## Run
 
@@ -26,6 +26,11 @@ npm start
 Open <http://127.0.0.1:4321>. Runtime state is stored under the ignored `var/`
 directory. Set `DND_ROGUE_PORT`, `DND_ROGUE_DB`, or
 `DND_ROGUE_ACTIVE_RUN_FILE` to override the defaults.
+
+For the native client, leave that engine running and open `UnityClient/` in
+Unity 6000.5.10f1. Load `Assets/Scenes/RetroRpg.unity` and enter Play mode.
+The first Unity slice renders Stonebridge with a retained ASCII glyph mesh and
+a shaded terrain mesh; WASD, arrow keys, and adjacent-cell clicks move the hero.
 
 Run the focused engine and MCP integration tests with:
 
@@ -42,6 +47,7 @@ npm test
   the Monster Manual.
 - `src/rogue-store.js` persists replay-safe runs in SQLite.
 - `scripts/rogue-viewer.js` connects the browser workbench to the MCP server.
+- `UnityClient/` is the retained-mode native client and custom ASCII shader.
 - `viewer/` contains the game and Monster Manual interfaces.
 
 See [the frozen v0.1 record](docs/solo-roguelike-v0.1.md),

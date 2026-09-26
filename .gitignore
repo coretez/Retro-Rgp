@@ -2,4 +2,11 @@ node_modules/
 var/
 *.sqlite*
 .DS_Store
-
+UnityClient/[Ll]ibrary/
+UnityClient/[Tt]emp/
+UnityClient/[Oo]bj/
+UnityClient/[Ll]ogs/
+UnityClient/[Uu]ser[Ss]ettings/
+UnityClient/[Bb]uilds/
+UnityClient/[Mm]emoryCaptures/
+UnityClient/.vs/

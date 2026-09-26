@@ -4349,6 +4349,103 @@ function worldView(state) {
   };
 }
 
+function unityCellActor(state, cell) {
+  if (same(state.village.heroPosition, cell))
+    return {
+      glyph: "侠",
+      entityId: state.hero.id,
+      entityKind: "party",
+      entityName: state.hero.name,
+    };
+  if (cell.partyMember)
+    return {
+      glyph: cell.partyMember.glyph,
+      entityId: cell.partyMember.id,
+      entityKind: "party",
+      entityName: cell.partyMember.name,
+    };
+  if (cell.person)
+    return {
+      glyph: cell.glyph,
+      entityId: cell.person.id,
+      entityKind: cell.person.category,
+      entityName: cell.person.name,
+    };
+  return null;
+}
+
+function unityObjectKind(cell) {
+  if (cell.person) return "resident";
+  if (cell.material) return "material";
+  if (cell.furniture) return "fixture";
+  if (cell.doorId) return "door";
+  if (cell.building) return cell.tile === "village_building" ? "wall" : "room";
+  if (cell.sign) return "sign";
+  if (cell.tile === "outdoor_tree") return "tree";
+  return "terrain";
+}
+
+function unityCell(state, cell) {
+  const actor = unityCellActor(state, cell);
+  return {
+    x: cell.x,
+    y: cell.y,
+    tile: cell.tile,
+    glyph: actor?.glyph ?? cell.glyph ?? " ",
+    objectKind: unityObjectKind(cell),
+    entityId: actor?.entityId ?? null,
+    entityKind: actor?.entityKind ?? null,
+    entityName: actor?.entityName ?? null,
+  };
+}
+
+function unityVillageMap(state) {
+  const origin = villageViewportOrigin(state),
+    cells = localPartyCells(
+      state,
+      VILLAGE,
+      state.village,
+      villageTile,
+      origin,
+    ).map((cell) => unityCell(state, cell));
+  return { width: VILLAGE.width, height: VILLAGE.height, origin, cells };
+}
+
+export function rogueUnityView(state, recentEvents = []) {
+  const jobActors = state.village.npcStates.map((npc) => ({
+      ...npc,
+      name: VILLAGE_PEOPLE.find((person) => person.key === npc.personKey).name,
+    })),
+    map = unityVillageMap(state);
+  return {
+    protocolVersion: 1,
+    runId: state.id,
+    revision: state.revision,
+    tick: state.tick,
+    status: state.status,
+    location: state.location,
+    title: state.location === "village" ? VILLAGE.name : "Retro RPG",
+    message:
+      state.location === "village"
+        ? VILLAGE.description
+        : "Unity Client V1 currently renders the Stonebridge local map.",
+    hero: {
+      id: state.hero.id,
+      name: state.hero.name,
+      hp: state.hero.hp,
+      maxHp: state.hero.maxHp,
+      goldCp: state.hero.goldCp,
+      x: state.village.heroPosition.x,
+      y: state.village.heroPosition.y,
+    },
+    map,
+    jobs: state.village.jobs.map((job) =>
+      jobView(job, state.village.reservations, jobActors),
+    ),
+    events: recentEvents.slice(-12),
+  };
+}
+
 export function rogueRunView(state, recentEvents = []) {
   const level = active(state),
     currentVisible = visibility(state),

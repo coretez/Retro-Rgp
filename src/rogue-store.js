@@ -9,6 +9,7 @@ import {
   parseRogueState,
   rogueGroupsView,
   rogueRunView,
+  rogueUnityView,
   serializeRogueState,
 } from "./rogue-engine.js";
 
@@ -86,7 +87,7 @@ export class RogueStore {
     }
   }
 
-  act(input) {
+  act(input, project = rogueRunView) {
     this.db.exec("BEGIN IMMEDIATE");
     try {
       const prior = this.db
@@ -120,7 +121,7 @@ export class RogueStore {
         runId: state.id,
         revision: state.revision,
         events,
-        view: rogueRunView(state, events),
+        view: project(state, events),
       };
       const serialized = serializeRogueState(state);
       this.db
@@ -153,6 +154,17 @@ export class RogueStore {
       )
       .get(runId);
     return rogueRunView(state, latest ? JSON.parse(latest.result).events : []);
+  }
+
+  unityView(runId) {
+    const state = this.get(runId),
+      latest = this.db
+        .prepare(
+          "SELECT result FROM rogue_turns WHERE run_id=? ORDER BY revision DESC LIMIT 1",
+        )
+        .get(runId),
+      events = latest ? JSON.parse(latest.result).events : [];
+    return rogueUnityView(state, events);
   }
 
   groups(runId) {

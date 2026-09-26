@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { RogueStore } from "../src/rogue-store.js";
+import { rogueUnityView } from "../src/rogue-engine.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.DND_ROGUE_PORT ?? 4321);
@@ -59,6 +61,7 @@ active ??= await call("rogue_run_create", {
 let runId = active.runId;
 writeFileSync(activeRunFile, `${runId}\n`);
 let queue = Promise.resolve();
+const unityStore = new RogueStore(database);
 
 const originAllowed = (request) =>
   request.headers.origin === `http://127.0.0.1:${port}` ||
@@ -90,6 +93,8 @@ async function handleGet(pathname, response) {
   if (pathname === "/manual") return sendHtml(response, "monster-manual.html");
   if (pathname === "/api/state")
     return sendJson(response, await call("rogue_run_get", { runId }));
+  if (pathname === "/api/unity/state")
+    return sendJson(response, unityStore.unityView(runId));
   if (pathname === "/api/bestiary")
     return sendJson(response, await call("rogue_bestiary_get", {}));
   return false;
@@ -128,7 +133,28 @@ async function performAction(request, response) {
   sendJson(response, await task);
 }
 
+async function performUnityAction(request, response) {
+  const body = await jsonBody(request),
+    task = queue.then(() => {
+      const state = unityStore.get(runId),
+        result = unityStore.act(
+          {
+            runId,
+            expectedRevision: state.revision,
+            requestId: randomUUID(),
+            intent: body.intent,
+          },
+          rogueUnityView,
+        );
+      return result.view;
+    });
+  queue = task.catch(() => {});
+  sendJson(response, await task);
+}
+
 async function handlePost(pathname, request, response) {
+  if (pathname === "/api/unity/action")
+    return performUnityAction(request, response);
   if (!originAllowed(request)) throw new Error("Same-origin request required");
   if (pathname === "/api/new") return createRun(request, response);
   if (pathname === "/api/action") return performAction(request, response);
@@ -173,6 +199,7 @@ server.listen(port, "127.0.0.1", () => {
 
 async function shutdown() {
   server.close();
+  unityStore.close();
   await client.close();
   process.exit(0);
 }
