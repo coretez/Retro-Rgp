@@ -14,6 +14,7 @@ namespace RetroRpg
         private bool busy;
         private bool inventoryOpen;
         private bool partyOpen;
+        private bool shopOpen;
         private string inventoryActorId;
         private Vector2 inventoryScroll;
         private float damageFlashUntil;
@@ -132,6 +133,7 @@ namespace RetroRpg
         private void HandleVillageCommands()
         {
             if (view.location == "dungeon") return;
+            if (view.shop != null && Input.GetKeyDown(KeyCode.Y)) shopOpen = !shopOpen;
             if (Input.GetKeyDown(KeyCode.B)) InteractWithAction("breach");
             if (Input.GetKeyDown(KeyCode.T)) InteractWithAction("talk");
             if (Input.GetKeyDown(KeyCode.X)) InteractWithAction("examine");
@@ -212,6 +214,7 @@ namespace RetroRpg
             if (view != null && next.hero.hp < view.hero.hp)
                 damageFlashUntil = Time.time + 0.38f;
             view = next;
+            if (view.shop == null) shopOpen = false;
             inventoryActorId ??= view.hero.id;
             error = null;
             mapRenderer.Render(view);
@@ -269,6 +272,7 @@ namespace RetroRpg
             DrawCommandBar();
             DrawInventoryOverlay();
             DrawPartyOverlay();
+            DrawShopOverlay();
             DrawOutcomeOverlay();
         }
 
@@ -321,7 +325,9 @@ namespace RetroRpg
         {
             var cell = SelectedCell();
             if (cell == null) return;
-            var height = string.IsNullOrEmpty(cell.entityReason) ? 166f : 188f;
+            var reasonLines = string.IsNullOrEmpty(cell.entityReason) ? 0 : 1;
+            var workLines = string.IsNullOrEmpty(cell.entityWork) ? 0 : 1;
+            var height = 166f + (reasonLines + workLines) * 22f;
             var panel = new Rect(12f, Screen.height - 64f - height, 300f, height);
             DrawPanel(panel);
             GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, 238f, 18f), "SELECTED", headingStyle);
@@ -337,6 +343,8 @@ namespace RetroRpg
                 GUI.Label(new Rect(panel.x + 14f, panel.y + 146f, 272f, 16f), Readable(cell.entityObjective), subtleStyle);
             if (!string.IsNullOrEmpty(cell.entityReason))
                 GUI.Label(new Rect(panel.x + 14f, panel.y + 166f, 272f, 16f), $"WHY  {Readable(cell.entityReason)}", subtleStyle);
+            if (!string.IsNullOrEmpty(cell.entityWork))
+                GUI.Label(new Rect(panel.x + 14f, panel.y + 166f + reasonLines * 22f, 272f, 16f), $"WORK  {Readable(cell.entityWork)}", subtleStyle);
         }
 
         private void DrawActivityLog()
@@ -375,13 +383,15 @@ namespace RetroRpg
         {
             var cell = SelectedCell();
             var actions = cell?.actions?.Length > 0 ? cell.actions : NearbyActions();
-            if (actions.Length == 0)
-            {
-                GUI.Label(new Rect(panel.x + 330f, panel.y + 11f, panel.width - 344f, 22f),
-                    "WASD Move  ·  Select an adjacent person or object", subtleStyle);
-                return;
-            }
             var x = panel.x + 322f;
+            if (view.shop != null && view.shop.open)
+            {
+                if (GUI.Button(new Rect(x, panel.y + 7f, 82f, 28f), "Shop [Y]")) shopOpen = !shopOpen;
+                x += 86f;
+            }
+            if (actions.Length == 0 && x == panel.x + 322f)
+                GUI.Label(new Rect(x + 8f, panel.y + 11f, panel.width - 344f, 22f),
+                    "WASD Move  ·  Select an adjacent person or object", subtleStyle);
             foreach (var action in actions)
             {
                 var label = VillageActionLabel(action);
@@ -389,6 +399,28 @@ namespace RetroRpg
                 if (GUI.Button(new Rect(x, panel.y + 7f, width, 28f), label))
                     InteractWithAction(action);
                 x += width + 4f;
+            }
+        }
+
+        private void DrawShopOverlay()
+        {
+            if (!shopOpen || view.location == "dungeon" || view.shop == null) return;
+            var goods = view.shop.goods ?? Array.Empty<ShopGoodView>();
+            var panel = new Rect(Screen.width - 402f, 68f, 390f, Mathf.Max(150f, 84f + goods.Length * 42f));
+            DrawPanel(panel);
+            GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, 300f, 24f), view.shop.name, headingStyle);
+            GUI.Label(new Rect(panel.x + 14f, panel.y + 34f, 300f, 20f), $"Staffed by {view.shop.keeper}", subtleStyle);
+            if (GUI.Button(new Rect(panel.x + 348f, panel.y + 8f, 28f, 24f), "×")) shopOpen = false;
+            for (var index = 0; index < goods.Length; index++)
+            {
+                var good = goods[index];
+                var y = panel.y + 64f + index * 42f;
+                GUI.Label(new Rect(panel.x + 14f, y, 220f, 20f), $"{good.name}  ×{good.quantity}", bodyStyle);
+                GUI.Label(new Rect(panel.x + 14f, y + 19f, 120f, 18f), $"{good.priceCp} CP", subtleStyle);
+                GUI.enabled = view.hero.goldCp >= good.priceCp;
+                if (GUI.Button(new Rect(panel.x + 292f, y + 4f, 80f, 28f), "Buy"))
+                    SendIntent(new MoveIntent { kind = "shop_buy", actorId = view.hero.id, itemKind = good.itemKind });
+                GUI.enabled = true;
             }
         }
 

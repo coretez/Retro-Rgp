@@ -39,6 +39,13 @@ test("Unity protocol projects one compact retained-mode village snapshot", () =>
     ),
   );
   assert.ok(
+    view.map.cells.some(
+      (cell) =>
+        cell.entityName === "Hanne Voss" &&
+        cell.entityWork === "craft weapon 60",
+    ),
+  );
+  assert.ok(
     view.map.cells
       .filter(
         (cell) =>
@@ -64,6 +71,18 @@ test("Unity protocol preserves stable coordinates and lightweight identity", () 
         typeof cell.glyph === "string",
     ),
   );
+});
+
+test("M-7 Unity projects only staffed, in-stock village shop offers", () => {
+  const state = newRogueRun(input);
+  state.location = "village";
+  state.village.heroPosition = { x: 2, y: 2 };
+  const view = rogueUnityView(state);
+  assert.equal(view.shop.name, "Red Hammer Smithy");
+  assert.equal(view.shop.open, true);
+  assert.ok(view.shop.goods.length > 0);
+  assert.ok(view.shop.goods.every((good) => good.quantity > 0));
+  assert.ok(view.legalIntents.includes("shop_buy"));
 });
 
 test("Unity activity selects the newest meaningful delivery message", () => {

@@ -1,5 +1,26 @@
 # Changelog
 
+## Interactive Version 1 · M-7 working residents and local economy
+
+- Added bounded work templates for the smith, herbalist, armorer, innkeeper,
+  fisher, porter, hostler, and messenger, each with explicit capabilities,
+  permissions, priorities, workstations, durations, inputs, and outputs.
+- Connected fishing, hauling, cooking, stable care, remedies, armor work, and
+  notices to persistent UUID-backed stockpiles and the shared job system.
+- Connected the existing carter delivery to smith production so delivered
+  supplies become a real ash spear in the smithy's sale inventory.
+- Made production consume inputs and create outputs exactly once, reserve its
+  workstation and stock, and survive save/load without duplicating goods.
+- Made shops depend on proprietor presence and actual inventory. Purchases now
+  decrement stock and out-of-stock goods cannot be sold.
+- Added resident work priorities to native inspection and a dismissible Unity
+  shop overlay that lists only stocked goods, quantities, prices, and keeper.
+- Migrated saves to schema 16, expanded the suite to 108 passing tests, and
+  produced a successful macOS Unity build.
+- Completed the native gate: resident production appeared in the activity
+  feed, the delivery-to-forging chain completed, and the staffed smithy offered
+  its newly forged ash spear through visible Unity controls.
+
 ## Interactive Version 1 · M-6 reactive guard work
 
 - Converted the Stonebridge watch patrol into persistent low-priority work and

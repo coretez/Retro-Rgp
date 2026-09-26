@@ -78,6 +78,7 @@ export function createJob(state, input) {
     },
     plan: input.plan ? structuredClone(input.plan) : null,
     transfer: input.transfer ? structuredClone(input.transfer) : null,
+    production: input.production ? structuredClone(input.production) : null,
     reason: input.reason ?? "world_condition",
     blockingReason: null,
     createdAtTick: state.tick,

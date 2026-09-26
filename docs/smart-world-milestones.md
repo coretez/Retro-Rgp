@@ -29,19 +29,20 @@ The public engine contracts remain stable while the internals change:
 
 ## Status
 
-| Milestone                            | State    |
-| ------------------------------------ | -------- |
-| M-1 · Contracts and simulation seam  | Complete |
-| M-2 · Navigation and credible roads  | Complete |
-| M-3 · Smart objects and interactions | Complete |
-| M-4 · Job board and reservations     | Complete |
-| M-5 · Carter delivery                | Complete |
-| D-M1–D-M5 · Dungeon parity           | Complete |
-| D-M5.1 · Unity dungeon playability   | Complete |
-| D-M5.2 · Native dungeon hardening    | Complete |
-| M-6 · Reactive guard work            | Complete |
-| M-7 · Working residents and economy  | Next     |
-| M-8 through M-10                     | Planned  |
+| Milestone                             | State    |
+| ------------------------------------- | -------- |
+| M-1 · Contracts and simulation seam   | Complete |
+| M-2 · Navigation and credible roads   | Complete |
+| M-3 · Smart objects and interactions  | Complete |
+| M-4 · Job board and reservations      | Complete |
+| M-5 · Carter delivery                 | Complete |
+| D-M1–D-M5 · Dungeon parity            | Complete |
+| D-M5.1 · Unity dungeon playability    | Complete |
+| D-M5.2 · Native dungeon hardening     | Complete |
+| M-6 · Reactive guard work             | Complete |
+| M-7 · Working residents and economy   | Complete |
+| M-8 · Autonomous dispersed companions | Next     |
+| M-9 through M-10                      | Planned  |
 
 ## Target architecture
 
@@ -570,6 +571,39 @@ people and stock rather than being permanently available menus.
 Town-wide economic balancing, prices driven by supply and demand, or complex
 social relationships.
 
+### Completion evidence
+
+- Eight bounded templates cover smithing, remedy brewing, armor fitting, meal
+  preparation, fishing, hauling, stable care, and message delivery. Each role
+  declares its capability, permitted job type, and numeric priority.
+- Persistent UUID-backed stockpiles provide explicit inputs, capacity,
+  thresholds, work duration, and outputs. Production consumes each input and
+  creates each output exactly once, including across save/load.
+- Work jobs reserve their workstation plus input and output stock. Competing
+  work cannot claim an occupied exclusive workstation. Essential remedies and
+  stable care outrank notices and other low-value routine work.
+- The M-5 carter delivery now feeds a complete economic chain: delivery places
+  supplies in the forge, Hanne Voss converts one supply into one ash spear, and
+  the staffed smithy exposes that spear as sale inventory.
+- Fishing creates a catch, porter work moves it to the inn, and innkeeper work
+  converts it into meals. The herbalist, armorer, hostler, and messenger also
+  create persistent world-state outputs through the same job engine.
+- Shops open only when their proprietor is inside and at least one configured
+  good is in stock. Sales decrement real stock; unavailable goods cannot be
+  purchased.
+- The resident inspector exposes work permissions and priorities. Unity adds a
+  dismissible `Shop [Y]` overlay listing the keeper, stocked goods, quantities,
+  and prices without reducing the map viewport.
+- Exact role permissions make assignments unambiguous in this bounded slice,
+  so global minimum-cost matching was not necessary. Deterministic tie-breaking
+  remains available in the shared assignment contract.
+- Save schema 16 migrates expanded stock and worker priorities. All 108 tests
+  pass and the macOS Unity player builds successfully.
+- The native manual gate passed: the Unity activity feed showed resident
+  production, the persisted carter-to-smith chain completed, and entering the
+  staffed Red Hammer Smithy displayed its newly forged `Ash spear ×1` in the
+  visible shop overlay.
+
 ## M-8 — Autonomous dispersed companions
 
 ### Player-visible result
@@ -686,7 +720,7 @@ The first smart-world release is complete when all of the following are true:
 
 ## Immediate next objective
 
-Implement **M-7 only**: give residents condition-driven production, hauling,
-rest, and social work, then prove that their completed jobs create persistent,
-inspectable changes in Stonebridge. Preserve the accepted D-M5.2 Unity dungeon
+Implement **M-8 only**: allow dispersed companions to choose useful personal
+work, then prove that regroup and danger safely interrupt those jobs and return
+the party to leadership control. Preserve the accepted D-M5.2 Unity dungeon
 interface unless a later milestone explicitly reopens it.

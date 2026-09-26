@@ -10,6 +10,7 @@ import {
   restoreJobTransfer,
   transitionJob,
 } from "./job-board.js";
+import { RESIDENT_JOB_TEMPLATES, stockpileByKey } from "./village-economy.js";
 
 const SMITHY_DELIVERY = Object.freeze({
   sourcePosition: { x: 38, y: 23 },
@@ -59,9 +60,24 @@ const GUARD_JOB_TYPES = new Set([
 ]);
 
 const PERSON_NAMES = {
+  child: "Anja",
   watchman: "Friedel Koch",
   carter: "Bram Eder",
+  porter: "Lina Roth",
+  fisher: "Tomas Venn",
+  hostler: "Pavel Dorn",
+  smith: "Hanne Voss",
+  herbalist: "Mei Lin",
+  armorer: "Otto Kern",
+  innkeeper: "Marta Pell",
 };
+
+const TRANSFER_JOB_TYPES = new Set(["deliver_goods", "haul_stock"]);
+const PRODUCTION_JOB_TYPES = new Set(
+  RESIDENT_JOB_TEMPLATES.filter(
+    (template) => template.jobType !== "haul_stock",
+  ).map((template) => template.jobType),
+);
 
 const BLOCKED_TILES = new Set([
   "outdoor_tree",
@@ -245,8 +261,7 @@ function jobEvent(state, type, job, details = {}) {
 }
 
 function jobTargetPosition(job) {
-  if (job.jobType === "deliver_goods" && job.plan?.step === "to_source")
-    return job.sourcePosition;
+  if (job.transfer && job.plan?.step === "to_source") return job.sourcePosition;
   return job.targetPosition;
 }
 
@@ -293,6 +308,10 @@ function jobClaims(job, destination) {
   if (job.sourceId) claims.push({ kind: "object", targetId: job.sourceId });
   if (job.transfer)
     claims.push({ kind: "item", targetId: job.transfer.sourceStockpileId });
+  for (const input of job.production?.inputs ?? [])
+    claims.push({ kind: "item", targetId: input.stockpileId });
+  if (job.production?.output)
+    claims.push({ kind: "item", targetId: job.production.output.stockpileId });
   return claims;
 }
 
@@ -302,7 +321,9 @@ function assignJob(state, job, terrainAt, events) {
   );
   if (!choice) {
     transitionJob(job, "blocked", state.tick, "no_eligible_actor");
-    events.push(jobEvent(state, "job_blocked", job));
+    events.push(
+      jobEvent(state, "job_blocked", job, { reason: "no_eligible_actor" }),
+    );
     return;
   }
   const reserved = reserveAll(
@@ -312,7 +333,9 @@ function assignJob(state, job, terrainAt, events) {
   );
   if (!reserved.ok) {
     transitionJob(job, "blocked", state.tick, reserved.reason);
-    events.push(jobEvent(state, "job_blocked", job));
+    events.push(
+      jobEvent(state, "job_blocked", job, { reason: reserved.reason }),
+    );
     return;
   }
   job.assignedActorId = choice.actor.id;
@@ -332,6 +355,14 @@ function activateJob(state, job, events) {
     patrol_route: "Patrolling the market road",
     investigate_crime: "Walking to reported property damage",
     respond_danger: "Responding to immediate danger",
+    craft_weapon: "Walking to the forge",
+    brew_remedy: "Walking to the mixing table",
+    craft_armor: "Walking to the fitting table",
+    prepare_meal: "Walking to the inn kitchen",
+    catch_fish: "Walking to the river jetty",
+    haul_stock: "Walking to collect the river catch",
+    tend_stable: "Walking to the horse stalls",
+    deliver_message: "Walking to the town notice board",
   }[job.jobType];
   actor.currentAction = action ?? job.name;
   actor.actionReason = job.reason;
@@ -420,8 +451,67 @@ function unloadDelivery(state, job, actor, events) {
   completeJob(state, job, actor, events);
 }
 
-function deliveryDoor(state, job) {
-  if (job.jobType !== "deliver_goods" || job.plan.step !== "to_destination")
+function productionInputsAvailable(state, production) {
+  return production.inputs.every((input) => {
+    const source = stockpile(state, input.stockpileId);
+    return source && source.quantity >= input.quantity;
+  });
+}
+
+function beginProduction(state, job, events) {
+  const production = job.production,
+    output = stockpile(state, production.output.stockpileId);
+  if (production.inputConsumed) return true;
+  if (!productionInputsAvailable(state, production)) {
+    blockActiveJob(state, job, "production_input_missing", events);
+    return false;
+  }
+  if (
+    !output ||
+    output.quantity + production.output.quantity > output.capacity
+  ) {
+    blockActiveJob(state, job, "production_output_full", events);
+    return false;
+  }
+  for (const input of production.inputs)
+    stockpile(state, input.stockpileId).quantity -= input.quantity;
+  production.inputConsumed = true;
+  events.push(jobEvent(state, "production_started", job));
+  return true;
+}
+
+function finishProduction(state, job, actor, events) {
+  const output = stockpile(state, job.production.output.stockpileId);
+  if (!job.production.outputCreated) {
+    output.quantity += job.production.output.quantity;
+    job.production.outputCreated = true;
+  }
+  events.push(
+    jobEvent(state, "production_completed", job, {
+      itemKind: output.itemKind,
+      quantity: job.production.output.quantity,
+      stockQuantity: output.quantity,
+    }),
+  );
+  completeJob(state, job, actor, events);
+}
+
+function advanceProduction(state, job, actor, events) {
+  if (!beginProduction(state, job, events)) return;
+  job.progress.completed += 1;
+  actor.currentAction = job.name;
+  actor.actionReason = job.reason;
+  if (job.progress.completed >= job.progress.total)
+    return finishProduction(state, job, actor, events);
+  events.push(
+    jobEvent(state, "production_progress", job, {
+      position: { ...actor.position },
+    }),
+  );
+}
+
+function jobAccessDoor(state, job) {
+  if (!job.plan?.accessPosition || job.plan.step !== "to_destination")
     return null;
   return state.village.doors.find(
     (door) =>
@@ -430,8 +520,8 @@ function deliveryDoor(state, job) {
   );
 }
 
-function approachDeliveryDoor(state, job, actor, terrainAt, context, events) {
-  const door = deliveryDoor(state, job);
+function approachJobDoor(state, job, actor, terrainAt, context, events) {
+  const door = jobAccessDoor(state, job);
   if (!door || door.state === "open") return false;
   const route = planVillageRoute(
     state,
@@ -459,7 +549,7 @@ function approachDeliveryDoor(state, job, actor, terrainAt, context, events) {
     },
     events,
   );
-  actor.currentAction = "Opened the smithy for delivery";
+  actor.currentAction = `Opened access for ${job.name.toLowerCase()}`;
   return true;
 }
 
@@ -560,8 +650,7 @@ function advanceActiveJob(state, job, terrainAt, context, events) {
   if (!actor) return blockActiveJob(state, job, "actor_missing", events);
   const route = routeForJob(state, actor, job, terrainAt);
   if (!route.ok) {
-    if (approachDeliveryDoor(state, job, actor, terrainAt, context, events))
-      return;
+    if (approachJobDoor(state, job, actor, terrainAt, context, events)) return;
     return blockActiveJob(state, job, route.reason, events);
   }
   if (job.jobType === "patrol_route")
@@ -569,11 +658,14 @@ function advanceActiveJob(state, job, terrainAt, context, events) {
   if (["investigate_crime", "respond_danger"].includes(job.jobType))
     return advanceGuardIncident(state, job, actor, route, context, events);
   if (route.path.length === 1) {
-    if (job.jobType !== "deliver_goods")
-      return completeInspection(state, job, actor, context, events);
-    if (job.plan.step === "to_source")
-      return loadDelivery(state, job, actor, events);
-    return unloadDelivery(state, job, actor, events);
+    if (PRODUCTION_JOB_TYPES.has(job.jobType))
+      return advanceProduction(state, job, actor, events);
+    if (TRANSFER_JOB_TYPES.has(job.jobType)) {
+      if (job.plan.step === "to_source")
+        return loadDelivery(state, job, actor, events);
+      return unloadDelivery(state, job, actor, events);
+    }
+    return completeInspection(state, job, actor, context, events);
   }
   actor.position = { ...route.path[1] };
   job.destination = { ...route.destination };
@@ -595,7 +687,7 @@ function retryBlockedJob(state, job, terrainAt, events) {
     return;
   }
   const route = routeForJob(state, actor, job, terrainAt);
-  const door = deliveryDoor(state, job),
+  const door = jobAccessDoor(state, job),
     doorRoute =
       door && door.state !== "locked"
         ? planVillageRoute(
@@ -707,6 +799,114 @@ function postSmithyDelivery(state, context, events) {
   });
   if (created) events.push(jobEvent(state, "job_posted", job));
   return job;
+}
+
+function economyJobId(state, template) {
+  const sequence =
+    state.village.jobs.filter((job) => job.jobType === template.jobType)
+      .length + 1;
+  return namedUuid(state.id, `job:${template.jobType}:${sequence}`);
+}
+
+function productionReady(state, template) {
+  const output = stockpileByKey(state, template.outputKey),
+    input = template.inputKey ? stockpileByKey(state, template.inputKey) : null;
+  if (!output || output.quantity >= output.threshold) return false;
+  return !template.inputKey || (input?.quantity ?? 0) > 0;
+}
+
+function productionSpec(state, template) {
+  const input = template.inputKey
+      ? stockpileByKey(state, template.inputKey)
+      : null,
+    output = stockpileByKey(state, template.outputKey);
+  return {
+    inputs: input ? [{ stockpileId: input.id, quantity: 1 }] : [],
+    output: { stockpileId: output.id, quantity: 1 },
+    inputConsumed: false,
+    outputCreated: false,
+  };
+}
+
+function postProductionJob(state, template, context, events) {
+  if (!productionReady(state, template)) return null;
+  const target = context.objectAt(template.targetPosition);
+  if (!target) return null;
+  const { job, created } = createJob(state, {
+    id: economyJobId(state, template),
+    jobType: template.jobType,
+    name: template.name,
+    priority: template.priority,
+    targetId: target.id,
+    targetPosition: template.targetPosition,
+    requiredCapabilities: [template.capability],
+    reason: `${template.outputKey}_below_threshold`,
+    progressTotal: template.duration,
+    progressUnit: "work_tick",
+    plan: { template: template.jobType, step: "produce" },
+    production: productionSpec(state, template),
+  });
+  if (created) events.push(jobEvent(state, "job_posted", job));
+  return job;
+}
+
+function transferReady(state, template) {
+  const source = stockpileByKey(state, template.sourceKey),
+    target = stockpileByKey(state, template.outputKey);
+  return (
+    source &&
+    target &&
+    source.quantity > 0 &&
+    target.quantity < target.threshold
+  );
+}
+
+function postTransferJob(state, template, context, events) {
+  if (!transferReady(state, template)) return null;
+  const source = stockpileByKey(state, template.sourceKey),
+    target = stockpileByKey(state, template.outputKey),
+    sourceObject = context.objectAt(source.position),
+    targetObject = context.objectAt(target.position);
+  if (!sourceObject || !targetObject) return null;
+  const { job, created } = createJob(state, {
+    id: economyJobId(state, template),
+    jobType: template.jobType,
+    name: template.name,
+    priority: template.priority,
+    sourceId: sourceObject.id,
+    sourcePosition: source.position,
+    targetId: targetObject.id,
+    targetPosition: target.position,
+    requiredCapabilities: [template.capability],
+    reason: `${template.outputKey}_below_threshold`,
+    progressTotal: 2,
+    progressUnit: "stage",
+    plan: {
+      template: template.jobType,
+      step: "to_source",
+      ...(template.accessPosition
+        ? { accessPosition: template.accessPosition }
+        : {}),
+    },
+    transfer: {
+      itemKind: source.itemKind,
+      cargoName: source.name,
+      quantity: 1,
+      carriedQuantity: 0,
+      sourceStockpileId: source.id,
+      targetStockpileId: target.id,
+    },
+  });
+  if (created) events.push(jobEvent(state, "job_posted", job));
+  return job;
+}
+
+function postResidentEconomyJobs(state, context, events) {
+  for (const template of RESIDENT_JOB_TEMPLATES) {
+    if (template.jobType === "haul_stock")
+      postTransferJob(state, template, context, events);
+    else postProductionJob(state, template, context, events);
+  }
 }
 
 function guardActor(state) {
@@ -873,6 +1073,7 @@ export function advanceVillageSimulation(state, intent, events, context = {}) {
   if (!context.objectAt || !context.executeInteraction)
     throw new Error("Village simulation requires object interaction context.");
   postSmithyDelivery(state, context, events);
+  postResidentEconomyJobs(state, context, events);
   postGuardIncidentJobs(state, events);
   postGuardPatrol(state, events);
   const workingActors = state.village.jobs.length

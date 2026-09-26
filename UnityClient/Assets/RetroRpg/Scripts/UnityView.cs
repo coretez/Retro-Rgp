@@ -24,6 +24,7 @@ namespace RetroRpg
         public TargetView[] targets;
         public PartyOrderView partyOrder;
         public PowerView classPower;
+        public ShopView shop;
     }
 
     [Serializable]
@@ -36,6 +37,28 @@ namespace RetroRpg
         public int goldCp;
         public int x;
         public int y;
+    }
+
+    [Serializable]
+    public sealed class ShopView
+    {
+        public string id;
+        public string name;
+        public string keeper;
+        public bool staffed;
+        public bool stocked;
+        public bool open;
+        public ShopGoodView[] goods;
+    }
+
+    [Serializable]
+    public sealed class ShopGoodView
+    {
+        public string itemKind;
+        public string name;
+        public string itemType;
+        public int priceCp;
+        public int quantity;
     }
 
     [Serializable]
@@ -70,6 +93,7 @@ namespace RetroRpg
         public string entityObjective;
         public string entityAction;
         public string entityReason;
+        public string entityWork;
         public int entityHp;
         public int entityMaxHp;
     }
@@ -208,6 +232,7 @@ namespace RetroRpg
         public int x;
         public int y;
         public string itemId;
+        public string itemKind;
         public string objectId;
         public string targetId;
         public string actorId;

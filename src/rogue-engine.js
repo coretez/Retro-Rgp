@@ -37,6 +37,12 @@ import {
 import { advanceDungeonSimulation } from "./dungeon-simulation.js";
 import { createEntityIndex, describeAffordances } from "./world-objects.js";
 import { createJob, jobView } from "./job-board.js";
+import {
+  createVillageStockpiles,
+  RESIDENT_JOB_TEMPLATES,
+  SHOP_PROPRIETORS,
+  shopStock,
+} from "./village-economy.js";
 
 export const ROGUE_RULESET = "party-roguelike-v9";
 export const DIRECTIONS = {
@@ -1670,7 +1676,7 @@ export function newRogueRun(input) {
     heroId = newInstanceId(),
     companions = createCompanions();
   const state = {
-    schemaVersion: 15,
+    schemaVersion: 16,
     ruleset: ROGUE_RULESET,
     id: runId,
     revision: 0,
@@ -2999,12 +3005,20 @@ function shopBuy(state, intent, events) {
     shop = VILLAGE.shops.find((candidate) =>
       candidate.goods.includes(intent.itemKind),
     ),
-    currentShop = villageShopAt(state.village.heroPosition);
+    currentShop = villageShopAt(state.village.heroPosition),
+    status = shop ? villageShopStatus(state, shop) : null,
+    stock = shop ? shopStock(state, shop.id, intent.itemKind) : null;
   check(good, "SHOP_ITEM_NOT_FOUND", "That item is not sold in Stonebridge.");
   check(
     shop?.id === currentShop?.shopKey,
     "SHOP_NOT_PRESENT",
     `Enter ${shop?.name ?? "the shop"} before buying this item.`,
+  );
+  check(status?.open, "SHOP_CLOSED", `${shop.name} is not currently staffed.`);
+  check(
+    stock?.quantity > 0,
+    "SHOP_OUT_OF_STOCK",
+    `${good.name} is currently out of stock.`,
   );
   check(actor, "ACTOR_NOT_FOUND", "That buyer is not a member of the party.");
   check(
@@ -3012,6 +3026,7 @@ function shopBuy(state, intent, events) {
     "INSUFFICIENT_FUNDS",
     `The party needs ${good.priceCp} cp for ${good.name}.`,
   );
+  stock.quantity -= 1;
   state.hero.goldCp -= good.priceCp;
   const recipient =
     good.itemType === "equipment"
@@ -3708,41 +3723,23 @@ const VILLAGE_FURNITURE = [
     description:
       "A broad two-wheeled cart carries feed sacks, lamp oil and repair timber.",
   },
+  {
+    x: -1,
+    y: 16,
+    glyph: "J",
+    name: "River fishing jetty",
+    description:
+      "A weathered timber jetty reaches the slow water below Stonebridge.",
+  },
+  {
+    x: 38,
+    y: 21,
+    glyph: "H",
+    name: "Stable yard hitching rail",
+    description:
+      "Feed buckets and grooming brushes hang from a rail beside the stable yard.",
+  },
 ];
-
-const VILLAGE_LOGISTICS = Object.freeze({
-  stableCargo: {
-    key: "stable_smithy_supplies",
-    name: "Smithy supply crates",
-    itemKind: "smithy_supplies",
-    quantity: 3,
-    position: { x: 38, y: 23 },
-    containerKind: "cart",
-  },
-  smithyStock: {
-    key: "smithy_supplies",
-    name: "Smithy working stock",
-    itemKind: "smithy_supplies",
-    quantity: 0,
-    threshold: 2,
-    capacity: 6,
-    position: { x: 11, y: 3 },
-    containerKind: "forge",
-  },
-});
-
-function createVillageStockpiles(runId) {
-  return Object.values(VILLAGE_LOGISTICS).map((definition) => ({
-    id: namedUuid(runId, `stockpile:${definition.key}`),
-    definitionId: definitionId("stockpile", definition.key),
-    entityType: "stockpile",
-    ...structuredClone(definition),
-    containerId: namedUuid(
-      runId,
-      `village-object:${definition.containerKind}:${definition.position.x},${definition.position.y}`,
-    ),
-  }));
-}
 
 const VILLAGE_PEOPLE = [
   ["miller", "Greta Voll", "miller", 14, 11],
@@ -3814,14 +3811,19 @@ function villageWorkerProfile(personKey) {
       watchman: 2,
       delver: 2,
     }[personKey] ?? 1;
-  const guard = personKey === "watchman";
+  const guard = personKey === "watchman",
+    residentWork = RESIDENT_JOB_TEMPLATES.find(
+      (template) => template.personKey === personKey,
+    ),
+    residentJobs = residentWork ? [residentWork.jobType] : [],
+    residentCapabilities = residentWork ? [residentWork.capability] : [];
   return {
     capabilityTags:
       personKey === "carter"
         ? ["inspect", "haul"]
         : guard
           ? ["inspect", "patrol", "investigate", "warn", "escort", "respond"]
-          : ["inspect"],
+          : ["inspect", ...residentCapabilities],
     workPermissions: {
       allowedJobTypes:
         personKey === "carter"
@@ -3833,8 +3835,11 @@ function villageWorkerProfile(personKey) {
                 "investigate_crime",
                 "respond_danger",
               ]
-            : ["inspect_object"],
+            : ["inspect_object", ...residentJobs],
     },
+    workPriorities: Object.fromEntries(
+      residentWork ? [[residentWork.jobType, residentWork.priority]] : [],
+    ),
     skills: { observation },
     workState: "available",
     lastJobType: null,
@@ -3877,6 +3882,32 @@ function villageShopAt(position) {
     position.y < building.y + building.h - 1
     ? building
     : null;
+}
+
+function proprietorInsideShop(state, shop) {
+  const proprietorKey = SHOP_PROPRIETORS[shop.id],
+    proprietor = state.village.npcStates.find(
+      (npc) => npc.personKey === proprietorKey,
+    ),
+    building = VILLAGE_BUILDINGS.find(
+      (candidate) => candidate.shopKey === shop.id,
+    );
+  return Boolean(
+    proprietor &&
+    building &&
+    proprietor.position.x > building.x &&
+    proprietor.position.x < building.x + building.w - 1 &&
+    proprietor.position.y > building.y &&
+    proprietor.position.y < building.y + building.h - 1,
+  );
+}
+
+function villageShopStatus(state, shop) {
+  const staffed = proprietorInsideShop(state, shop),
+    stocked = shop.goods.some(
+      (itemKind) => (shopStock(state, shop.id, itemKind)?.quantity ?? 0) > 0,
+    );
+  return { staffed, stocked, open: staffed && stocked };
 }
 
 function villageSignAt(x, y) {
@@ -4095,6 +4126,9 @@ function fixtureObject(state, terrain, position) {
 
 function personObject(state, terrain, position) {
   const person = terrain.person;
+  const priorities = Object.entries(person.workPriorities ?? {})
+    .map(([jobType, priority]) => `${jobType.replaceAll("_", " ")} ${priority}`)
+    .join(", ");
   return {
     id: person.id,
     definitionId: person.definitionId,
@@ -4102,7 +4136,7 @@ function personObject(state, terrain, position) {
     objectKind: "resident",
     position,
     name: person.name,
-    description: `${person.name} is a ${person.role} of Stonebridge. Objective: ${person.objective.replaceAll("_", " ")}. Currently: ${person.currentAction}.`,
+    description: `${person.name} is a ${person.role} of Stonebridge. Objective: ${person.objective.replaceAll("_", " ")}. Currently: ${person.currentAction}.${priorities ? ` Work priorities: ${priorities}.` : ""}`,
     personKey: person.key,
     affordanceKeys: ["examine", "talk"],
   };
@@ -4420,7 +4454,13 @@ function villageView(state) {
       origin,
     ).map((cell) => villageObjectCell(state, cell)),
     entityIndex = createEntityIndex(cells.map((cell) => cell.object)),
-    currentShopKey = villageShopAt(state.village.heroPosition)?.shopKey ?? null,
+    buildingShopKey =
+      villageShopAt(state.village.heroPosition)?.shopKey ?? null,
+    currentShop = VILLAGE.shops.find((shop) => shop.id === buildingShopKey),
+    currentShopKey =
+      currentShop && villageShopStatus(state, currentShop).open
+        ? currentShop.id
+        : null,
     jobActors = state.village.npcStates.map((npc) => ({
       ...npc,
       name: VILLAGE_PEOPLE.find((person) => person.key === npc.personKey).name,
@@ -4446,11 +4486,18 @@ function villageView(state) {
       cells,
     },
     currentShopKey,
-    shops: VILLAGE.shops.map((shop) => ({
-      ...shop,
-      accessible: shop.id === currentShopKey,
-      goods: shop.goods.map(villageGood),
-    })),
+    shops: VILLAGE.shops.map((shop) => {
+      const status = villageShopStatus(state, shop);
+      return {
+        ...shop,
+        ...status,
+        accessible: shop.id === currentShopKey && status.open,
+        goods: shop.goods.map((itemKind) => ({
+          ...villageGood(itemKind),
+          quantity: shopStock(state, shop.id, itemKind)?.quantity ?? 0,
+        })),
+      };
+    }),
     buyers: partyActors(state).map((actor) => ({
       id: actor.id,
       name: actor.name,
@@ -4654,6 +4701,12 @@ function unityCellActor(state, cell) {
       entityObjective: cell.person.objective,
       entityAction: cell.person.currentAction,
       entityReason: cell.person.actionReason,
+      entityWork: Object.entries(cell.person.workPriorities ?? {})
+        .map(
+          ([jobType, priority]) =>
+            `${jobType.replaceAll("_", " ")} ${priority}`,
+        )
+        .join(", "),
     };
   return null;
 }
@@ -4698,6 +4751,7 @@ function unityCell(state, cell) {
             : {}),
           ...(actor.entityAction ? { entityAction: actor.entityAction } : {}),
           ...(actor.entityReason ? { entityReason: actor.entityReason } : {}),
+          ...(actor.entityWork ? { entityWork: actor.entityWork } : {}),
         }
       : {}),
   };
@@ -4902,6 +4956,13 @@ function unityWorkActivity(event) {
       text: `${event.actorName} escorts the repeat offender.`,
       tone: "danger",
     };
+  if (event.type === "production_started")
+    return { text: `Work started: ${event.jobName}.`, tone: "subtle" };
+  if (event.type === "production_completed")
+    return {
+      text: `${event.actorName} produced ${event.quantity} ${event.itemKind.replaceAll("_", " ")}.`,
+      tone: "discovery",
+    };
   if (event.type === "job_started")
     return { text: `Work started: ${event.jobName}.`, tone: "subtle" };
   if (event.type === "job_reserved")
@@ -5094,6 +5155,26 @@ function unityTargets(state) {
     }));
 }
 
+function unityVillageShop(state) {
+  if (state.location !== "village") return null;
+  const shopKey = villageShopAt(state.village.heroPosition)?.shopKey,
+    shop = VILLAGE.shops.find((candidate) => candidate.id === shopKey);
+  if (!shop) return null;
+  const status = villageShopStatus(state, shop);
+  return {
+    id: shop.id,
+    name: shop.name,
+    keeper: shop.keeper,
+    ...status,
+    goods: shop.goods
+      .map((itemKind) => ({
+        ...villageGood(itemKind),
+        quantity: shopStock(state, shop.id, itemKind)?.quantity ?? 0,
+      }))
+      .filter((good) => good.quantity > 0),
+  };
+}
+
 export function rogueUnityView(state, recentEvents = []) {
   const jobActors = state.village.npcStates.map((npc) => ({
       ...npc,
@@ -5106,7 +5187,8 @@ export function rogueUnityView(state, recentEvents = []) {
       ? level.jobs.map((job) => jobView(job, level.reservations, level.enemies))
       : state.village.jobs.map((job) =>
           jobView(job, state.village.reservations, jobActors),
-        );
+        ),
+    shop = unityVillageShop(state);
   return {
     protocolVersion: 1,
     runId: state.id,
@@ -5117,7 +5199,9 @@ export function rogueUnityView(state, recentEvents = []) {
     title: dungeon ? level.theme.title : VILLAGE.name,
     activity: unityActivity(recentEvents),
     activityLog: unityActivityLog(recentEvents),
-    legalIntents: dungeon ? unityDungeonIntents(state, level) : ["local_move"],
+    legalIntents: dungeon
+      ? unityDungeonIntents(state, level)
+      : ["local_move", ...(shop?.open ? ["shop_buy"] : [])],
     message: dungeon ? level.theme.atmosphere : VILLAGE.description,
     hero: {
       id: state.hero.id,
@@ -5135,6 +5219,7 @@ export function rogueUnityView(state, recentEvents = []) {
     targets: dungeon ? unityTargets(state) : [],
     partyOrder: dungeon ? unityPartyOrder(state) : null,
     classPower: dungeon ? structuredClone(state.hero.classPower) : null,
+    shop,
     events: recentEvents.slice(-12),
   };
 }
@@ -5636,7 +5721,7 @@ function migrateIdentity(value) {
   for (const level of value.levels) {
     assignEnemyGroups(level, value, migration.actorIds);
   }
-  value.schemaVersion = 15;
+  value.schemaVersion = 16;
   value.location ??= "dungeon";
   value.villageVisits ??= 0;
   value.world ??= {
@@ -5669,8 +5754,11 @@ function migrateIdentity(value) {
   value.village.stockpiles = stockpileDefaults.map((fallback) => {
     const existing = value.village.stockpiles?.find(
       (stockpile) =>
-        stockpile.itemKind === fallback.itemKind &&
-        stockpile.containerKind === fallback.containerKind,
+        stockpile.key === fallback.key ||
+        (stockpile.itemKind === fallback.itemKind &&
+          stockpile.containerKind === fallback.containerKind &&
+          stockpile.position.x === fallback.position.x &&
+          stockpile.position.y === fallback.position.y),
     );
     return existing ? { ...fallback, ...existing } : fallback;
   });
@@ -5682,6 +5770,7 @@ function migrateIdentity(value) {
     const profile = villageWorkerProfile(npc.personKey);
     npc.capabilityTags ??= profile.capabilityTags;
     npc.workPermissions ??= profile.workPermissions;
+    npc.workPriorities ??= profile.workPriorities;
     npc.capabilityTags = [
       ...new Set([...npc.capabilityTags, ...profile.capabilityTags]),
     ];
