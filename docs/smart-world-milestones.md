@@ -33,8 +33,9 @@ The public engine contracts remain stable while the internals change:
 | ------------------------------------ | -------- |
 | M-1 · Contracts and simulation seam  | Complete |
 | M-2 · Navigation and credible roads  | Complete |
-| M-3 · Smart objects and interactions | Next     |
-| M-4 through M-10                     | Planned  |
+| M-3 · Smart objects and interactions | Complete |
+| M-4 · Job board and reservations     | Next     |
+| M-5 through M-10                     | Planned  |
 
 ## Target architecture
 
@@ -222,6 +223,24 @@ interaction definitions.
 ### Not included
 
 Autonomous job selection or multi-step production.
+
+### Completion evidence
+
+- Runtime town cells now expose UUID-backed world objects, and the visible
+  projection is validated by an identity and spatial entity index.
+- Data-driven affordances define requirements, effects, duration, labels, and
+  useful failure reasons. Player and NPC door interactions share the same
+  executor.
+- Signs, residents, doors, trees, walls, loose materials, diggable terrain,
+  forges, counters, and a stable supply cart have distinct contextual actions.
+- The contextual panel is generated from affordance descriptions. Disabled
+  commands stay visible with their blocking reason and float over the map
+  without changing its dimensions.
+- Replay safety is covered both by object-state rejection and an end-to-end
+  SQLite request-ID replay test.
+- The full suite passes with 68 tests. The live browser gate inspected a sign,
+  door, tree, forge, counter, cart, and resident and confirmed their distinct
+  action sets with no interaction failure or map contraction.
 
 ## M-4 — Job board and reservations
 

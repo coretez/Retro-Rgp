@@ -1894,10 +1894,11 @@
         ]),
       );
       const $ = (id) => document.getElementById(id);
-      function commandButton(label, action, disabled = false) {
+      function commandButton(label, action, disabled = false, title = "") {
         const button = document.createElement("button");
         button.type = "button";
         button.textContent = label;
+        button.title = title;
         button.disabled = busy || disabled;
         button.addEventListener("click", action);
         return button;
@@ -1922,57 +1923,23 @@
       }
       function villageSelectionActions(target) {
         if (target.kind === "item") return inventorySelectionActions(target);
-        const examine = commandButton(
-          target.kind === "sign" ? "Read" : "Examine",
-          () =>
-            targetAction({ kind: "local_examine", x: target.x, y: target.y }),
-        );
-        const manipulate = {
-          outdoor_tree: ["Harvest", "harvest", "cut"],
-          outdoor_grass: ["Dig", "dig", "dig"],
-          road_dirt: ["Dig", "dig", "dig"],
-          village_building: ["Breach wall", "breach", "breach"],
-        }[target.tile];
-        if (target.material)
-          return [
-            examine,
-            commandButton("Collect", () =>
+        return target.affordances.map((affordance) =>
+          commandButton(
+            affordance.available
+              ? affordance.label
+              : `${affordance.label} · ${affordance.reason}`,
+            () =>
               targetAction({
-                kind: "local_manipulate",
-                action: "collect",
+                kind: "world_interact",
+                objectId: target.id,
+                action: affordance.key,
                 x: target.x,
                 y: target.y,
               }),
-            ),
-          ];
-        if (manipulate) {
-          const tool = state.hero.inventory.find((item) =>
-            item.toolTags?.includes(manipulate[2]),
-          );
-          return [
-            examine,
-            commandButton(
-              tool
-                ? `${manipulate[0]} · ${tool.name}`
-                : `${manipulate[0]} · tool required`,
-              () =>
-                targetAction({
-                  kind: "local_manipulate",
-                  action: manipulate[1],
-                  x: target.x,
-                  y: target.y,
-                }),
-              !tool,
-            ),
-          ];
-        }
-        if (target.kind !== "person") return [examine];
-        return [
-          examine,
-          commandButton("Talk", () =>
-            targetAction({ kind: "local_talk", x: target.x, y: target.y }),
+            !affordance.available,
+            affordance.reason ?? `${affordance.duration} turn action`,
           ),
-        ];
+        );
       }
       function inventorySelectionActions(target) {
         const item = state.hero.inventory.find(
@@ -2077,6 +2044,17 @@
         actions.replaceChildren(...buttons);
       }
       function renderSelectionPanels() {
+        if (
+          selectedTarget?.scope === "village" &&
+          selectedTarget.kind !== "item"
+        ) {
+          const cell = state.village.map.cells.find(
+            (candidate) =>
+              candidate.x === selectedTarget.x &&
+              candidate.y === selectedTarget.y,
+          );
+          if (cell) selectedTarget = villageTarget(cell, null);
+        }
         renderSelectionPanel("dungeon-selection", "dungeon");
         renderSelectionPanel("village-selection", "village");
       }
@@ -2478,40 +2456,18 @@
         return section;
       }
       function villageTarget(cell, element) {
-        if (cell.person)
-          return {
-            scope: "village",
-            kind: "person",
-            id: cell.person.id,
-            x: cell.x,
-            y: cell.y,
-            name: cell.person.name,
-            detail: `${cell.person.role} · ${cell.person.currentAction} · objective: ${cell.person.objective.replaceAll("_", " ")}`,
-            tile: cell.tile,
-            element,
-          };
-        if (cell.sign)
-          return {
-            scope: "village",
-            kind: "sign",
-            x: cell.x,
-            y: cell.y,
-            name: "Posted sign",
-            detail: "Choose Read to examine its writing.",
-            tile: cell.tile,
-            element,
-          };
-        const object = cell.furniture ?? cell.building;
-        if (!object && !cell.featureName && !cell.material) return null;
+        const object = cell.object;
+        if (!object) return null;
         return {
           scope: "village",
-          kind: cell.furniture ? "fixture" : "building",
+          kind: object.objectKind,
+          id: object.id,
           x: cell.x,
           y: cell.y,
-          name: cell.material?.name ?? object?.name ?? cell.featureName,
-          detail: "Choose Examine to inspect it closely.",
+          name: object.name,
+          detail: object.description,
           tile: cell.tile,
-          material: cell.material,
+          affordances: object.affordances,
           element,
         };
       }
@@ -2566,7 +2522,10 @@
           button.classList.add("party-member");
           button.textContent = "侠";
           button.title = state.hero.name;
-        } else if (examineMode || villageTarget(cell, button)) {
+        } else if (
+          examineMode ||
+          !["terrain", "room"].includes(cell.object?.objectKind)
+        ) {
           button.classList.add("examine-target");
           button.addEventListener("click", () => {
             examineMode = false;
@@ -3354,6 +3313,7 @@
         "village_furniture",
         "village_person",
         "village_door_closed",
+        "village_door_locked",
       ]);
       function localTravelCells() {
         return state.location === "village"

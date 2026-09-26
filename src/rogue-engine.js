@@ -30,6 +30,7 @@ import {
   newInstanceId,
 } from "./identity.js";
 import { advanceVillageSimulation } from "./village-simulation.js";
+import { createEntityIndex, describeAffordances } from "./world-objects.js";
 
 export const ROGUE_RULESET = "party-roguelike-v9";
 export const DIRECTIONS = {
@@ -2462,6 +2463,7 @@ function localSpatialMap(state, target) {
       "village_furniture",
       "village_person",
       "village_door_closed",
+      "village_door_locked",
       "village_pit",
     ]),
     blockedCells = [];
@@ -2484,22 +2486,42 @@ function localSpatialMap(state, target) {
 
 function openLocalDoor(state, target, events) {
   if (state.location !== "village") return false;
-  const door = state.village.doors.find(
-    (candidate) => same(candidate, target) && candidate.state === "closed",
+  const object = villageWorldObjectAt(state, target.x, target.y);
+  if (object.objectKind !== "door" || object.state === "open") return false;
+  executeVillageInteraction(
+    state,
+    {
+      actorId: state.hero.id,
+      objectId: object.id,
+      action: "open",
+      ...target,
+    },
+    events,
   );
-  if (!door) return false;
-  check(
-    gridDistance("square", state.village.heroPosition, target) <= 1,
-    "DOOR_OUT_OF_REACH",
-    "Move next to the door before opening it.",
-  );
-  door.state = "open";
-  events.push({
-    type: "door_opened",
-    doorId: door.id,
-    position: { ...target },
-  });
   return true;
+}
+
+function visibleVillageTarget(state, target, errorCode, message) {
+  const origin = villageViewportOrigin(state),
+    visible =
+      target.x >= origin.x &&
+      target.y >= origin.y &&
+      target.x < origin.x + VILLAGE.width &&
+      target.y < origin.y + VILLAGE.height;
+  check(visible, errorCode, message);
+}
+
+function executeHeroObjectAction(state, object, action, events) {
+  return executeVillageInteraction(
+    state,
+    {
+      actorId: state.hero.id,
+      objectId: object.id,
+      action,
+      ...object.position,
+    },
+    events,
+  );
 }
 
 function moveLocalParty(state, intent, events) {
@@ -2605,48 +2627,33 @@ function villageExamination(state, target) {
 }
 
 function examineVillage(state, intent, events) {
-  const target = { x: intent.x, y: intent.y },
-    origin = villageViewportOrigin(state),
-    visible =
-      target.x >= origin.x &&
-      target.y >= origin.y &&
-      target.x < origin.x + VILLAGE.width &&
-      target.y < origin.y + VILLAGE.height;
-  check(
-    visible,
+  const target = { x: intent.x, y: intent.y };
+  visibleVillageTarget(
+    state,
+    target,
     "EXAMINE_NOT_VISIBLE",
     "That place is outside the visible town map.",
   );
-  events.push({
-    type: "local_examined",
-    ...villageExamination(state, target),
-    position: target,
-  });
+  const object = villageWorldObjectAt(state, target.x, target.y),
+    action = object.affordanceKeys.includes("read") ? "read" : "examine";
+  executeHeroObjectAction(state, object, action, events);
 }
 
 function talkVillage(state, intent, events) {
-  const target = { x: intent.x, y: intent.y },
-    person = villagePersonAt(state, target.x, target.y),
-    origin = villageViewportOrigin(state),
-    visible =
-      target.x >= origin.x &&
-      target.y >= origin.y &&
-      target.x < origin.x + VILLAGE.width &&
-      target.y < origin.y + VILLAGE.height;
-  check(
-    visible,
+  const target = { x: intent.x, y: intent.y };
+  visibleVillageTarget(
+    state,
+    target,
     "TALK_NOT_VISIBLE",
     "That person is outside the visible town map.",
   );
-  check(person, "TALK_TARGET_MISSING", "There is nobody there to speak with.");
-  events.push({
-    type: "local_talked",
-    personId: migratedInstanceId(state.id, "village-person", person.key),
-    personName: person.name,
-    role: person.role,
-    dialogue: VILLAGE_DIALOGUE[person.key],
-    position: target,
-  });
+  const object = villageWorldObjectAt(state, target.x, target.y);
+  check(
+    object.objectKind === "resident",
+    "TALK_TARGET_MISSING",
+    "There is nobody there to speak with.",
+  );
+  executeHeroObjectAction(state, object, "talk", events);
 }
 
 const MATERIAL_DEFINITIONS = {
@@ -2655,8 +2662,8 @@ const MATERIAL_DEFINITIONS = {
   earth: { name: "Excavated earth", unit: "load" },
 };
 
-function interactionTool(state, tag) {
-  return state.hero.inventory.find(
+function interactionTool(actor, tag) {
+  return actor.inventory?.find(
     (item) => item.quantity > 0 && item.toolTags?.includes(tag),
   );
 }
@@ -2676,7 +2683,7 @@ function createLooseMaterial(state, kind, position, quantity) {
   return material;
 }
 
-function addVillageModification(state, kind, target, originalTile) {
+function addVillageModification(state, actorId, kind, target, originalTile) {
   const modification = {
     id: newInstanceId(),
     definitionId: definitionId("terrain-change", kind),
@@ -2685,20 +2692,20 @@ function addVillageModification(state, kind, target, originalTile) {
     x: target.x,
     y: target.y,
     originalTile,
-    actorId: state.hero.id,
+    actorId,
     createdAtTick: state.tick,
   };
   state.village.modifications.push(modification);
   return modification;
 }
 
-function collectMaterial(state, material, events) {
-  const carried = state.hero.inventory.find(
+function collectMaterial(state, actor, material, events) {
+  const carried = actor.inventory.find(
     (item) => item.itemType === "material" && item.kind === material.kind,
   );
   if (carried) carried.quantity += material.quantity;
   else
-    state.hero.inventory.push({
+    actor.inventory.push({
       id: newInstanceId(),
       definitionId: material.definitionId,
       entityType: "item",
@@ -2737,46 +2744,8 @@ function alertTownGuard(state, target, events) {
 }
 
 function manipulateVillage(state, intent, events) {
-  const target = { x: intent.x, y: intent.y },
-    distance = gridDistance("square", state.village.heroPosition, target),
-    terrain = villageTile(state, target.x, target.y);
-  check(distance <= 1, "INTERACTION_OUT_OF_REACH", "Move next to the target.");
-  if (intent.action === "collect") {
-    check(terrain.material, "MATERIAL_MISSING", "There is nothing to collect.");
-    return collectMaterial(state, terrain.material, events);
-  }
-  const requirements = { dig: "dig", harvest: "cut", breach: "breach" },
-    tool = interactionTool(state, requirements[intent.action]);
-  check(tool, "TOOL_REQUIRED", `You lack a tool suitable to ${intent.action}.`);
-  const allowed = {
-    dig: ["outdoor_grass", "road_dirt"],
-    harvest: ["outdoor_tree"],
-    breach: ["village_building"],
-  }[intent.action];
-  check(
-    allowed?.includes(terrain.tile),
-    "TARGET_INVALID",
-    `You cannot ${intent.action} that.`,
-  );
-  const result = {
-    dig: ["dug_ground", "earth", 1],
-    harvest: ["tree_stump", "timber", 2],
-    breach: ["breached_wall", "stone", 2],
-  }[intent.action];
-  addVillageModification(state, result[0], target, terrain.tile);
-  const material = createLooseMaterial(state, result[1], target, result[2]);
-  events.push({
-    type: "world_manipulated",
-    action: intent.action,
-    actorId: state.hero.id,
-    toolId: tool.id,
-    toolName: tool.name,
-    materialId: material.id,
-    materialName: material.name,
-    quantity: material.quantity,
-    position: target,
-  });
-  if (intent.action === "breach") alertTownGuard(state, target, events);
+  const object = villageWorldObjectAt(state, intent.x, intent.y);
+  executeHeroObjectAction(state, object, intent.action, events);
 }
 
 function enterDungeon(state, events) {
@@ -2875,6 +2844,15 @@ function resolveVillageAction(state, intent, events) {
   if (intent.kind === "local_talk") return talkVillage(state, intent, events);
   if (intent.kind === "local_manipulate")
     return manipulateVillage(state, intent, events);
+  if (intent.kind === "world_interact") {
+    const object = villageWorldObjectAt(state, intent.x, intent.y);
+    check(
+      object.id === intent.objectId,
+      "OBJECT_STALE",
+      "That object has changed.",
+    );
+    return executeHeroObjectAction(state, object, intent.action, events);
+  }
   if (intent.kind === "set_party_movement")
     return setVillagePartyMovement(state, intent, events);
   if (intent.kind === "shop_buy") return shopBuy(state, intent, events);
@@ -3499,6 +3477,14 @@ const VILLAGE_FURNITURE = [
     name: "Horse stall",
     description: "Fresh straw and a leather halter fill the timber stall.",
   },
+  {
+    x: 36,
+    y: 20,
+    glyph: "W",
+    name: "Stable supply cart",
+    description:
+      "A broad two-wheeled cart carries feed sacks, lamp oil and repair timber.",
+  },
 ];
 
 const VILLAGE_PEOPLE = [
@@ -3755,6 +3741,290 @@ function villageTile(state, x, y, includePeople = true) {
   return { tile: "outdoor_grass", glyph: "," };
 }
 
+function villageObjectId(state, kind, keyValue) {
+  return namedUuid(state.id, `village-object:${kind}:${keyValue}`);
+}
+
+function villageObject(state, kind, keyValue, position, values) {
+  return {
+    id: villageObjectId(state, kind, keyValue),
+    definitionId: definitionId("world-object", kind),
+    entityType: "world-object",
+    objectKind: kind,
+    position,
+    ...values,
+  };
+}
+
+function fixtureObject(state, terrain, position) {
+  const fixture = terrain.furniture,
+    lowerName = fixture.name.toLowerCase(),
+    fixtureKind = lowerName.includes("forge")
+      ? "forge"
+      : lowerName.includes("counter")
+        ? "counter"
+        : lowerName.includes("cart")
+          ? "cart"
+          : "fixture",
+    useLabels = {
+      forge: "Work forge",
+      counter: "Review counter",
+      cart: "Inspect cargo",
+      fixture: `Use ${fixture.name}`,
+    };
+  return villageObject(
+    state,
+    fixtureKind,
+    `${position.x},${position.y}`,
+    position,
+    {
+      name: fixture.name,
+      description: fixture.description,
+      affordanceKeys: ["examine", "use"],
+      actionLabels: { use: useLabels[fixtureKind] },
+    },
+  );
+}
+
+function personObject(state, terrain, position) {
+  const person = terrain.person;
+  return {
+    id: person.id,
+    definitionId: person.definitionId,
+    entityType: "actor",
+    objectKind: "resident",
+    position,
+    name: person.name,
+    description: `${person.name} is a ${person.role} of Stonebridge. Objective: ${person.objective.replaceAll("_", " ")}. Currently: ${person.currentAction}.`,
+    personKey: person.key,
+    affordanceKeys: ["examine", "talk"],
+  };
+}
+
+function materialObject(terrain, position) {
+  const material = terrain.material;
+  return {
+    ...material,
+    objectKind: "material",
+    position,
+    description: `${material.quantity} ${MATERIAL_DEFINITIONS[material.kind].unit}${material.quantity === 1 ? "" : "s"} can be collected here.`,
+    affordanceKeys: ["examine", "collect"],
+  };
+}
+
+function buildingObject(state, terrain, position) {
+  const door = state.village.doors.find((candidate) =>
+    same(candidate, position),
+  );
+  if (door)
+    return {
+      ...door,
+      definitionId: definitionId("world-object", "door"),
+      objectKind: "door",
+      position,
+      name: `${terrain.building.name} door`,
+      description: `The ${terrain.building.name} door is ${door.state}.`,
+      affordanceKeys: ["examine", "open"],
+    };
+  const isWall = terrain.tile === "village_building";
+  return villageObject(
+    state,
+    isWall ? "wall" : "room",
+    `${terrain.building.key}:${position.x},${position.y}`,
+    position,
+    {
+      name: isWall ? `${terrain.building.name} wall` : terrain.building.name,
+      description: isWall
+        ? `Solid timber-and-stone construction protects ${terrain.building.name}.`
+        : `A usable interior room inside ${terrain.building.name}.`,
+      affordanceKeys: isWall ? ["examine", "breach"] : ["examine"],
+    },
+  );
+}
+
+export function villageWorldObjectAt(state, x, y) {
+  const position = { x, y },
+    terrain = villageTile(state, x, y);
+  if (terrain.person) return personObject(state, terrain, position);
+  if (terrain.material) return materialObject(terrain, position);
+  if (terrain.furniture) return fixtureObject(state, terrain, position);
+  if (terrain.building) return buildingObject(state, terrain, position);
+  if (terrain.sign)
+    return villageObject(state, "sign", `${x},${y}`, position, {
+      name: "Posted sign",
+      description: `The sign reads: “${terrain.sign.text}.”`,
+      text: terrain.sign.text,
+      affordanceKeys: ["read"],
+    });
+  if (terrain.tile === "outdoor_tree")
+    return villageObject(state, "tree", `${x},${y}`, position, {
+      name: "Old tree",
+      description: "An old shade tree marks the settled edge of Stonebridge.",
+      affordanceKeys: ["examine", "harvest"],
+    });
+  const diggable = ["outdoor_grass", "road_dirt"].includes(terrain.tile);
+  return villageObject(state, "terrain", `${x},${y}`, position, {
+    name: terrain.featureName ?? terrain.tile.replaceAll("_", " "),
+    description: villageExamination(state, position).detail,
+    affordanceKeys: diggable ? ["examine", "dig"] : ["examine"],
+  });
+}
+
+function villageActorForInteraction(state, actorId) {
+  if (state.hero.id === actorId)
+    return {
+      record: state.hero,
+      view: { ...state.hero, position: state.village.heroPosition },
+    };
+  const companionIndex = state.companions.findIndex(
+    (actor) => actor.id === actorId,
+  );
+  if (companionIndex >= 0)
+    return {
+      record: state.companions[companionIndex],
+      view: {
+        ...state.companions[companionIndex],
+        position: state.village.companionPositions[companionIndex],
+      },
+    };
+  const npc = state.village.npcStates.find((actor) => actor.id === actorId);
+  if (npc) return { record: npc, view: { ...npc, inventory: [] } };
+  throw new RuleError("ACTOR_NOT_FOUND", "That village actor does not exist.");
+}
+
+export function villageObjectAffordances(state, actorId, object) {
+  const actor = villageActorForInteraction(state, actorId);
+  return describeAffordances(actor.view, object, {
+    position: actor.view.position,
+    visible: true,
+  });
+}
+
+function describeVillageObject(object, events, action) {
+  events.push({
+    type: "local_examined",
+    objectId: object.id,
+    action,
+    name: object.name,
+    detail: object.description,
+    position: { ...object.position },
+  });
+}
+
+function talkToVillageResident(object, events) {
+  events.push({
+    type: "local_talked",
+    personId: object.id,
+    personName: object.name,
+    role: VILLAGE_PEOPLE.find((person) => person.key === object.personKey).role,
+    dialogue: VILLAGE_DIALOGUE[object.personKey],
+    position: { ...object.position },
+  });
+}
+
+function openVillageObject(state, object, events) {
+  const door = state.village.doors.find(
+    (candidate) => candidate.id === object.id,
+  );
+  check(door, "DOOR_MISSING", "That door no longer exists.");
+  door.state = "open";
+  events.push({
+    type: "door_opened",
+    doorId: door.id,
+    position: { ...object.position },
+  });
+}
+
+function manipulateVillageObject(state, actor, object, action, events) {
+  const result = {
+      dig: ["dug_ground", "earth", 1],
+      harvest: ["tree_stump", "timber", 2],
+      breach: ["breached_wall", "stone", 2],
+    }[action],
+    toolTags = { dig: "dig", harvest: "cut", breach: "breach" },
+    tool = interactionTool(actor, toolTags[action]),
+    terrain = villageTile(state, object.position.x, object.position.y);
+  addVillageModification(
+    state,
+    actor.id,
+    result[0],
+    object.position,
+    terrain.tile,
+  );
+  const material = createLooseMaterial(
+    state,
+    result[1],
+    object.position,
+    result[2],
+  );
+  events.push({
+    type: "world_manipulated",
+    action,
+    actorId: actor.id,
+    objectId: object.id,
+    toolId: tool.id,
+    toolName: tool.name,
+    materialId: material.id,
+    materialName: material.name,
+    quantity: material.quantity,
+    position: { ...object.position },
+  });
+  if (action === "breach") alertTownGuard(state, object.position, events);
+}
+
+function applyVillageAffordance(state, actor, object, affordance, events) {
+  if (["examine", "read"].includes(affordance.key))
+    return describeVillageObject(object, events, affordance.key);
+  if (affordance.key === "talk") return talkToVillageResident(object, events);
+  if (affordance.key === "open")
+    return openVillageObject(state, object, events);
+  if (affordance.key === "collect") {
+    const material = state.village.looseMaterials.find(
+      (candidate) => candidate.id === object.id,
+    );
+    check(material, "MATERIAL_MISSING", "There is nothing to collect.");
+    return collectMaterial(state, actor, material, events);
+  }
+  if (["dig", "harvest", "breach"].includes(affordance.key))
+    return manipulateVillageObject(
+      state,
+      actor,
+      object,
+      affordance.key,
+      events,
+    );
+  events.push({
+    type: "object_used",
+    actorId: actor.id,
+    objectId: object.id,
+    objectName: object.name,
+    action: affordance.key,
+    position: { ...object.position },
+  });
+}
+
+export function executeVillageInteraction(state, input, events = []) {
+  const actor = villageActorForInteraction(state, input.actorId),
+    object = villageWorldObjectAt(state, input.x, input.y);
+  check(
+    object.id === input.objectId,
+    "OBJECT_STALE",
+    "That object has changed.",
+  );
+  const affordance = villageObjectAffordances(
+    state,
+    input.actorId,
+    object,
+  ).find((candidate) => candidate.key === input.action);
+  check(affordance, "AFFORDANCE_MISSING", "That object has no such action.");
+  check(affordance.available, "AFFORDANCE_UNAVAILABLE", affordance.reason, {
+    objectId: object.id,
+    action: input.action,
+  });
+  applyVillageAffordance(state, actor.record, object, affordance, events);
+  return { object, affordance };
+}
+
 function localPartyCells(
   state,
   definition,
@@ -3803,9 +4073,27 @@ function villageViewportOrigin(state) {
   };
 }
 
+function villageObjectCell(state, cell) {
+  const object = villageWorldObjectAt(state, cell.x, cell.y);
+  return {
+    ...cell,
+    object: {
+      ...object,
+      affordances: villageObjectAffordances(state, state.hero.id, object),
+    },
+  };
+}
+
 function villageView(state) {
   const origin = villageViewportOrigin(state),
-    cells = localPartyCells(state, VILLAGE, state.village, villageTile, origin),
+    cells = localPartyCells(
+      state,
+      VILLAGE,
+      state.village,
+      villageTile,
+      origin,
+    ).map((cell) => villageObjectCell(state, cell)),
+    entityIndex = createEntityIndex(cells.map((cell) => cell.object)),
     currentShopKey = villageShopAt(state.village.heroPosition)?.shopKey ?? null;
   return {
     name: VILLAGE.name,
@@ -3813,6 +4101,7 @@ function villageView(state) {
     visits: state.villageVisits,
     partyMovement: state.village.partyMovement,
     heroPosition: { ...state.village.heroPosition },
+    entityCount: entityIndex.size,
     map: {
       width: VILLAGE.width,
       height: VILLAGE.height,
@@ -4112,6 +4401,7 @@ export function rogueRunView(state, recentEvents = []) {
                 "local_examine",
                 "local_talk",
                 "local_manipulate",
+                "world_interact",
                 "set_party_movement",
                 "open_world",
                 ...(village.currentShopKey ? ["shop_buy"] : []),

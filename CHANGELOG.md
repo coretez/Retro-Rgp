@@ -1,5 +1,18 @@
 # Changelog
 
+## Interactive Version 1 · M-3
+
+- Added UUID-backed smart world objects and spatial entity indexing for town
+  interactions.
+- Added data-driven affordances shared by players and NPCs, with range, state,
+  visibility, tool, duration, and failure-reason contracts.
+- Converted signs, residents, doors, trees, walls, materials, terrain,
+  counters, the forge, and a stable cart to contextual interactions.
+- Replaced fixed town interaction controls with an object-driven overlay that
+  keeps unavailable actions visible and explained.
+- Added effect idempotence, persistent request replay, and compatibility
+  regression coverage.
+
 ## 0.2.0-alpha.7 — Local and world travel scales
 
 - Replace the direct dungeon-to-village jump with a three-scale travel model:

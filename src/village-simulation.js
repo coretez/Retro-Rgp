@@ -1,4 +1,5 @@
 import { key, weightedRoute } from "./spatial.js";
+import { WORLD_AFFORDANCES } from "./world-objects.js";
 
 const ADVANCING_INTENTS = new Set([
   "local_move",
@@ -40,6 +41,7 @@ const BLOCKED_TILES = new Set([
   "village_building",
   "village_furniture",
   "village_door_closed",
+  "village_door_locked",
   "village_pit",
 ]);
 
@@ -53,8 +55,12 @@ const TERRAIN_COSTS = {
   outdoor_grass: 4,
 };
 
-export const villageIntentAdvancesSimulation = (kind) =>
-  ADVANCING_INTENTS.has(kind);
+export function villageIntentAdvancesSimulation(intent) {
+  const kind = typeof intent === "string" ? intent : intent.kind;
+  if (kind === "world_interact")
+    return (WORLD_AFFORDANCES[intent.action]?.duration ?? 0) > 0;
+  return ADVANCING_INTENTS.has(kind);
+}
 
 export const villageMovementCost = (tile) =>
   BLOCKED_TILES.has(tile) ? null : (TERRAIN_COSTS[tile] ?? 3);
@@ -149,7 +155,7 @@ function advanceVillageNpc(state, npc, terrainAt, events) {
 }
 
 export function advanceVillageSimulation(state, intent, events, context = {}) {
-  if (!villageIntentAdvancesSimulation(intent.kind)) return false;
+  if (!villageIntentAdvancesSimulation(intent)) return false;
   const terrainAt = context.terrainAt;
   if (!terrainAt) throw new Error("Village navigation requires terrainAt.");
   for (const npc of state.village.npcStates)

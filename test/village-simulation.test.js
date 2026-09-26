@@ -47,8 +47,15 @@ function simulationSnapshot(state) {
 
 function publicSimulationEvents(events) {
   return events.map(
-    ({ actorId: _actorId, personId: _personId, doorId: _doorId, ...event }) =>
-      event,
+    ({
+      actorId: _actorId,
+      personId: _personId,
+      doorId: _doorId,
+      objectId: _objectId,
+      materialId: _materialId,
+      toolId: _toolId,
+      ...event
+    }) => event,
   );
 }
 
