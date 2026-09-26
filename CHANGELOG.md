@@ -13,6 +13,12 @@
   communicated by shading while actors and meaningful objects retain glyphs.
 - Reorganized the native HUD into a party-status card, contextual selection
   inspector, and bottom command strip without reducing the map viewport.
+- Reworked the HUD after comparing RimWorld and Dwarf Fortress: the world now
+  acts as the full-window canvas, persistent status occupies one thin top bar,
+  commands occupy a thin bottom strip, and larger details appear contextually.
+- Expanded the Unity rolling town view from 56×50 narrow terminal cells to
+  76×46 square cells, using nearly the entire window while remaining below the
+  compact protocol's 500 KB payload ceiling.
 - Added protocol size and identity tests and retained the complete 80-test suite.
 
 ## Interactive Version 1 · M-4

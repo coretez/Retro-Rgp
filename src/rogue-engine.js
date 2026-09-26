@@ -223,6 +223,8 @@ const VILLAGE = {
   ],
 };
 
+const UNITY_VILLAGE_VIEWPORT = { width: 76, height: 46 };
+
 const WORLD = {
   name: "The Stonebridge March",
   groupGlyph: "群",
@@ -4408,15 +4410,22 @@ function unityGlyph(cell, actor) {
 }
 
 function unityVillageMap(state) {
-  const origin = villageViewportOrigin(state),
+  const origin = {
+      x:
+        state.village.heroPosition.x -
+        Math.floor(UNITY_VILLAGE_VIEWPORT.width / 2),
+      y:
+        state.village.heroPosition.y -
+        Math.floor(UNITY_VILLAGE_VIEWPORT.height / 2),
+    },
     cells = localPartyCells(
       state,
-      VILLAGE,
+      UNITY_VILLAGE_VIEWPORT,
       state.village,
       villageTile,
       origin,
     ).map((cell) => unityCell(state, cell));
-  return { width: VILLAGE.width, height: VILLAGE.height, origin, cells };
+  return { ...UNITY_VILLAGE_VIEWPORT, origin, cells };
 }
 
 export function rogueUnityView(state, recentEvents = []) {

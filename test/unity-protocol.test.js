@@ -16,6 +16,10 @@ test("Unity protocol projects one compact retained-mode village snapshot", () =>
   const view = rogueUnityView(state),
     json = JSON.stringify(view);
   assert.equal(view.protocolVersion, 1);
+  assert.deepEqual(
+    { width: view.map.width, height: view.map.height },
+    { width: 76, height: 46 },
+  );
   assert.equal(view.map.cells.length, view.map.width * view.map.height);
   assert.ok(Buffer.byteLength(json) < 500_000, Buffer.byteLength(json));
   assert.ok(

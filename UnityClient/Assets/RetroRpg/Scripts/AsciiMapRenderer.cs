@@ -5,7 +5,7 @@ namespace RetroRpg
 {
     public sealed class AsciiMapRenderer : MonoBehaviour
     {
-        private const float CellWidth = 0.62f;
+        private const float CellWidth = 0.9f;
         private const float CellHeight = 0.9f;
         private const int FontSize = 64;
         private Mesh backgroundMesh;

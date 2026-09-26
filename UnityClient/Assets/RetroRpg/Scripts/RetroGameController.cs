@@ -120,21 +120,21 @@ namespace RetroRpg
                 GUI.Label(new Rect(32f, 34f, 290f, 28f), "Connecting to the world…", bodyStyle);
                 return;
             }
-            DrawStatusCard();
+            DrawTopBar();
             DrawInspector();
             DrawCommandBar();
         }
 
-        private void DrawStatusCard()
+        private void DrawTopBar()
         {
-            var panel = new Rect(18f, 18f, 270f, 190f);
+            var panel = new Rect(12f, 12f, Screen.width - 24f, 44f);
             DrawPanel(panel);
-            GUI.Label(new Rect(34f, 30f, 240f, 28f), view.title, titleStyle);
-            GUI.Label(new Rect(34f, 58f, 240f, 20f), $"TURN {view.tick}  ·  {view.status.ToUpperInvariant()}", subtleStyle);
-            GUI.Label(new Rect(34f, 88f, 240f, 18f), "PARTY LEADER", headingStyle);
-            GUI.Label(new Rect(34f, 110f, 240f, 22f), view.hero.name, bodyStyle);
-            DrawHealthBar(new Rect(34f, 138f, 220f, 12f));
-            GUI.Label(new Rect(34f, 156f, 220f, 22f), $"{view.hero.hp}/{view.hero.maxHp} HP     {view.hero.goldCp} CP", bodyStyle);
+            GUI.Label(new Rect(28f, 21f, 190f, 26f), view.title, titleStyle);
+            GUI.Label(new Rect(210f, 24f, 220f, 20f), $"TURN {view.tick}  ·  {view.status.ToUpperInvariant()}", subtleStyle);
+            var right = Screen.width - 390f;
+            GUI.Label(new Rect(right, 23f, 150f, 20f), view.hero.name, bodyStyle);
+            DrawHealthBar(new Rect(right + 150f, 27f, 90f, 10f));
+            GUI.Label(new Rect(right + 250f, 23f, 110f, 20f), $"{view.hero.hp} HP  ·  {view.hero.goldCp} CP", bodyStyle);
         }
 
         private void DrawHealthBar(Rect bounds)
@@ -152,21 +152,21 @@ namespace RetroRpg
         {
             var cell = SelectedCell();
             if (cell == null) return;
-            var panel = new Rect(Screen.width - 288f, 18f, 270f, 148f);
+            var panel = new Rect(12f, Screen.height - 172f, 270f, 108f);
             DrawPanel(panel);
-            GUI.Label(new Rect(panel.x + 16f, 30f, 238f, 20f), "SELECTED", headingStyle);
-            GUI.Label(new Rect(panel.x + 16f, 56f, 238f, 26f), SelectionName(cell), titleStyle);
-            GUI.Label(new Rect(panel.x + 16f, 86f, 238f, 20f), $"{Readable(cell.objectKind)}  ·  {Readable(cell.tile)}", bodyStyle);
-            GUI.Label(new Rect(panel.x + 16f, 112f, 238f, 20f), $"POSITION  {cell.x}, {cell.y}", subtleStyle);
+            GUI.Label(new Rect(panel.x + 14f, panel.y + 10f, 238f, 18f), "SELECTED", headingStyle);
+            GUI.Label(new Rect(panel.x + 14f, panel.y + 32f, 238f, 24f), SelectionName(cell), titleStyle);
+            GUI.Label(new Rect(panel.x + 14f, panel.y + 60f, 238f, 18f), $"{Readable(cell.objectKind)}  ·  {Readable(cell.tile)}", bodyStyle);
+            GUI.Label(new Rect(panel.x + 14f, panel.y + 82f, 238f, 18f), $"POSITION  {cell.x}, {cell.y}", subtleStyle);
         }
 
         private void DrawCommandBar()
         {
-            var width = Mathf.Min(720f, Screen.width - 36f);
-            var panel = new Rect((Screen.width - width) * 0.5f, Screen.height - 70f, width, 52f);
+            var width = Mathf.Min(680f, Screen.width - 24f);
+            var panel = new Rect((Screen.width - width) * 0.5f, Screen.height - 52f, width, 40f);
             DrawPanel(panel);
             var status = error ?? (busy ? "Resolving turn…" : "WASD / ARROWS  Move     CLICK  Select or move adjacent     WHEEL  Zoom");
-            GUI.Label(new Rect(panel.x + 18f, panel.y + 10f, panel.width - 36f, 30f), status, bodyStyle);
+            GUI.Label(new Rect(panel.x + 18f, panel.y + 9f, panel.width - 36f, 24f), status, bodyStyle);
         }
 
         private CellView SelectedCell()
