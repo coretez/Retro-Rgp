@@ -1765,6 +1765,27 @@ test("R8 livestock already overlapping a wall move to valid ground", () => {
   assert.equal(terrainAt(sheep.position), "outdoor_grass");
 });
 
+test("R8 wildlife trapped inside a mountain relocates beyond its old range", () => {
+  const state = newRogueRun(input),
+    deer = livingAnimals(state, "deer")[2],
+    blockedRange = { ...deer.homeRange },
+    terrainAt = (position) =>
+      position.x >= blockedRange.x &&
+      position.x < blockedRange.x + blockedRange.width &&
+      position.y >= blockedRange.y &&
+      position.y < blockedRange.y + blockedRange.height
+        ? "outdoor_rock"
+        : "outdoor_grass";
+  state.tick = 12;
+  state.village.clock.hour = 10;
+  advanceVillageAnimals(state, terrainAt);
+  assert.equal(terrainAt(deer.position), "outdoor_grass");
+  assert.ok(
+    deer.position.x >= deer.homeRange.x &&
+      deer.position.x < deer.homeRange.x + deer.homeRange.width,
+  );
+});
+
 test("R8.3 livestock and woodland species begin with both sexes", () => {
   const state = newRogueRun(input);
   for (const species of [

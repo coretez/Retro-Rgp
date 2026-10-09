@@ -5,6 +5,7 @@ import {
   parseRogueState,
   rogueUnityView,
   serializeRogueState,
+  villageNpcTerrain,
 } from "../src/rogue-engine.js";
 import { createJob } from "../src/job-board.js";
 import {
@@ -119,6 +120,47 @@ test("R4 regional farm stores follow relocated fields without overlap", () => {
           cell.y >= field.y + field.h + gap
         );
       }),
+    ),
+  );
+});
+
+test("R4 regional storage districts relocate off mountains and trees", () => {
+  const run = newRogueRun({
+      ...input,
+      seed: "farmland-acceptance-2026-10-09",
+      worldGeneration: "regional_v3",
+    }),
+    terrainAt = (position) => villageNpcTerrain(run, position),
+    storage = reconcileVillageStorage(run, terrainAt),
+    blocked = new Set(["outdoor_rock", "outdoor_tree", "outdoor_water"]);
+  assert.ok(storage.zones.flatMap((zone) => zone.cells).length > 0);
+  assert.ok(
+    storage.zones.every((zone) =>
+      zone.cells.every((cell) => !blocked.has(terrainAt(cell))),
+    ),
+  );
+});
+
+test("R4 regional storage remains terrain-valid after save and load", () => {
+  const run = newRogueRun({
+      ...input,
+      seed: "farmland-terrain-proof-2026-10-09",
+      worldGeneration: "regional_v3",
+    }),
+    before = run.village.storage.zones.map((zone) =>
+      zone.cells.map((cell) => `${cell.x},${cell.y}`),
+    ),
+    restored = parseRogueState(serializeRogueState(run)),
+    after = restored.village.storage.zones.map((zone) =>
+      zone.cells.map((cell) => `${cell.x},${cell.y}`),
+    ),
+    blocked = new Set(["outdoor_rock", "outdoor_tree", "outdoor_water"]);
+  assert.deepEqual(after, before);
+  assert.ok(
+    restored.village.storage.zones.every((zone) =>
+      zone.cells.every(
+        (cell) => !blocked.has(villageNpcTerrain(restored, cell)),
+      ),
     ),
   );
 });

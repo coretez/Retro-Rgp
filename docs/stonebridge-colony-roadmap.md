@@ -7295,3 +7295,50 @@ failing terrain-valid storage and still awaits completed protected fields and
 the natural harvest loop. R5 remains under scheduler validation, R6 remains
 unproven in this clean run, and R8 remains in progress with mountain
 passability now an explicit blocking defect.
+
+## Repair checkpoint 176 / terrain-safe storage and animal recovery
+
+The failed checkpoint-175 state was preserved before repair. Storage planning
+now applies the same terrain contract used by movement: designated cells reject
+mountain mass, exposed rock, water, trees, buildings, construction, fences,
+and every expanded crop boundary. If the authored storage district conflicts
+with regional terrain, a deterministic bounded search relocates it rather than
+silently accepting invalid cells. Both simulation reconciliation passes and
+save migration now receive the terrain lookup; this closes a second defect in
+which a valid live storage plan reverted to its old mountain coordinates after
+loading.
+
+Animals now recover from invalid terrain before care, sleep, disease, or
+predator pursuit is considered. Wildlife whose entire former home range lies
+inside a mountain searches beyond that range for traversable ground, moves
+there, and reanchors its range and tether. This specifically closes the red
+deer case and a related predator-ordering fault that allowed wolves to bypass
+terrain recovery while pursuing prey.
+
+Three clean visible restarts were used deliberately as fault-finding runs. The
+first exposed predator recovery order and the second exposed save migration.
+The accepted run is `0a62a479-7f97-44d7-bf86-243d87bb798d`, seed
+`farmland-final-terrain-proof-2026-10-09`. At repeated 16× checkpoints through
+tick 773 (Day 1, 13:43), no storage cell projected on rock, trees, or water and
+no animal projected inside rock. Saving at tick 328 and restarting the server
+preserved those results. Home recentering visibly returns to the actual
+settlement: the farmstead, all three named household plans, both fields,
+pasture, founders, and livestock are present. At tick 773 all ten founders had
+concrete actions; the new review did expose one lower-priority policy concern:
+the watchman resumed routine patrol while permanent housing was still only
+planned. That is recorded for scheduler tuning rather than counted as idle
+work.
+
+Focused QA passes 25/25 storage tests plus all three mountain movement and
+recovery regressions. The strict audit covers 2,146 functions with 141
+documented template exemptions and zero non-template functions over thirty
+lines; `git diff --check` is clean. This is not a claim that the natural food
+loop or housing build is complete—the two fields are still being cleared and
+the founding structures are still under construction.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 has
+recovered terrain-valid storage and animal movement but remains in progress
+until protected fields naturally grow, harvest, haul, store, and sustain the
+town. R5 remains under scheduler validation, including survival-aware guard
+duty. R6 remains unproven in this clean run. R8 remains in progress behind the
+natural building, food, quarry, defense, and visual acceptance gates.

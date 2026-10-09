@@ -12509,7 +12509,7 @@ export function advanceVillageSimulation(state, intent, events, context = {}) {
   ensureVillageAnimals(state);
   ensureRegionalSimulation(state);
   ensureVillageCivic(state);
-  reconcileVillageStorage(state);
+  reconcileVillageStorage(state, terrainAt);
   repairDriftingFarmFields(state, events);
   repairFarmFieldGeometry(state, events);
   cancelMisalignedFarmChildJobs(state);
@@ -12575,7 +12575,7 @@ export function advanceVillageSimulation(state, intent, events, context = {}) {
   deriveVillageArchitecture(state);
   syncResidentHousing(state);
   ensureFoundingSleepingPlaces(state, events);
-  reconcileVillageStorage(state);
+  reconcileVillageStorage(state, terrainAt);
   syncVillageSkillWorkQueues(state);
   pruneVillageJobHistory(state);
   return true;

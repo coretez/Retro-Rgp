@@ -2034,7 +2034,9 @@ export function newRogueRun(input) {
   ensureVillageFoodSystem(state);
   ensureVillageTradeSystem(state);
   ensureVillageDemography(state);
-  reconcileVillageStorage(state);
+  reconcileVillageStorage(state, (position) =>
+    villageNpcTerrain(state, position),
+  );
   syncResidentHousing(state);
   ensureFoundingSleepingPlaces(state);
   ensureRegionalSimulation(state);
@@ -9679,7 +9681,9 @@ function migrateIdentity(value) {
   syncResidentHousing(value);
   ensureVillageFoodSystem(value);
   ensureVillageTradeSystem(value);
-  reconcileVillageStorage(value);
+  reconcileVillageStorage(value, (position) =>
+    villageNpcTerrain(value, position),
+  );
   ensureRegionalSimulation(value);
   value.partyTactics ??= {
     facing: "north",

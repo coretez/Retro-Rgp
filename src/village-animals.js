@@ -1351,25 +1351,38 @@ function animalMoveAllowed(
       penned && pasture
         ? pastureContains(pasture, position, animal.width)
         : range && areaContains(range, position, animal.width),
-    crowded = cells.some(
-      (cell) =>
-        occupied.has(`${cell.x},${cell.y}`) ||
-        people.has(`${cell.x},${cell.y}`),
-    ),
-    blocked = cells.some((cell) =>
-      ANIMAL_BLOCKED_TILES.has(terrainAt(cell)),
-    );
-  return contained && !crowded && !blocked;
+    open = animalPositionOpen(animal, position, occupied, people, terrainAt);
+  return contained && open;
+}
+
+function animalPositionOpen(animal, position, occupied, people, terrainAt) {
+  return animalFootprint({ ...animal, position }).every(
+    (cell) =>
+      !occupied.has(`${cell.x},${cell.y}`) &&
+      !people.has(`${cell.x},${cell.y}`) &&
+      !ANIMAL_BLOCKED_TILES.has(terrainAt(cell)),
+  );
+}
+
+function expandedRecoveryArea(animal, pasture) {
+  const range = pennedAnimal(animal) ? (pasture ?? animal.homeRange) : animal.homeRange;
+  if (!range || pennedAnimal(animal)) return range;
+  return {
+    x: range.x - 48,
+    y: range.y - 48,
+    width: range.width + 96,
+    height: range.height + 96,
+  };
 }
 
 function animalRecoveryPosition(animal, pasture, occupied, people, terrainAt) {
-  const range = pennedAnimal(animal) ? (pasture ?? animal.homeRange) : animal.homeRange;
+  const range = expandedRecoveryArea(animal, pasture);
   if (!range) return null;
   const candidates = [];
   for (let y = range.y; y < range.y + range.height; y += 1)
     for (let x = range.x; x < range.x + range.width; x += 1) {
       const position = { x, y };
-      if (animalMoveAllowed(animal, position, pasture, occupied, people, terrainAt))
+      if (animalPositionOpen(animal, position, occupied, people, terrainAt))
         candidates.push(position);
     }
   return candidates.sort(
@@ -1380,6 +1393,16 @@ function animalRecoveryPosition(animal, pasture, occupied, people, terrainAt) {
   )[0] ?? null;
 }
 
+function reanchorRecoveredAnimal(animal, pasture) {
+  if (pennedAnimal(animal) && pasture) return;
+  animal.homeRange = animalRange(
+    animal.position.x,
+    animal.position.y,
+    animalSpecies(animal.species)?.domestic,
+  );
+  if (animal.status === "tethered") animal.tetherPosition = { ...animal.position };
+}
+
 function recoverBlockedAnimal(animal, pasture, occupied, people, terrainAt) {
   const blocked = animalFootprint(animal).some((cell) =>
     ANIMAL_BLOCKED_TILES.has(terrainAt(cell)),
@@ -1388,7 +1411,10 @@ function recoverBlockedAnimal(animal, pasture, occupied, people, terrainAt) {
   const position = animalRecoveryPosition(
     animal, pasture, occupied, people, terrainAt,
   );
-  if (position) animal.position = position;
+  if (position) {
+    animal.position = position;
+    reanchorRecoveredAnimal(animal, pasture);
+  }
   return Boolean(position);
 }
 
@@ -1419,6 +1445,20 @@ function moveAnimal(state, animal, pasture, occupied, people, terrainAt) {
   }
   for (const cell of animalFootprint(animal))
     occupied.add(`${cell.x},${cell.y}`);
+}
+
+function recoverAnimalBeforeActivity(
+  animal, pasture, occupied, people, terrainAt,
+) {
+  for (const cell of animalFootprint(animal))
+    occupied.delete(`${cell.x},${cell.y}`);
+  const recovered = recoverBlockedAnimal(
+    animal, pasture, occupied, people, terrainAt,
+  );
+  for (const cell of animalFootprint(animal))
+    occupied.add(`${cell.x},${cell.y}`);
+  if (recovered) animal.activity = "Moving clear of an obstruction";
+  return recovered;
 }
 
 function pursuitDistance(position, target) {
@@ -1506,6 +1546,14 @@ function advancePredatorPursuit(state, predator, occupied, people, terrainAt) {
   return true;
 }
 
+function animalDayActivity(animal, pasture) {
+  if (animalSpecies(animal.species)?.domestic)
+    return housedAnimalActivity(animal, pasture);
+  return animalSpecies(animal.species)?.predator
+    ? "Patrolling its hunting range"
+    : "Browsing for forage";
+}
+
 function advanceAnimal(
   state,
   animal,
@@ -1515,6 +1563,9 @@ function advanceAnimal(
   terrainAt,
   workingTargets,
 ) {
+  if (
+    recoverAnimalBeforeActivity(animal, pasture, occupied, people, terrainAt)
+  ) return;
   if (workingTargets.has(animal.id)) {
     animal.activity = "Receiving animal care";
     return;
@@ -1533,11 +1584,7 @@ function advanceAnimal(
     advancePredatorPursuit(state, animal, occupied, people, terrainAt)
   )
     return;
-  animal.activity = animalSpecies(animal.species)?.domestic
-    ? housedAnimalActivity(animal, pasture)
-    : animalSpecies(animal.species)?.predator
-      ? "Patrolling its hunting range"
-      : "Browsing for forage";
+  animal.activity = animalDayActivity(animal, pasture);
   moveAnimal(state, animal, pasture, occupied, people, terrainAt);
 }
 
