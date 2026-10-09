@@ -4726,18 +4726,18 @@ function villageWorkerProfile(personKey, founding = false) {
           ? { fishing: 4, hunting: 3 }
           : personKey === "innkeeper"
             ? { cooking: 4 }
-          : personKey === "reeve"
-            ? { governance: 4, stewardship: 3, negotiation: 3 }
-            : personKey === "farmer"
-              ? { farming: 4, construction: 2, architecture: 4 }
-              : personKey === "herder"
-                ? {
-                    animal_husbandry: 4,
-                    butchery: 2,
-                    hunting: 3,
-                    construction: 3,
-                  }
-                : {};
+            : personKey === "reeve"
+              ? { governance: 4, stewardship: 3, negotiation: 3 }
+              : personKey === "farmer"
+                ? { farming: 4, construction: 2, architecture: 4 }
+                : personKey === "herder"
+                  ? {
+                      animal_husbandry: 4,
+                      butchery: 2,
+                      hunting: 3,
+                      construction: 3,
+                    }
+                  : {};
   const profile = {
     capabilityTags:
       personKey === "carter"
@@ -4830,9 +4830,7 @@ function villageWorkerProfile(personKey, founding = false) {
                 "assist_project",
                 "haul_stock",
                 "deliver_goods",
-                ...(foundingFarmhand
-                  ? ["grow_grain", "grow_vegetables"]
-                  : []),
+                ...(foundingFarmhand ? ["grow_grain", "grow_vegetables"] : []),
                 "bury_resident",
                 "exhume_resident",
                 "cremate_resident",
@@ -4884,9 +4882,7 @@ function villageWorkerProfile(personKey, founding = false) {
                     ]
                   : []),
                 ...(hunter ? ["hunt_game", "remote_hunt_game"] : []),
-                ...(foundingSmith
-                  ? ["craft_weapon", "craft_hunting_bow"]
-                  : []),
+                ...(foundingSmith ? ["craft_weapon", "craft_hunting_bow"] : []),
                 ...(hauler ? ["deliver_goods"] : []),
                 ...(healer ? ["tend_wounded"] : []),
                 ...lifeJobTypes(),
@@ -5461,7 +5457,10 @@ const FURNITURE_VISUAL_VARIANTS = [
   ["construction_site", /yard site/],
   ["grain_plot", /grain field marker/],
   ["kitchen_garden", /kitchen garden marker/],
-  ["storage_shed", /seed shed|tool cache|food cache|staging pallet|ore bin|net rack|fish storage/],
+  [
+    "storage_shed",
+    /seed shed|tool cache|food cache|staging pallet|ore bin|net rack|fish storage/,
+  ],
   ["table", /sawbench|netting bench|fish cleaning table/],
   ["chair", /chair|stool|bench/],
   ["counter", /counter|inn bar/],
@@ -5592,6 +5591,8 @@ function villageConstructionAt(state, x, y, includePlanned = false) {
       materialRequired: element.materialRequired,
       laborCompleted: element.laborCompleted,
       laborRequired: element.laborRequired,
+      boundaryProfile: element.boundaryProfile,
+      heightFeet: element.heightFeet,
       fenceOrientation:
         enclosure &&
         (element.position.x === enclosure.x ||
@@ -5714,7 +5715,10 @@ function primitiveVillageTile(state, primitive) {
       primitive,
       connectionMask,
       visualVariant: primitive.material,
-      featureName: `Finished ${primitive.material} fence`,
+      featureName:
+        primitive.boundaryProfile === "low_stone_wall"
+          ? "Finished low stone boundary wall"
+          : `Finished ${primitive.material} fence`,
     };
   if (primitive.kind === "gate")
     return {
@@ -7962,18 +7966,20 @@ function unityQuarryLandmarks(state) {
   const operating = state.village.modifications.some(
     (item) => item.kind === "quarried_rock",
   );
-  return [{
-    x: source.position.x - 2,
-    y: source.position.y - 2,
-    width: 5,
-    height: 5,
-    name: operating ? "Stonebridge quarry face" : "Planned quarry works",
-    status: operating ? "operating" : "planned",
-    complete: operating,
-    description: operating
-      ? "Miners cut designated cells into the ridge and stage finite stone here."
-      : "The architect reserved this exposed ridge for quarry access and stone staging.",
-  }];
+  return [
+    {
+      x: source.position.x - 2,
+      y: source.position.y - 2,
+      width: 5,
+      height: 5,
+      name: operating ? "Stonebridge quarry face" : "Planned quarry works",
+      status: operating ? "operating" : "planned",
+      complete: operating,
+      description: operating
+        ? "Miners cut designated cells into the ridge and stage finite stone here."
+        : "The architect reserved this exposed ridge for quarry access and stone staging.",
+    },
+  ];
 }
 
 function villageChunkDeltaProjection(simulated) {

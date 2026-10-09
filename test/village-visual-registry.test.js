@@ -100,6 +100,22 @@ test("V1 connected fence state carries orientation and junction masks", () => {
   assert.equal(corner.visualAccepted, true);
 });
 
+test("R4 low stone boundaries retain fence connectivity and material identity", () => {
+  const visual = villageVisualDescriptor({
+    tile: "village_fence",
+    connectionMask: 10,
+    primitive: {
+      kind: "fence",
+      material: "stone",
+      boundaryProfile: "low_stone_wall",
+    },
+  });
+  assert.equal(visual.visualFamily, "fence");
+  assert.equal(visual.visualMaterial, "stone");
+  assert.equal(visual.visualOrientation, "horizontal");
+  assert.equal(visual.visualAccepted, true);
+});
+
 test("R6 emitted crop, stock, pawn, and damage states have accepted visuals", () => {
   const crop = villageVisualDescriptor({
       tile: "village_floor",

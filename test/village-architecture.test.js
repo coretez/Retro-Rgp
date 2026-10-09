@@ -8,11 +8,13 @@ import {
   controlConstructionProject,
   constructionSiteCells,
   constructionElements,
+  constructionMaterialRequirements,
   damageConstructionEntity,
   deconstructConstructionEntity,
   deriveVillageArchitecture,
   designHouse,
   findConstructionSite,
+  formalizeStoneBoundary,
   FOUNDER_HOUSE_PLOTS,
   HOUSE_ARCHETYPES,
   markVillageArchitectureDirty,
@@ -22,7 +24,11 @@ import {
   upgradeMissingHouseExits,
 } from "../src/village-architecture.js";
 import { foundingFacilityPlan } from "../src/village-development.js";
-import { treeWoodYield, WOOD_BUILD_COSTS } from "../src/village-materials.js";
+import {
+  boundaryBuildProfile,
+  treeWoodYield,
+  WOOD_BUILD_COSTS,
+} from "../src/village-materials.js";
 import {
   applyRogueTurn,
   newRogueRun,
@@ -203,6 +209,52 @@ test("M-11.1 wood yields and building costs use a stable wood-unit scale", () =>
     floor: 3,
     roof: 2,
   });
+});
+
+test("R4 formal farms can replace timber rails with low stone boundary walls", () => {
+  const enclosure = formalizeStoneBoundary({
+      key: "formal_field",
+      purpose: "field",
+      x: 10,
+      y: 10,
+      w: 6,
+      h: 6,
+      gate: { x: 15, y: 13 },
+    }),
+    site = { x: 0, y: 0, w: 2, h: 2, enclosures: [enclosure] },
+    elements = constructionElements(site),
+    fences = elements.filter((element) => element.kind === "fence"),
+    gate = elements.find((element) => element.kind === "gate"),
+    wall = elements.find((element) => element.kind === "wall"),
+    materials = constructionMaterialRequirements(site);
+  assert.ok(fences.length > 0);
+  assert.ok(fences.every((element) => element.material === "stone"));
+  assert.ok(
+    fences.every((element) => element.boundaryProfile === "low_stone_wall"),
+  );
+  assert.ok(fences.every((element) => element.heightFeet === 2.5));
+  assert.ok(
+    fences.every((element) => element.materialRequired < wall.materialRequired),
+  );
+  assert.ok(fences.every((element) => element.laborRequired < 10));
+  assert.equal(gate.material, "timber");
+  assert.equal(
+    materials.find((entry) => entry.key === "quarry_stone").quantity,
+    fences.length * boundaryBuildProfile("stone").materialUnits,
+  );
+});
+
+test("R4 masonry-town policy schedules low stone farm boundaries", () => {
+  const plan = newRogueRun(architectureInput).village.development.masterPlan,
+    policy = plan.settlementEvolution.boundaryPolicy;
+  assert.equal(policy.founding_village, "timber_rail");
+  assert.equal(policy.masonry_town, "low_stone_wall");
+  assert.equal(policy.replacementGate, "quarry_and_food_surplus");
+  assert.ok(
+    plan.householdHoldings.every(
+      (holding) => holding.boundaryUpgrade.profile === "low_stone_wall",
+    ),
+  );
 });
 
 test("R8 household cottages are compact without losing required rooms", () => {

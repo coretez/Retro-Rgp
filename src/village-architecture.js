@@ -1,4 +1,4 @@
-import { WOOD_BUILD_COSTS } from "./village-materials.js";
+import { boundaryBuildProfile, WOOD_BUILD_COSTS } from "./village-materials.js";
 import { definitionId, namedUuid } from "./identity.js";
 import {
   cancelJob,
@@ -147,12 +147,7 @@ const SPECIALIST_PLAN_SPECS = Object.freeze({
     w: 12,
     h: 8,
     secondaryDoors: [{ x: 24, y: 56, material: "wood" }],
-    roles: [
-      "netting_bench",
-      "net_rack",
-      "fish_cleaning_table",
-      "fish_storage",
-    ],
+    roles: ["netting_bench", "net_rack", "fish_cleaning_table", "fish_storage"],
   },
   specialist_forge: {
     key: "forge",
@@ -704,7 +699,8 @@ export function assessConstructionSite(
       ),
     ),
     sections = [site, ...(site.enclosures ?? [])].map((section) => {
-      const gates = section.gates ?? [section.gate ?? section.door].filter(Boolean);
+      const gates =
+        section.gates ?? [section.gate ?? section.door].filter(Boolean);
       return {
         ...section,
         door: gates[0] ?? section.door,
@@ -900,7 +896,8 @@ export function findConstructionSite(
         fixedEnclosurePurposes,
       }),
       assessment = assessConstructionSite(site, terrainAt, { reservedSites });
-    const accepted = assessment.valid && (!candidateFilter || candidateFilter(site));
+    const accepted =
+      assessment.valid && (!candidateFilter || candidateFilter(site));
     if (accepted)
       return {
         site,
@@ -1127,6 +1124,17 @@ export function constructionPerimeter(site) {
   return cells;
 }
 
+export function formalizeStoneBoundary(enclosure) {
+  const profile = boundaryBuildProfile("stone");
+  return {
+    ...structuredClone(enclosure),
+    fenceMaterial: "stone",
+    gateMaterial: "timber",
+    boundaryProfile: profile.key,
+    fenceHeightFeet: profile.heightFeet,
+  };
+}
+
 // function-length-exempt: template -- authored construction element expansion
 export function constructionElements(site) {
   const walls = constructionPerimeter(site).map((position, index) => ({
@@ -1188,22 +1196,30 @@ export function constructionElements(site) {
     };
     return constructionPerimeter(fenceSite)
       .filter((position) => !naturalBarriers.has(cellKey(position)))
-      .map((position, index) => ({
-        key: `fence_${enclosure.key}_${index + 1}`,
-        kind: "fence",
-        material: enclosure.fenceMaterial ?? "timber",
-        materialRequired: WOOD_BUILD_COSTS.fence,
-        pastureKey: enclosure.key,
-        enclosurePurpose: enclosure.purpose ?? "pasture",
-        position,
-      }));
+      .map((position, index) => {
+        const material = enclosure.fenceMaterial ?? "timber",
+          profile = boundaryBuildProfile(material);
+        return {
+          key: `fence_${enclosure.key}_${index + 1}`,
+          kind: "fence",
+          material,
+          materialRequired: profile.materialUnits,
+          laborRequired: profile.laborUnits,
+          boundaryProfile: enclosure.boundaryProfile ?? profile.key,
+          heightFeet: enclosure.fenceHeightFeet ?? profile.heightFeet,
+          pastureKey: enclosure.key,
+          enclosurePurpose: enclosure.purpose ?? "pasture",
+          position,
+        };
+      });
   });
   const gates = (site.enclosures ?? []).flatMap((enclosure) =>
       (enclosure.gates ?? [enclosure.gate].filter(Boolean)).map(
         (position, index) => ({
           key: `gate_${enclosure.key}${index ? `_${index + 1}` : ""}`,
           kind: "gate",
-          material: enclosure.fenceMaterial ?? "timber",
+          material:
+            enclosure.gateMaterial ?? enclosure.fenceMaterial ?? "timber",
           materialRequired: WOOD_BUILD_COSTS.gate,
           pastureKey: enclosure.key,
           enclosurePurpose: enclosure.purpose ?? "pasture",

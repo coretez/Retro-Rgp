@@ -2004,6 +2004,14 @@ function householdHolding(runId, spec) {
       attachedToTimberHome: false,
       firebreak: 1,
     },
+    boundaryUpgrade: {
+      status: "future",
+      profile: "low_stone_wall",
+      material: "stone",
+      heightFeet: 2.5,
+      gateMaterial: "timber",
+      gate: "masonry_town",
+    },
   };
 }
 
@@ -2026,6 +2034,13 @@ function settlementEvolutionPlan() {
     ],
     commonsTransition: "retain_until_replacement_housing_is_operational",
     roadPolicy: "dirt_first_stone_after_masonry_surplus",
+    boundaryPolicy: {
+      founding_village: "timber_rail",
+      family_hamlet: "timber_rail",
+      masonry_town: "low_stone_wall",
+      replacementGate: "quarry_and_food_surplus",
+      retainsWoodenGates: true,
+    },
   };
 }
 

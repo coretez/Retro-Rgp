@@ -7156,3 +7156,38 @@ visible settlement naturally completes and operates the chain while sustaining
 a positive multi-day reserve. R5 remains under scheduler validation, R6 remains
 unproven in the current clean run, and R8 remains in progress behind the full
 natural town-build, survival, and visual acceptance gates.
+
+## Repair checkpoint 173 / formal low stone farm boundaries
+
+The architect now has a distinct low stone boundary-wall option for farms,
+pastures, gardens, and formal property lines. It remains a fence-class barrier
+for routing, livestock containment, field protection, gates, and connected
+corners; it is not treated as a full-height building wall. The authored profile
+is 2.5 feet high, consumes two quarried-stone units and seven labor units per
+cell, compared with five material units and ten labor units for a full house
+wall. Gates remain timber so a stone boundary still has a usable entrance.
+
+Settlement evolution keeps timber rails through the founding-village and
+family-hamlet stages, then declares low stone walls as the masonry-town boundary
+standard. The transition is gated by both an operating quarry and a food
+surplus, preventing cosmetic masonry from displacing survival work. Every
+planned family holding records the same future upgrade. This checkpoint adds
+the construction and rendering capability plus the planning contract; posting
+and completing replacement work remains part of the later masonry-town stage,
+not the current founding survival queue.
+
+The native renderer draws stone boundaries as low, connected courses rather
+than tall house walls or brown timber rails. Construction projection preserves
+the boundary profile and physical height, while completed inspection names the
+object a low stone boundary wall. Three focused material, policy, and visual
+tests pass; the combined architecture, visual-registry, and storage suites pass
+64/64. The strict audit covers 2,128 functions with 141 documented template
+exemptions and zero non-template functions over thirty lines. The macOS Unity
+player builds successfully and `git diff --check` is clean.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 now
+includes the formal stone-boundary option alongside protected fields, net
+fishing, bow hunting, and bounded barn storage, but remains in progress pending
+the clean natural food-surplus proof. R5 remains under scheduler validation,
+R6 remains unproven in the current clean run, and R8 remains in progress behind
+the natural town-build, survival, visual, and later masonry-transition gates.

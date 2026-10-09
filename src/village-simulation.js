@@ -2775,6 +2775,8 @@ function materializeConstructionElement(state, job, element) {
     width: element.width ?? 1,
     height: element.height ?? 1,
     pastureKey: element.pastureKey,
+    boundaryProfile: element.boundaryProfile,
+    heightFeet: element.heightFeet,
     supportIds: element.supportIds ? [...element.supportIds] : undefined,
   });
   markVillageArchitectureDirty(state);

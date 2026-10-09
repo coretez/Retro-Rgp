@@ -872,6 +872,11 @@ namespace RetroRpg
             List<Vector3> vertices, List<Color> colors, List<Vector2> uvs,
             List<int> triangles)
         {
+            if (cell.visualMaterial == "stone")
+            {
+                AddLowStoneBoundary(cell, center, angle, vertices, colors, uvs, triangles);
+                return;
+            }
             var planned = cell.constructionStage == "planned";
             if (cell.constructionStage == "material_delivered")
             {
@@ -893,6 +898,26 @@ namespace RetroRpg
                 new Vector2(AsciiMapRenderer.CellWidth * (planned ? 0.10f : 0.20f),
                     AsciiMapRenderer.CellHeight * (planned ? 0.18f : 0.34f)), angle,
                 planned ? timber : new Color(0.25f, 0.15f, 0.08f));
+        }
+
+        private static void AddLowStoneBoundary(CellView cell, Vector2 center, float angle,
+            List<Vector3> vertices, List<Color> colors, List<Vector2> uvs,
+            List<int> triangles)
+        {
+            var planned = cell.constructionStage == "planned";
+            var delivered = cell.constructionStage == "material_delivered";
+            var framing = cell.constructionStage == "in_progress";
+            var stone = planned ? new Color(0.64f, 0.65f, 0.61f, 0.48f)
+                : new Color(0.49f, 0.50f, 0.46f);
+            var rows = planned || delivered ? 1 : framing ? 2 : 3;
+            for (var row = 0; row < rows; row++)
+            {
+                var offset = Rotate(new Vector2(0f,
+                    (row - 1f) * AsciiMapRenderer.CellHeight * 0.085f), angle);
+                AddRotatedQuad(vertices, colors, uvs, triangles, center + offset,
+                    new Vector2(AsciiMapRenderer.CellWidth * (row == 2 ? 0.90f : 1.02f),
+                        AsciiMapRenderer.CellHeight * 0.095f), angle, stone * (1f - row * 0.07f));
+            }
         }
 
         private static void AddGateSection(CellView cell, Vector2 center, float angle,
