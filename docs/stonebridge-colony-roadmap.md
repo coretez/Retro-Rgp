@@ -7342,3 +7342,45 @@ until protected fields naturally grow, harvest, haul, store, and sustain the
 town. R5 remains under scheduler validation, including survival-aware guard
 duty. R6 remains unproven in this clean run. R8 remains in progress behind the
 natural building, food, quarry, defense, and visual acceptance gates.
+
+## Repair checkpoint 177 / clear bedrolls and housing-first capital work
+
+The prior visible run was preserved at tick 3,042 after direct inspection
+confirmed that Lina Roth's two-cell bedroll occupied `(-18,15)`, the same cell
+as a completed wall in the active lumber-yard project. Temporary sleeping
+places now evaluate planned facilities, household lots, roads, fields,
+completed buildings, fixtures, and every active construction element. If
+either bedroll cell is claimed, the assigned bedroll relocates to the nearest
+clear two-cell position and any open sleep order follows it. A bedroll can no
+longer prevent a wall, door, floor, roof, or fixture from completing.
+
+The founding capital sequence now begins with a family home rather than the
+lumber workshop. Founders can fell trees and use their crosscut saws at the
+outdoor timber stacks, so the permanent yard is an efficiency and shelter
+upgrade rather than an artificial prerequisite for housing. Fishing and
+seasonal crop preparation remain parallel survival work. Once usable building
+lumber exists, haulers feed it directly to the first home's construction
+queue; the lumber yard is reconsidered after housing rather than consuming the
+first shelter materials.
+
+Clean visible run `c69c9c3f-9ec3-46bc-ac40-4e9470d7b91e`, seed
+`housing-first-bedroll-proof-2026-10-09`, proves the corrected opening at 16×.
+Housing is the approved priority from tick zero. The only initial capital jobs
+are the campfire and first family house, while fishing, fields, and tree felling
+run in parallel. At tick 88 all ten assigned bedrolls were disjoint from every
+construction element. By tick 208 two founders were sawing outdoors with no
+lumber yard; at tick 309 the first ten building-lumber units existed; and at
+tick 324 Lina Roth and Bram Eder were hauling them to the first home's two
+doors. All ten founders had concrete work at that checkpoint.
+
+Six focused strategy, founding, bedroll, housing-priority, and outdoor-sawing
+tests pass. The strict audit covers 2,151 functions with 141 documented template
+exemptions and zero non-template functions over thirty lines; `git diff
+--check` is clean.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4
+remains in progress behind the natural multi-day food and harvest proof. R5
+remains under scheduler validation, but the opening capital queue now honors
+shelter before the lumber yard. R6 remains unproven in this clean run. R8
+remains in progress behind the complete natural town-build, quarry, defense,
+and visual acceptance gates.

@@ -379,7 +379,7 @@ test("M-11.1 founding scenario starts ten homeless residents without buildings",
   );
 });
 
-test("R1 founders establish fire and fish but cannot hunt without a bow", () => {
+test("R1 founders start a home beside fire and fishing work", () => {
   const state = newRogueRun(input);
   applyRogueTurn(state, { kind: "wait" });
   const open = (jobType) =>
@@ -390,10 +390,31 @@ test("R1 founders establish fire and fish but cannot hunt without a bow", () => 
     );
   assert.ok(open("build_campfire"));
   assert.ok(open("catch_fish"));
+  assert.ok(open("build_house"));
   assert.equal(open("hunt_game"), undefined);
-  assert.equal(open("build_house"), undefined);
+  assert.equal(open("build_lumber_yard"), undefined);
   assert.equal(open("build_farmstead"), undefined);
   assert.equal(open("prepare_meal"), undefined);
+});
+
+test("R2 bedrolls move clear when construction claims their cells", () => {
+  const state = newRogueRun(input),
+    bedroll = state.village.fixtures.find(
+      (fixture) => fixture.bedType === "bedroll",
+    ),
+    original = { x: bedroll.x, y: bedroll.y };
+  state.village.jobs.push({
+    id: "construction-over-bedroll",
+    status: "available",
+    plan: {
+      constructionWork: {
+        elements: [{ kind: "wall", position: { ...original } }],
+      },
+    },
+  });
+  ensureFoundingSleepingPlaces(state);
+  assert.notDeepEqual({ x: bedroll.x, y: bedroll.y }, original);
+  assert.equal(bedroll.x === original.x && bedroll.y === original.y, false);
 });
 
 test("R4 a reusable hunting bow makes the deer hunt ready", () => {
@@ -429,54 +450,33 @@ test("R4 loading an unequipped legacy hunt cancels it as not ready", () => {
   );
 });
 
-test("R1 seasonal farming outranks private housing after the lumber yard", () => {
+test("R1 first housing remains the capital priority while crops start", () => {
   const state = newRogueRun(input);
   state.village.facilities.push("lumber_yard");
   stock(state, "lumber_yard_lumber").quantity = 500;
   applyRogueTurn(state, { kind: "wait" });
-  assert.equal(state.village.development.activePriority, "food_security");
+  assert.equal(state.village.development.activePriority, "housing");
   assert.ok(
-    state.village.jobs.some((job) => job.jobType === "build_farmstead"),
+    state.village.jobs.some((job) => job.jobType === "grow_grain"),
   );
-  assert.equal(
-    state.village.jobs.some((job) => job.jobType === "build_house"),
-    false,
-  );
+  assert.ok(state.village.jobs.some((job) => job.jobType === "build_house"));
   const housing = state.village.development.priorities.find(
     (priority) => priority.key === "housing",
   );
-  assert.deepEqual(housing.blockedBy, ["seasonal_planting"]);
+  assert.deepEqual(housing.blockedBy, []);
 });
 
-test("R1 ready crop work releases a parallel first-home crew", () => {
+test("R1 outdoor sawing supplies the first home before a lumber yard", () => {
   const state = newRogueRun(input);
-  state.village.facilities.push("lumber_yard");
-  stock(state, "lumber_yard_lumber").quantity = 500;
   applyRogueTurn(state, { kind: "wait" });
-  ensureVillageFoodSystem(state);
-  applyRogueTurn(state, { kind: "wait" });
-  applyRogueTurn(state, { kind: "wait" });
-  const commission = state.village.development.strategyBoard.commissions.find(
-      (candidate) => candidate.projectKey === "housing",
-    ),
-    house = state.village.jobs.find(
+  const house = state.village.jobs.find(
       (job) =>
         job.jobType === "build_house" &&
         !["completed", "cancelled"].includes(job.status),
-    ),
-    farmer = state.village.npcStates.find(
-      (actor) => actor.personKey === "farmer",
-    ),
-    herder = state.village.npcStates.find(
-      (actor) => actor.personKey === "herder",
     );
-  assert.equal(state.village.development.activePriority, "food_security");
-  assert.equal(commission.status, "active");
-  assert.equal(house.plan.parallelFoundingWork, true);
-  assert.equal(house.plan.allowedActorIds.includes(farmer.id), true);
-  assert.equal(house.plan.allowedActorIds.includes(herder.id), true);
-  assert.notEqual(house.assignedActorId, farmer.id);
-  stock(state, "lumber_yard_lumber").quantity = 0;
+  assert.equal(state.village.development.activePriority, "housing");
+  assert.ok(house);
+  assert.equal(state.village.facilities.includes("lumber_yard"), false);
   stock(state, "lumber_camp_logs").quantity = 40;
   applyRogueTurn(state, { kind: "wait" });
   assert.ok(

@@ -20,6 +20,51 @@ const FOUNDING_BEDROLL_POSITIONS = Object.freeze([
   ...[-18, -16, -14, -12, -10].map((x) => Object.freeze({ x, y: 17 })),
 ]);
 
+function blockArea(blocked, area) {
+  for (let y = area.y; y < area.y + (area.h ?? area.height ?? 1); y += 1)
+    for (let x = area.x; x < area.x + (area.w ?? area.width ?? 1); x += 1)
+      blocked.add(`${x},${y}`);
+}
+
+function plannedSleepingObstructions(state, blocked) {
+  const plan = state.village.development?.masterPlan;
+  for (const facility of plan?.plannedFacilities ?? [])
+    if (facility.site) blockArea(blocked, facility.site);
+  for (const lot of plan?.spatialReservations?.futureLots ?? [])
+    blockArea(blocked, lot);
+  for (const road of plan?.spatialReservations?.roadCorridors ?? [])
+    blockArea(blocked, road);
+  for (const field of plan?.fieldBoundaries ?? []) blockArea(blocked, field);
+}
+
+function sleepingObstructions(state, residentId) {
+  const blocked = new Set();
+  plannedSleepingObstructions(state, blocked);
+  for (const building of state.village.buildings ?? []) blockArea(blocked, building);
+  for (const fixture of state.village.fixtures ?? [])
+    if (fixture.assignedActorId !== residentId) blockArea(blocked, fixture);
+  for (const job of state.village.jobs ?? [])
+    for (const element of job.plan?.constructionWork?.elements ?? [])
+      if (element.position) blocked.add(`${element.position.x},${element.position.y}`);
+  return blocked;
+}
+
+function bedrollPositionOpen(position, blocked) {
+  return [0, 1].every((offset) => !blocked.has(`${position.x + offset},${position.y}`));
+}
+
+function clearOutdoorBedrollPosition(state, resident, preferred) {
+  const blocked = sleepingObstructions(state, resident.id);
+  for (let radius = 0; radius <= 64; radius += 1)
+    for (let dy = -radius; dy <= radius; dy += 1)
+      for (let dx = -radius; dx <= radius; dx += 1) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
+        const position = { x: preferred.x + dx, y: preferred.y + dy };
+        if (bedrollPositionOpen(position, blocked)) return position;
+      }
+  return preferred;
+}
+
 function workshopBedrollPosition(building, index) {
   return {
     x: building.x + 1 + (index % 4) * 2,
@@ -69,7 +114,11 @@ function foundingBedrollPlacement(state, resident, index) {
         "A founder's bedroll laid out inside the completed lumber workshop until a permanent home is ready.",
     };
   return {
-    position: FOUNDING_BEDROLL_POSITIONS[index],
+    position: clearOutdoorBedrollPosition(
+      state,
+      resident,
+      FOUNDING_BEDROLL_POSITIONS[index],
+    ),
     buildingId: null,
     shelterClass: "temporary_outdoor",
     description:

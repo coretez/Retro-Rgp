@@ -554,7 +554,7 @@ export const DEVELOPMENT_JOB_TEMPLATES = Object.freeze([
 const PROJECTS = Object.freeze([
   ["lumber_yard", "Establish a lumber yard", [], 4],
   ["farmstead", "Establish farms and pasture", ["lumber_yard"], 12],
-  ["housing", "Build resident homes", ["lumber_yard"], 8],
+  ["housing", "Build resident homes", [], 8],
   ["communal_kitchen", "Build a communal kitchen", ["farmstead"], 6],
 ]);
 
@@ -3166,13 +3166,13 @@ function foundingAlternatives(evidence) {
     },
     {
       key: "household_homes",
-      feasible: evidence.lumberYardOperational,
+      feasible: true,
       timeToBenefitTicks: firstHomeTicks,
       fullCoverageTicks: fullHousingTicks,
       lumberRequired: 1590,
       permanentBedCapacity: evidence.residentCount,
       limitation:
-        "Permanent homes require the lumber yard and sustained crews.",
+        "Permanent homes require outdoor log sawing and sustained crews.",
     },
   ];
 }
@@ -3196,11 +3196,11 @@ function foundingDoctrine(evidence, alternatives) {
           ? "Keep emergency shelter and food operating."
           : "Stabilize camp while bootstrapping construction lumber."
         : "Replace temporary bedrolls with roofed household beds.",
-    nextCapitalStep: !evidence.lumberYardOperational
-      ? "lumber_yard"
+    nextCapitalStep: evidence.homelessResidents
+      ? "housing"
       : !evidence.farmsteadOperational || !evidence.seasonalPlantingUnderway
         ? "farmstead"
-        : "housing",
+        : "lumber_yard",
     timeToBenefitTicks: selected.timeToBenefitTicks,
   };
 }
@@ -3273,20 +3273,16 @@ function villagePriorities(state) {
     ).length,
     foodCritical = foodReserve < survivalFoodTarget || hungryResidents > 0,
     plantingUnderway = seasonalPlantingUnderway(state),
-    farmProjectUnderway = state.village.jobs.some(
-      (job) =>
-        job.jobType === "build_farmstead" &&
-        !["completed", "cancelled"].includes(job.status),
-    ),
     farmEstablished = hasFarm && plantingUnderway,
-    housingReady = plantingUnderway && (hasFarm || farmProjectUnderway),
     foodSecure = farmEstablished && foodReserve >= stableFoodTarget;
   return [
     priority(
       "lumber_infrastructure",
       "Secure building lumber",
-      hasYard ? 35 : 130,
-      hasYard ? `${lumber}/12 lumber stored` : "Lumber yard not operational",
+      hasYard ? 35 : housingComplete ? 130 : 105,
+      hasYard
+        ? `${lumber}/12 lumber stored`
+        : "Outdoor saw work can supply shelter before the permanent yard",
     ),
     priority(
       "housing",
@@ -3294,13 +3290,9 @@ function villagePriorities(state) {
       founding
         ? housingComplete
           ? 25
-          : hasYard && housingReady && !foodCritical
-            ? hasFarm
-              ? 125
-              : 130
-            : hasYard
-              ? 60
-              : 110
+          : starvingResidents
+            ? 135
+            : 142
         : housingComplete
           ? 25
           : hasYard
@@ -3309,8 +3301,6 @@ function villagePriorities(state) {
       `${housedResidents}/${residents} residents have roofed household housing with beds`,
       founding
         ? [
-            ...(hasYard ? [] : ["lumber_yard"]),
-            ...(plantingUnderway ? [] : ["seasonal_planting"]),
             ...(foodCritical ? ["one_day_food_reserve"] : []),
           ]
         : hasYard

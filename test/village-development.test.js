@@ -43,7 +43,7 @@ test("R1 founding strategy compares shelter doctrines before capital work", () =
   const assessment = assessFoundingStrategy(state);
   assert.equal(assessment.status, "ready");
   assert.equal(assessment.selectedDoctrine.key, "minimal_camp");
-  assert.equal(assessment.selectedDoctrine.nextCapitalStep, "lumber_yard");
+  assert.equal(assessment.selectedDoctrine.nextCapitalStep, "housing");
   assert.deepEqual(
     assessment.alternatives.map((alternative) => alternative.key),
     ["minimal_camp", "communal_shelter", "household_homes"],
