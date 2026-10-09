@@ -7265,3 +7265,33 @@ in progress until the corrected visible run proves physical hauling, field
 work, harvest, storage, and sustained food reserves. R5 remains under scheduler
 validation, R6 remains unproven in the clean run, and R8 remains in progress
 behind the same natural town-build and visual acceptance gates.
+
+## Validation checkpoint 175 / terrain truth and founding readiness
+
+The visible run was paused at tick 1,026 (Day 1, 16:15) and checked from its
+live Unity projection rather than inferred from aggregate success flags. The
+terrain contract is failing. Storage zone
+`98726110-90ff-5d70-9578-190f780528b2` spans 44 cells, 35 of which currently
+project as mountain mass, exposed stone, or rock. Red deer 3 is also physically
+projected at `(-151,333)` on `outdoor_rock`. Storage selection and wildlife
+movement therefore do not yet share the mountain passability contract.
+
+Housing coverage exists only as plans. All ten founders belong to one of three
+households: Holt-Eder has four residents, Brand-Venn has three, and Weiss-Voss
+has three. A distinct named farmhouse footprint and its fixtures are present
+for every household, but every founder remains homeless and all three
+farmhouses remain at the planned stage with no delivered material. This is
+complete household planning, not completed housing.
+
+The two 10-by-10 field designations also exist, but they are not both ready.
+The vegetable field reports `cleared` with zero designated trees remaining;
+its protective fence and gate are still planned. The grain field reports
+`clearing` with 41 designated trees remaining, and its fence and gate are also
+still planned. Consequently the current run has field layout coverage but has
+not completed field preparation or protection.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 is
+failing terrain-valid storage and still awaits completed protected fields and
+the natural harvest loop. R5 remains under scheduler validation, R6 remains
+unproven in this clean run, and R8 remains in progress with mountain
+passability now an explicit blocking defect.
