@@ -94,8 +94,16 @@ const stock = (state, key) =>
   state.village.stockpiles.find((item) => item.key === key);
 
 function emptyFoodReserve(state) {
-  const keys = ["inn_meals", "inn_fish", "wild_forage", "farm_grain",
-    "farm_vegetables", "dairy_milk", "pasture_meat", "farm_eggs"];
+  const keys = [
+    "inn_meals",
+    "inn_fish",
+    "wild_forage",
+    "farm_grain",
+    "farm_vegetables",
+    "dairy_milk",
+    "pasture_meat",
+    "farm_eggs",
+  ];
   for (const key of keys) stock(state, key).quantity = 0;
 }
 
@@ -375,11 +383,11 @@ test("R1 founders establish fire and fish but cannot hunt without a bow", () => 
   const state = newRogueRun(input);
   applyRogueTurn(state, { kind: "wait" });
   const open = (jobType) =>
-      state.village.jobs.find(
-        (job) =>
-          job.jobType === jobType &&
-          !["completed", "cancelled"].includes(job.status),
-      );
+    state.village.jobs.find(
+      (job) =>
+        job.jobType === jobType &&
+        !["completed", "cancelled"].includes(job.status),
+    );
   assert.ok(open("build_campfire"));
   assert.ok(open("catch_fish"));
   assert.equal(open("hunt_game"), undefined);
@@ -705,7 +713,8 @@ test("R5 a personal survival need returns shared work to its queue", () => {
   applyRogueTurn(state, { kind: "wait" });
 
   const meal = state.village.jobs.find(
-    (job) => job.jobType === "eat_meal" && job.plan.ownerActorId === starving.id,
+    (job) =>
+      job.jobType === "eat_meal" && job.plan.ownerActorId === starving.id,
   );
   assert.equal(shared.status, "available");
   assert.equal(shared.assignedActorId, null);
@@ -737,12 +746,17 @@ test("R4 zero food keeps a three-person founding survival crew awake", () => {
       )
       .map((job) => job.assignedActorId),
   );
-  assert.ok(crew.size >= 3, `expected 3 emergency workers, received ${crew.size}`);
+  assert.ok(
+    crew.size >= 3,
+    `expected 3 emergency workers, received ${crew.size}`,
+  );
 });
 
 test("R4 recoverable fatigue cannot thrash active emergency food work", () => {
   const state = newRogueRun(input),
-    worker = state.village.npcStates.find((actor) => actor.personKey === "porter"),
+    worker = state.village.npcStates.find(
+      (actor) => actor.personKey === "porter",
+    ),
     target = villageWorldObjectAt(state, -14, 18, false);
   satisfyFounders(state);
   emptyFoodReserve(state);
@@ -767,7 +781,9 @@ test("R4 recoverable fatigue cannot thrash active emergency food work", () => {
 
 test("R4 sole emergency cook wakes after the minimum crew is staffed", () => {
   const state = newRogueRun(input),
-    cook = state.village.npcStates.find((actor) => actor.personKey === "innkeeper"),
+    cook = state.village.npcStates.find(
+      (actor) => actor.personKey === "innkeeper",
+    ),
     target = villageWorldObjectAt(state, -14, 18, false);
   satisfyFounders(state);
   emptyFoodReserve(state);
@@ -1051,8 +1067,12 @@ test("R1 founders cook caught fish at the campfire instead of eating it raw", ()
 
 test("R1 critical hunger interrupts lumber work for emergency cooking", () => {
   const state = newRogueRun(input),
-    hungry = state.village.npcStates.find((resident) => resident.personKey === "farmer"),
-    cook = state.village.npcStates.find((resident) => resident.personKey === "innkeeper");
+    hungry = state.village.npcStates.find(
+      (resident) => resident.personKey === "farmer",
+    ),
+    cook = state.village.npcStates.find(
+      (resident) => resident.personKey === "innkeeper",
+    );
   state.village.facilities.push("survival_camp", "lumber_yard", "farmstead");
   establishSeasonalPlanting(state);
   satisfyFounders(state);
@@ -1138,7 +1158,8 @@ test("R1 urgent eating outranks collecting more emergency food", () => {
   starving.life.needs.hunger = 0;
   applyRogueTurn(state, { kind: "wait" });
   const meal = state.village.jobs.find(
-    (job) => job.jobType === "eat_meal" && job.plan.ownerActorId === starving.id,
+    (job) =>
+      job.jobType === "eat_meal" && job.plan.ownerActorId === starving.id,
   );
   assert.ok(meal);
   assert.ok(["reserved", "active"].includes(meal.status));
@@ -1155,7 +1176,8 @@ test("R1 fresh milk is emergency food when meals and forage are gone", () => {
   starving.life.needs.hunger = 0;
   applyRogueTurn(state, { kind: "wait" });
   const meal = state.village.jobs.find(
-    (job) => job.jobType === "eat_meal" && job.plan.ownerActorId === starving.id,
+    (job) =>
+      job.jobType === "eat_meal" && job.plan.ownerActorId === starving.id,
   );
   assert.ok(meal);
   assert.equal(meal.plan.foodStockpileKey, "dairy_milk");
@@ -1201,7 +1223,9 @@ test("R2 a homeless founder can sleep in an assigned physical bedroll", () => {
 
 test("R2 the mayor retires only bedrolls replaced by permanent beds", () => {
   const state = newRogueRun(input),
-    household = state.village.households.find((entry) => entry.key === "farmer"),
+    household = state.village.households.find(
+      (entry) => entry.key === "farmer",
+    ),
     buildingId = "completed-family-home",
     events = [];
   household.memberIds.forEach((residentId, index) =>
@@ -1234,13 +1258,16 @@ test("R2 the mayor retires only bedrolls replaced by permanent beds", () => {
       (fixture) => fixture.bedType === "bedroll",
     ),
     retired = events.filter((event) => event.type === "bedroll_retired"),
-    reeve = state.village.npcStates.find((resident) => resident.personKey === "reeve");
+    reeve = state.village.npcStates.find(
+      (resident) => resident.personKey === "reeve",
+    );
   assert.equal(bedrolls.length, 7);
   assert.equal(retired.length, 3);
   assert.ok(retired.every((event) => event.decidedByActorId === reeve.id));
   assert.ok(
     household.memberIds.every(
-      (residentId) => !bedrolls.some((bedroll) => bedroll.assignedActorId === residentId),
+      (residentId) =>
+        !bedrolls.some((bedroll) => bedroll.assignedActorId === residentId),
     ),
   );
   assert.deepEqual(state.village.sleepingPlaceInventory, {
@@ -1253,7 +1280,10 @@ test("R2 the mayor retires only bedrolls replaced by permanent beds", () => {
     retiredBedrolls: 3,
   });
   ensureFoundingSleepingPlaces(state, events);
-  assert.equal(events.filter((event) => event.type === "bedroll_retired").length, 3);
+  assert.equal(
+    events.filter((event) => event.type === "bedroll_retired").length,
+    3,
+  );
 });
 
 test("R1 homeless founders move their bedrolls into a completed workshop", () => {
@@ -1712,10 +1742,7 @@ test("R8 livestock and wildlife cannot enter mountains or mine chambers", () => 
     state.tick = 12;
     state.village.clock.hour = 10;
     const before = new Map(
-      livingAnimals(state).map((animal) => [
-        animal.id,
-        { ...animal.position },
-      ]),
+      livingAnimals(state).map((animal) => [animal.id, { ...animal.position }]),
     );
     advanceVillageAnimals(state, () => blockedTile);
     for (const animal of livingAnimals(state))
@@ -2496,25 +2523,23 @@ test("M-11.1 farmstead construction raises every fence segment before pasture co
     farmJob ??= state.village.jobs.find(
       (job) => job.jobType === "build_farmstead",
     );
-    const cells = turn % 4 === 0 ? rogueUnityView(state).map.cells : [],
-      fenceCells = cells.filter(
-        (cell) => cell.objectKind === "construction_fence",
-      );
+    const elements = farmJob?.plan.constructionWork?.elements ?? [],
+      fenceCells = elements.filter((element) => element.kind === "fence"),
+      gateCells = elements.filter((element) => element.kind === "gate");
     plannedFenceSeen ||= fenceCells.some(
-      (cell) => cell.constructionStage === "planned",
+      (element) => element.status === "planned",
     );
     deliveredFenceSeen ||= fenceCells.some(
-      (cell) => cell.constructionStage === "material_delivered",
+      (element) => element.materialDelivered,
     );
     framingFenceSeen ||= fenceCells.some(
-      (cell) => cell.constructionStage === "in_progress",
+      (element) => element.status === "in_progress",
     );
-    completedFenceSeen ||= cells.some((cell) => cell.objectKind === "fence");
-    const gateCells = cells.filter(
-      (cell) => cell.objectKind === "construction_gate",
+    completedFenceSeen ||= fenceCells.some(
+      (element) => element.status === "complete",
     );
     plannedGateSeen ||= gateCells.some(
-      (cell) => cell.constructionStage === "planned",
+      (element) => element.status === "planned",
     );
     const incompletePastureFence =
       farmJob?.plan.constructionWork?.elements.some(
@@ -2645,8 +2670,15 @@ test("R8 architect stages family holdings after the founding commons", () => {
       plan.householdHoldings.map((holding) => [holding.householdKey, holding]),
     );
   assert.deepEqual([...holdings.keys()], ["farmer", "brand", "woodcutter"]);
-  assert.deepEqual(holdings.get("brand").animalSpecies, ["cow", "sheep", "dog"]);
-  assert.deepEqual(holdings.get("woodcutter").animalSpecies, ["pig", "chicken"]);
+  assert.deepEqual(holdings.get("brand").animalSpecies, [
+    "cow",
+    "sheep",
+    "dog",
+  ]);
+  assert.deepEqual(holdings.get("woodcutter").animalSpecies, [
+    "pig",
+    "chicken",
+  ]);
   assert.ok(
     plan.householdHoldings.every(
       (holding) =>
@@ -2660,10 +2692,7 @@ test("R8 architect stages family holdings after the founding commons", () => {
     plan.settlementEvolution.commonsTransition,
     "retain_until_replacement_housing_is_operational",
   );
-  assert.equal(
-    plan.settlementEvolution.stages.at(-1).status,
-    "out_of_scope",
-  );
+  assert.equal(plan.settlementEvolution.stages.at(-1).status, "out_of_scope");
 });
 
 test("R8 completed founder homes release household boundary surveys", () => {
@@ -2692,7 +2721,9 @@ test("R8 completed founder homes release household boundary surveys", () => {
     ),
   );
   assert.equal(plan.settlementEvolution.currentStage, "family_hamlet");
-  assert.ok(events.some((event) => event.type === "household_holdings_released"));
+  assert.ok(
+    events.some((event) => event.type === "household_holdings_released"),
+  );
 });
 
 test("R1 food work posts the communal kitchen after housing completes", () => {
@@ -2703,7 +2734,9 @@ test("R1 food work posts the communal kitchen after housing completes", () => {
       status: "active",
       priorityKey: "food_security",
       jobTypes: ["grow_grain", "grow_vegetables", "hunt_game"],
-      assignments: { crewActorIds: state.village.npcStates.map(({ id }) => id) },
+      assignments: {
+        crewActorIds: state.village.npcStates.map(({ id }) => id),
+      },
     };
   state.village.facilities.push("lumber_yard", "farmstead", "housing");
   stock(state, "hunting_bows").quantity = 1;
@@ -2818,6 +2851,30 @@ test("R1 field surveys clear a two-cell access and defensive sightline apron", (
   }
 });
 
+test("R4 a core-ready farm clears its apron before the first field fence", () => {
+  const state = newRogueRun(input);
+  state.village.facilities.push("lumber_yard");
+  stock(state, "lumber_yard_lumber").quantity = 500;
+  applyRogueTurn(state, { kind: "wait" });
+  const farm = state.village.jobs.find(
+    (job) => job.jobType === "build_farmstead",
+  );
+  for (const element of farm.plan.constructionWork.elements)
+    if (element.enclosurePurpose !== "field") element.status = "complete";
+  applyRogueTurn(state, { kind: "wait" });
+  const fences = farm.plan.constructionWork.elements.filter(
+      (element) =>
+        element.kind === "fence" && element.enclosurePurpose === "field",
+    ),
+    clearing = state.village.jobs.filter(
+      (job) => job.jobType === "clear_field_tree" && job.status !== "cancelled",
+    );
+  assert.ok(farm);
+  assert.ok(fences.every((element) => element.status !== "complete"));
+  assert.ok(clearing.length > 0);
+  assert.ok(clearing.every((job) => job.plan.fieldBoundaryKey));
+});
+
 test("R1 Unity shows surveyed field boundaries without hiding their trees", () => {
   const state = newRogueRun(input);
   applyRogueTurn(state, { kind: "wait" });
@@ -2895,7 +2952,8 @@ test("M-11.1 founding crews sustain an overlapping skill pipeline", () => {
     if (hauling) recent.set("hauling", { job: hauling, turn });
     if (building) recent.set("building", { job: building, turn });
     const observations = [...recent.values()],
-      span = Math.max(...observations.map((item) => item.turn)) -
+      span =
+        Math.max(...observations.map((item) => item.turn)) -
         Math.min(...observations.map((item) => item.turn));
     if (observations.length === 3 && span <= 30)
       proof = Object.fromEntries(
@@ -3129,7 +3187,8 @@ test("R1 fishing requires a pier position beside an actual water cell", () => {
     ),
     view = rogueUnityView(state),
     water = view.map.cells.find(
-      (cell) => cell.x === job.targetPosition.x && cell.y === job.targetPosition.y,
+      (cell) =>
+        cell.x === job.targetPosition.x && cell.y === job.targetPosition.y,
     );
   assert.equal(water.tile, "outdoor_water");
   assert.deepEqual(job.plan.fishingPosition, { x: -1, y: 16 });
@@ -3942,8 +4001,7 @@ test("M-11.1 founders construct a growth-capable home with real beds", () => {
     state.village.npcStates
       .filter((resident) => !residence.occupantIds.includes(resident.id))
       .every(
-        (resident) =>
-          !beds.some((bed) => bed.assignedActorId === resident.id),
+        (resident) => !beds.some((bed) => bed.assignedActorId === resident.id),
       ),
   );
   assert.equal(chairs.length, 3);
@@ -4030,9 +4088,7 @@ test("R1 housing already underway queues the next household despite low lumber",
   establishSeasonalPlanting(state);
   stock(state, "lumber_yard_lumber").quantity = 500;
   applyRogueTurn(state, { kind: "wait" });
-  const first = state.village.jobs.find(
-      (job) => job.jobType === "build_house",
-    ),
+  const first = state.village.jobs.find((job) => job.jobType === "build_house"),
     order = state.village.development.workOrders.find(
       (candidate) => candidate.id === state.village.development.activeOrderId,
     );

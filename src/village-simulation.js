@@ -508,7 +508,8 @@ export function analyzeVillagePath(
   if (direct.ok) return summarizeVillagePath(direct, terrainAt);
   if (!allowTreeClearing) return { ...direct, readiness: "blocked" };
   const options = villageRouteOptions(npc, target, terrainAt, adjacent);
-  options.isBlocked = (position) => accessPlanningCost(terrainAt(position)) == null;
+  options.isBlocked = (position) =>
+    accessPlanningCost(terrainAt(position)) == null;
   options.terrainCost = (position) => accessPlanningCost(terrainAt(position));
   const cleared = weightedRoute(options);
   return cleared.ok
@@ -1885,7 +1886,8 @@ function readyEmergencyFoodWork(state, actor) {
 function deferRecoveryForFoodCrew(state, actor, job) {
   if (availableSurvivalFood(state) || !job.plan?.lifeJob) return false;
   if (!["fatigue", "safety"].includes(job.plan.need)) return false;
-  if (actor.life.needs[job.plan.need] <= SURVIVAL_DANGER_THRESHOLD) return false;
+  if (actor.life.needs[job.plan.need] <= SURVIVAL_DANGER_THRESHOLD)
+    return false;
   if (requiredEmergencyFoodSpecialist(state, actor)) return true;
   if (activeEmergencyFoodCrew(state) >= FOUNDING_EMERGENCY_FOOD_CREW)
     return false;
@@ -4960,7 +4962,8 @@ function syncForgeOperations(state) {
 function syncFishingHutOperations(state) {
   if (!state.village.facilities.includes("fishing_hut")) return null;
   const building = state.village.buildings.find(
-      (candidate) => candidate.key === "fishing_hut" && candidate.status === "complete",
+      (candidate) =>
+        candidate.key === "fishing_hut" && candidate.status === "complete",
     ),
     fixtures = state.village.fixtures.filter(
       (fixture) => fixture.buildingId === building?.id,
@@ -5851,11 +5854,11 @@ function cancelStaleLifeJob(state, actor, current, recommended, events) {
 function unavailableFoodCannotReplaceRecovery(state, actor, current, need) {
   return Boolean(
     need === "hunger" &&
-      !availableSurvivalFood(state) &&
-      current?.plan?.lifeJob &&
-      ["fatigue", "safety"].includes(current.plan.need) &&
-      actor.life.needs[current.plan.need] <= SURVIVAL_WARNING_THRESHOLD &&
-      ["reserved", "active"].includes(current.status),
+    !availableSurvivalFood(state) &&
+    current?.plan?.lifeJob &&
+    ["fatigue", "safety"].includes(current.plan.need) &&
+    actor.life.needs[current.plan.need] <= SURVIVAL_WARNING_THRESHOLD &&
+    ["reserved", "active"].includes(current.status),
   );
 }
 
@@ -6235,9 +6238,11 @@ function postProductionJob(state, template, context, events, planDetails = {}) {
   );
   if (existing && !reusableRequirementMatches(existing, template)) {
     cancelJob(state, existing, "equipment_requirement_changed");
-    events.push(jobEvent(state, "job_cancelled", existing, {
-      reason: "equipment_requirement_changed",
-    }));
+    events.push(
+      jobEvent(state, "job_cancelled", existing, {
+        reason: "equipment_requirement_changed",
+      }),
+    );
     existing = null;
   }
   if (existing) {
@@ -6356,7 +6361,9 @@ function assignCropCrewSlots(jobs) {
   const used = new Set(
     jobs.map((job) => job.plan.parallelSlot).filter(Number.isInteger),
   );
-  for (const job of jobs.filter((candidate) => !Number.isInteger(candidate.plan.parallelSlot))) {
+  for (const job of jobs.filter(
+    (candidate) => !Number.isInteger(candidate.plan.parallelSlot),
+  )) {
     let slot = 0;
     while (used.has(slot)) slot += 1;
     job.plan.parallelSlot = slot;
@@ -6570,8 +6577,7 @@ function foundingMealEmergency(state) {
     state.village.scenario === "founding" &&
     state.village.npcStates.some(
       (resident) =>
-        resident.life?.status !== "dead" &&
-        resident.life.needs.hunger <= 25,
+        resident.life?.status !== "dead" && resident.life.needs.hunger <= 25,
     )
   );
 }
@@ -6613,8 +6619,7 @@ function foundingFishingDuty(state, context) {
   const installed = installedFishingDuty(state, fisher, context);
   if (installed) return installed;
   const site = bestFishingSite(state, fisher, context);
-  if (site)
-    return { targetPosition: site.water, fishingPosition: site.bank };
+  if (site) return { targetPosition: site.water, fishingPosition: site.bank };
   const nearby = nearbyReachableWaterDuty(state, fisher, context);
   return nearby
     ? {
@@ -6629,7 +6634,12 @@ function installedFishingDuty(state, fisher, context) {
     (fixture) => fixture.role === "fishing_jetty" && fixture.waterCell,
   );
   if (!jetty?.bankPosition) return null;
-  const route = analyzeVillagePath(state, fisher, jetty.bankPosition, context.terrainAt);
+  const route = analyzeVillagePath(
+    state,
+    fisher,
+    jetty.bankPosition,
+    context.terrainAt,
+  );
   return route.ok
     ? {
         targetPosition: { x: jetty.x, y: jetty.y },
@@ -6640,7 +6650,9 @@ function installedFishingDuty(state, fisher, context) {
 
 function ensureRegionalFishingJetty(state, duty) {
   if (geologyPlanContext(state).site.mode !== "regional_v3" || !duty) return;
-  if (state.village.fixtures.some((fixture) => fixture.role === "fishing_jetty"))
+  if (
+    state.village.fixtures.some((fixture) => fixture.role === "fishing_jetty")
+  )
     return;
   state.village.fixtures.push({
     id: namedUuid(state.id, "regional-fishing-jetty"),
@@ -6692,11 +6704,11 @@ function validFishingDuty(state, fisher, job, context) {
     occupant = bank && villageActorAt(state, bank);
   return Boolean(
     job.plan?.waterHarvest &&
-      bank &&
-      fishingWaterCell(state, job.targetPosition, context) &&
-      villageMovementCost(context.terrainAt(bank)) != null &&
-      (!occupant || occupant.id === job.assignedActorId) &&
-      planVillageRoute(state, fisher, bank, context.terrainAt, false).ok,
+    bank &&
+    fishingWaterCell(state, job.targetPosition, context) &&
+    villageMovementCost(context.terrainAt(bank)) != null &&
+    (!occupant || occupant.id === job.assignedActorId) &&
+    planVillageRoute(state, fisher, bank, context.terrainAt, false).ok,
   );
 }
 
@@ -6725,10 +6737,15 @@ function foundingFishingSites(state, context) {
 }
 
 function regionalFishingSites(state, context) {
-  const source = state.village.development?.masterPlan?.regionalContext
-      ?.surveyedSources?.find((item) => item.resources?.includes("fish")),
-    fisher = state.village.npcStates.find((actor) => actor.personKey === "fisher"),
-    origin = state.village.development?.masterPlan?.regionalContext?.site?.origin;
+  const source =
+      state.village.development?.masterPlan?.regionalContext?.surveyedSources?.find(
+        (item) => item.resources?.includes("fish"),
+      ),
+    fisher = state.village.npcStates.find(
+      (actor) => actor.personKey === "fisher",
+    ),
+    origin =
+      state.village.development?.masterPlan?.regionalContext?.site?.origin;
   if (!source || !fisher) return [];
   const sites = [],
     center = origin
@@ -6823,7 +6840,10 @@ function surveyedWaterDuty(state, actor, context, regional) {
     state.tick,
   );
   return route.readiness === "ready"
-    ? { targetPosition: survey.targetPosition, accessPosition: survey.accessPosition }
+    ? {
+        targetPosition: survey.targetPosition,
+        accessPosition: survey.accessPosition,
+      }
     : null;
 }
 
@@ -6860,9 +6880,11 @@ function cancelUnreachableFishing(state, fishingDuty, events) {
       !["completed", "cancelled"].includes(candidate.status),
   )) {
     if (!cancelJob(state, job, "fishing_target_unreachable")) continue;
-    events.push(jobEvent(state, "job_cancelled", job, {
-      reason: "fishing_target_unreachable",
-    }));
+    events.push(
+      jobEvent(state, "job_cancelled", job, {
+        reason: "fishing_target_unreachable",
+      }),
+    );
   }
 }
 
@@ -6948,7 +6970,10 @@ function postResidentEconomyJobs(state, context, events) {
           : foundingCook
             ? {
                 ...template,
-                priority: Math.max(template.priority, foodReserveCritical ? 140 : 120),
+                priority: Math.max(
+                  template.priority,
+                  foodReserveCritical ? 140 : 120,
+                ),
                 targetPosition: kitchen
                   ? {
                       x: kitchen.x + kitchen.width - 1,
@@ -6961,7 +6986,10 @@ function postResidentEconomyJobs(state, context, events) {
               ? {
                   ...template,
                   ...(netFishing ? netFishingTemplate(state) : {}),
-                  priority: Math.max(template.priority, foodReserveCritical ? 138 : 118),
+                  priority: Math.max(
+                    template.priority,
+                    foodReserveCritical ? 138 : 118,
+                  ),
                   foodReserveDuty: foodReserveCritical,
                   emergencyFoodDuty: foodReserveCritical,
                 }
@@ -8323,6 +8351,7 @@ function maintainFieldClearance(state, templates, context, events, order) {
     hasYard = state.village.facilities.includes("lumber_yard"),
     established =
       state.village.facilities.includes("farmstead") ||
+      farmsteadReadyForFields(state) ||
       hasConstructedFieldBoundary(state);
   if (!pending || !hasYard || !established) return;
   postForestryJobs(
@@ -8345,8 +8374,8 @@ function waterAccessEmergency(state) {
   const survey = geologyPlanContext(state).localWaterAccessSurvey;
   return Boolean(
     cropWaterEmergency(state) &&
-      survey?.nearestWaterPosition &&
-      !survey?.targetPosition,
+    survey?.nearestWaterPosition &&
+    !survey?.targetPosition,
   );
 }
 
@@ -8895,9 +8924,11 @@ function cancelUnequippedLegacyHunts(state, templates, events) {
     const template = templates[job.jobType];
     if (template && reusableRequirementMatches(job, template)) continue;
     if (!cancelJob(state, job, "equipment_requirement_changed")) continue;
-    events.push(jobEvent(state, "job_cancelled", job, {
-      reason: "equipment_requirement_changed",
-    }));
+    events.push(
+      jobEvent(state, "job_cancelled", job, {
+        reason: "equipment_requirement_changed",
+      }),
+    );
   }
 }
 
@@ -8931,7 +8962,9 @@ function reachableHuntingTarget(state, template, context) {
 
 function cancelUnreachableHunt(state, context, events) {
   const open = openHuntingJob(state),
-    hunter = state.village.npcStates.find((actor) => actor.personKey === "fisher");
+    hunter = state.village.npcStates.find(
+      (actor) => actor.personKey === "fisher",
+    );
   if (!open || !hunter || !["blocked", "available"].includes(open.status))
     return;
   const route = planVillageRoute(
@@ -9194,6 +9227,17 @@ function farmsteadProjectPosted(state) {
   );
 }
 
+function farmsteadReadyForFields(state) {
+  const project = state.village.jobs.find(
+    (job) =>
+      job.jobType === "build_farmstead" &&
+      !["completed", "cancelled"].includes(job.status),
+  );
+  return Boolean(
+    project?.plan?.constructionWork && farmsteadCoreComplete(project),
+  );
+}
+
 function livingDomesticAnimals(state) {
   return livingAnimals(state).filter(
     (animal) => animalSpecies(animal.species)?.domestic,
@@ -9438,9 +9482,11 @@ function cancelUnreachableWaterCollection(state, waterDuty, events) {
       !["completed", "cancelled"].includes(candidate.status),
   )) {
     if (!cancelJob(state, job, "water_source_unreachable")) continue;
-    events.push(jobEvent(state, "job_cancelled", job, {
-      reason: "water_source_unreachable",
-    }));
+    events.push(
+      jobEvent(state, "job_cancelled", job, {
+        reason: "water_source_unreachable",
+      }),
+    );
   }
 }
 
@@ -9521,13 +9567,7 @@ function postVillageDevelopmentJobs(state, context, events) {
         candidate.status === "active",
     );
   if (hasYard) ensureFoundingHousingLayout(state, context, events);
-  postEmergencyForagingJob(
-    state,
-    templates,
-    context,
-    events,
-    order,
-  );
+  postEmergencyForagingJob(state, templates, context, events, order);
   postFoundingCampfireJob(state, templates.build_campfire, context, events);
   if (
     order?.priorityKey === "food_security" &&
@@ -9768,9 +9808,11 @@ function cancelResolvedForaging(state, template, events) {
       !["completed", "cancelled"].includes(candidate.status),
   )) {
     if (!cancelJob(state, job, "emergency_food_reserve_restored")) continue;
-    events.push(jobEvent(state, "job_cancelled", job, {
-      reason: "emergency_food_reserve_restored",
-    }));
+    events.push(
+      jobEvent(state, "job_cancelled", job, {
+        reason: "emergency_food_reserve_restored",
+      }),
+    );
   }
 }
 
@@ -9794,7 +9836,8 @@ function foragePathCost(state, workers, position, context) {
 
 function cancelUnreachableForaging(state, jobs, workers, context, events) {
   for (const job of jobs) {
-    if (forageRouteExists(state, workers, job.targetPosition, context)) continue;
+    if (forageRouteExists(state, workers, job.targetPosition, context))
+      continue;
     cancelJob(state, job, "forage_target_unreachable");
     events.push(
       jobEvent(state, "job_cancelled", job, {
@@ -9876,9 +9919,7 @@ function postEmergencyForagingJob(state, templates, context, events, order) {
       .sort((left, right) => left.id.localeCompare(right.id)),
     generalWorkers = eligibleWorkers.filter(
       (actor) =>
-        !["fisher", "innkeeper", "farmer", "herder"].includes(
-          actor.personKey,
-        ),
+        !["fisher", "innkeeper", "farmer", "herder"].includes(actor.personKey),
     ),
     workerIds = (generalWorkers.length ? generalWorkers : eligibleWorkers).map(
       (actor) => actor.id,
@@ -11658,9 +11699,11 @@ function releaseSharedWorkForLifeNeed(state, job, actor, incoming, events) {
   transitionJob(job, "available", state.tick, "personal_survival_need");
   job.nextAssignmentAtTick = state.tick + 1;
   actor.workState = "available";
-  events.push(jobEvent(state, "job_reopened", job, {
-    reason: "personal_survival_need",
-  }));
+  events.push(
+    jobEvent(state, "job_reopened", job, {
+      reason: "personal_survival_need",
+    }),
+  );
   return true;
 }
 
@@ -12030,8 +12073,7 @@ function higherPriorityReadyJob(state, actor, current, terrainAt) {
     .sort(
       (left, right) =>
         actorSkillPriority(state, actor, left) -
-          actorSkillPriority(state, actor, right) ||
-        jobOrder(left, right),
+          actorSkillPriority(state, actor, right) || jobOrder(left, right),
     )[0];
 }
 

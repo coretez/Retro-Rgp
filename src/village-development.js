@@ -601,13 +601,15 @@ export const SPECIALIST_PROPOSAL_DEFINITIONS = Object.freeze({
     requesterPersonKey: "fisher",
     operatorPersonKey: "fisher",
     facilityType: "fishing_hut",
-    reason: "The settlement needs dependable river harvests beyond hook fishing.",
+    reason:
+      "The settlement needs dependable river harvests beyond hook fishing.",
     expectedBenefit:
       "Produces reusable fishing nets and increases each successful river harvest.",
     lumberBudget: 260,
     laborUnits: 9000,
     acceptableDelayTicks: 600,
-    rejectionConsequence: "The village remains dependent on low-yield pole fishing.",
+    rejectionConsequence:
+      "The village remains dependent on low-yield pole fishing.",
     satisfiedByBuildings: Object.freeze(["fishing_hut"]),
     requirements: Object.freeze({
       rooms: Object.freeze(["covered net loft", "fish preparation room"]),
@@ -1249,6 +1251,46 @@ export const FOUNDER_FACILITY_PLANS = Object.freeze({
         width: 10,
         height: 6,
         material: "timber",
+      }),
+    ]),
+    storageArea: Object.freeze({
+      x: -33,
+      y: 27,
+      width: 4,
+      height: 5,
+    }),
+    fixtures: Object.freeze([
+      Object.freeze({
+        key: "barn_grain_bins",
+        role: "grain_storage",
+        x: -33,
+        y: 27,
+        width: 2,
+        height: 2,
+      }),
+      Object.freeze({
+        key: "barn_seed_bins",
+        role: "seed_storage",
+        x: -31,
+        y: 27,
+        width: 1,
+        height: 2,
+      }),
+      Object.freeze({
+        key: "barn_hay_loft",
+        role: "fodder_storage",
+        x: -33,
+        y: 30,
+        width: 3,
+        height: 2,
+      }),
+      Object.freeze({
+        key: "barn_produce_shelves",
+        role: "produce_storage",
+        x: -29,
+        y: 27,
+        width: 2,
+        height: 2,
       }),
     ]),
     enclosures: Object.freeze([

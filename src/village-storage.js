@@ -1,6 +1,6 @@
 import { definitionId, namedUuid } from "./identity.js";
 
-export const STORAGE_SCHEMA_VERSION = 4;
+export const STORAGE_SCHEMA_VERSION = 5;
 export const DEFAULT_CELL_ALLOWANCE = 10;
 
 const ALL_STORAGE_TIERS = [
@@ -188,12 +188,11 @@ const STORAGE_AREA_PLANS = [
       "dairy_milk",
       "pasture_meat",
       "stable_feed",
-      "stable_water",
       "farm_eggs",
       "sheep_wool",
       "farm_manure",
     ],
-    area: { x: -50, y: 41, width: 14, height: 5 },
+    area: { x: -57, y: 30, width: 13, height: 2 },
     tier: "granary",
     protection: "dry",
     stackSlots: 1,
@@ -317,23 +316,39 @@ function storagePlan(state, stockpiles) {
       protection: "outdoor",
       stackSlots: 1,
     };
-  return (
-    (state.village.scenario === "founding"
-      ? STORAGE_AREA_PLANS.find((plan) =>
-          plan.stockpileKeys.some((key) => keys.has(key)),
-        )
-      : null) ?? {
-      key: `container-${stockpiles[0].containerKind}`,
-      designation: stockpiles[0].containerKind,
-      area: {
-        ...stockpiles[0].position,
-        width: 1,
-        height: 1,
-      },
-      allowContainerCell: true,
-      stackSlots: storageStackCount(stockpiles, "capacity"),
-    }
+  const plan = (state.village.scenario === "founding"
+    ? STORAGE_AREA_PLANS.find((plan) =>
+        plan.stockpileKeys.some((key) => keys.has(key)),
+      )
+    : null) ?? {
+    key: `container-${stockpiles[0].containerKind}`,
+    designation: stockpiles[0].containerKind,
+    area: {
+      ...stockpiles[0].position,
+      width: 1,
+      height: 1,
+    },
+    allowContainerCell: true,
+    stackSlots: storageStackCount(stockpiles, "capacity"),
+  };
+  return plan.key === "farm-store" ? farmBarnStoragePlan(state, plan) : plan;
+}
+
+function farmBarnStoragePlan(state, fallback) {
+  const building = state.village.buildings?.find(
+    (candidate) => candidate.key === "farmstead",
   );
+  if (!state.village.facilities.includes("farmstead") || !building?.storageArea)
+    return fallback;
+  return {
+    ...fallback,
+    designation: "farmstead food and fodder barn",
+    area: { ...building.storageArea },
+    cellAllowance: 40,
+    stackSlots: 4,
+    allowOwnStructureCells: true,
+    structureKey: "farmstead",
+  };
 }
 
 function plannedPositions(plan) {
@@ -423,6 +438,9 @@ function defaultZone(state, containerId, stockpiles, occupied) {
       storageStackCount(stockpiles, "capacity") / (plan.stackSlots ?? 1),
     ),
     count = Math.max(1, volumeCells, stackCells);
+  if (plan.allowOwnStructureCells)
+    for (const position of plannedPositions(plan))
+      occupied.delete(positionKey(position));
   if (plan.allowContainerCell && !hasForeignStructure(state, anchor))
     occupied.delete(positionKey(stockpiles[0].position));
   return {
@@ -433,6 +451,7 @@ function defaultZone(state, containerId, stockpiles, occupied) {
     containerKind: stockpiles[0].containerKind,
     planKey: plan.key,
     designation: plan.designation,
+    structureKey: plan.structureKey ?? null,
     tier: plan.tier ?? (plan.allowContainerCell ? "container" : "ground"),
     protection:
       plan.protection ?? (plan.allowContainerCell ? "fixture" : "outdoor"),
@@ -1053,6 +1072,7 @@ export function villageStorageAudit(state) {
       zone.cells.filter(
         (cell) =>
           blocked.has(positionKey(cell)) &&
+          !zoneOwnsStructureCell(state, zone, cell) &&
           (zone.tier !== "container" || hasForeignStructure(state, cell)),
       ),
     ),
@@ -1068,4 +1088,14 @@ export function villageStorageAudit(state) {
     disallowedAllocations: disallowed,
     overflow: structuredClone(storage.overflow),
   };
+}
+
+function zoneOwnsStructureCell(state, zone, cell) {
+  if (!zone.structureKey) return false;
+  const building = state.village.buildings?.find(
+    (candidate) => candidate.key === zone.structureKey,
+  );
+  return Boolean(
+    building?.storageArea && positionInside(building.storageArea, cell),
+  );
 }

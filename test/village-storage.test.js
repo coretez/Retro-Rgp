@@ -15,6 +15,7 @@ import {
   storageItemProfile,
   villageStorageAudit,
 } from "../src/village-storage.js";
+import { ensureFoundingFacilityStructure } from "../src/village-development.js";
 
 const input = {
   requestId: "storage-test",
@@ -47,6 +48,52 @@ test("R4 storage shares a hard allowance across every item on one cell", () => {
         );
       assert.ok(used <= cell.allowance);
     }
+});
+
+test("R4 a completed farmstead moves food and fodder storage inside its barn", () => {
+  const run = state();
+  run.village.facilities.push("farmstead");
+  const barn = ensureFoundingFacilityStructure(run, "farmstead"),
+    storage = reconcileVillageStorage(run),
+    grain = run.village.stockpiles.find((item) => item.key === "farm_grain"),
+    zone = storage.zones.find((item) => item.containerId === grain.containerId);
+  assert.equal(zone.planKey, "farm-store");
+  assert.equal(zone.structureKey, "farmstead");
+  assert.equal(zone.designation, "farmstead food and fodder barn");
+  assert.equal(zone.protection, "dry");
+  assert.ok(
+    zone.cells.every(
+      (cell) =>
+        cell.x >= barn.storageArea.x &&
+        cell.x < barn.storageArea.x + barn.storageArea.width &&
+        cell.y >= barn.storageArea.y &&
+        cell.y < barn.storageArea.y + barn.storageArea.height,
+    ),
+  );
+  assert.equal(villageStorageAudit(run).passed, true);
+});
+
+test("R4 temporary farm stores never occupy a field or its clear apron", () => {
+  const run = state(),
+    storage = reconcileVillageStorage(run),
+    fields = run.village.development.masterPlan.fieldBoundaries,
+    farmCells = storage.zones
+      .filter((zone) => zone.planKey === "farm-store")
+      .flatMap((zone) => zone.cells);
+  assert.ok(farmCells.length > 0);
+  assert.ok(
+    farmCells.every((cell) =>
+      fields.every((field) => {
+        const gap = field.clearance ?? 2;
+        return (
+          cell.x < field.x - gap ||
+          cell.x >= field.x + field.w + gap ||
+          cell.y < field.y - gap ||
+          cell.y >= field.y + field.h + gap
+        );
+      }),
+    ),
+  );
 });
 
 test("R4 storage filters reject disallowed goods into visible overflow", () => {
@@ -314,7 +361,7 @@ test("R8.1 hauling chooses space before travel and travel breaks ties", () => {
     first = zone.cells[0],
     destination = storageDestinationFor(run, grain.id, first);
   assert.notEqual(destination.cellId, first.id);
-  assert.equal(destination.remainingCapacity, 5);
+  assert.equal(destination.remainingCapacity, 20);
   grain.quantity = 0;
   storage = reconcileVillageStorage(run);
   zone = storage.zones.find((item) => item.containerId === grain.containerId);
@@ -330,7 +377,12 @@ test("R8.2 a player-selected compatible storage cell is exact", () => {
     storage = reconcileVillageStorage(run),
     zone = storage.zones.find((item) => item.containerId === grain.containerId),
     chosen = zone.cells.at(-1),
-    destination = storageDestinationAt(run, grain.id, chosen.id, grain.position);
+    destination = storageDestinationAt(
+      run,
+      grain.id,
+      chosen.id,
+      grain.position,
+    );
   assert.equal(destination.cellId, chosen.id);
   assert.equal(destination.stockpileId, grain.id);
   assert.deepEqual(destination.position, { x: chosen.x, y: chosen.y });
@@ -343,7 +395,9 @@ test("R8.2 a player cannot route grain into an incompatible storage cell", () =>
       (item) => item.key === "lumber_camp_logs",
     ),
     storage = reconcileVillageStorage(run),
-    logZone = storage.zones.find((item) => item.containerId === logs.containerId),
+    logZone = storage.zones.find(
+      (item) => item.containerId === logs.containerId,
+    ),
     destination = storageDestinationAt(
       run,
       grain.id,

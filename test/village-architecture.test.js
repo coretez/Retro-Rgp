@@ -362,6 +362,25 @@ test("R1 every constructed founding and specialist building plan has a roof", ()
   );
 });
 
+test("R4 the farmstead barn physically stores grain seed produce and fodder", () => {
+  const barn = foundingFacilityPlan("farmstead"),
+    roles = new Set(barn.fixtures.map((fixture) => fixture.role));
+  assert.deepEqual(
+    roles,
+    new Set([
+      "grain_storage",
+      "seed_storage",
+      "fodder_storage",
+      "produce_storage",
+    ]),
+  );
+  assert.ok(barn.storageArea.width * barn.storageArea.height >= 20);
+  assert.ok(
+    constructionElements(barn).filter((element) => element.kind === "fixture")
+      .length >= 4,
+  );
+});
+
 test("R1 a forge is masonry and draws its shell from quarried stone", () => {
   const forge = specialistFacilityPlan("specialist_forge"),
     elements = constructionElements(forge),

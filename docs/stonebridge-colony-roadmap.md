@@ -12,17 +12,17 @@ Mandatory development method: `stonebridge-behavioral-development-method.md`
 This table is the current chat checkpoint and must be updated whenever a roadmap
 section is completed or materially re-scoped.
 
-| Phase                            | Status      | Current evidence                                                                                                                                                                                                                                                                  | Next gate                                                                              |
-| -------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| R0 — deterministic proof harness | Complete    | Ten fresh 500-tick runs still match and the deterministic/save-load gates remain green.                                                                                                                                                                                           | Keep as a mandatory regression gate.                                                   |
-| R1 — founding critical path      | Complete    | Five distinct seeds complete the survival core, three family homes, farmstead, kitchen, and every specialist building without resource injection. Full-output forestry now releases its worker and reusable axe so sawing can break the storage cycle.                            | Keep the five-seed full-town proof as a mandatory regression gate.                     |
-| R2 — minimum viable survival     | Complete    | The visible run completed a 2,421-tick post-home window and the strict 2,400-tick proof passed. Checkpoint 42 also makes sheltered sleep outrank standing shelter at night; all nine off-watch founders visibly slept while the guard patrolled.                                  | Keep the watched run and strict telemetry proof as mandatory regression gates.         |
-| R3 — persistent construction     | Complete    | All 12 town objectives finish from physical elements, retain two-exit/access rules where applicable, derive complete buildings only after supported roofs, and pass commissioning plus exact save/load in five full-town runs.                                                    | Keep physical-element, roof, commissioning, and save/load proofs mandatory.            |
-| R4 — food and domestic logistics | In progress | Food planning distinguishes survival and stability reserves. Checkpoint 111 closes the broad founding/life regression at 144/144, including physical farm delivery, simultaneous forestry/sawing, cooked food, bounded storage, and conserved carcass meat.                    | Complete the watched farmstead and prove sustained harvest, cooking, storage, and consumption. |
-| R5 — scheduler and timing        | In progress | Ordinary work rests at night, interrupted jobs reopen, and checkpoint 111 proves readiness-aware skill selection, helper construction, truthful standby, scheduled governance, guard preemption, and completion of household mourning.                                    | Prove the same behavior over a watched full-day employment ledger with no long unexplained waits. |
-| R6 — readability and pawns       | In progress | Finished buildings retain English captions. Cattle and deer now share the accepted overhead style with original pig, sheep, dog, chicken, wolf, wild-boar, and bear sprites; watched native proof shows the domestic set without the old green ground patch.                       | Add sex/age variation, animation states, and complete the watched quality gate.         |
-| R7 — release gate                | Complete    | The suite passes 339/339. Five unique towns build all 12 roofed and commissioned objectives, then each survives 2,400 natural ticks with safe needs, valid sheltered sleep, no permanent blocks, bounded storage, visible resources, food provenance, and exact save/load hashes. | Preserve this matrix; population growth remains disabled until R8.6/R8.7.              |
-| R8 — proper village systems      | In progress | R8.0–R8.3 are complete. Checkpoint 111 closes every current automated R8.4 burial, mourning, carcass, disposition, and persistence proof. Security planning, mustering, armory accounting, training, gatehouse, and palisade contracts remain implemented but still require natural physical completion and operation in the main saved town. | Build and operate every security facility in the main saved town, then complete R8.5–R8.7. |
+| Phase                            | Status      | Current evidence                                                                                                                                                                                                                                                                                                                              | Next gate                                                                                         |
+| -------------------------------- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| R0 — deterministic proof harness | Complete    | Ten fresh 500-tick runs still match and the deterministic/save-load gates remain green.                                                                                                                                                                                                                                                       | Keep as a mandatory regression gate.                                                              |
+| R1 — founding critical path      | Complete    | Five distinct seeds complete the survival core, three family homes, farmstead, kitchen, and every specialist building without resource injection. Full-output forestry now releases its worker and reusable axe so sawing can break the storage cycle.                                                                                        | Keep the five-seed full-town proof as a mandatory regression gate.                                |
+| R2 — minimum viable survival     | Complete    | The visible run completed a 2,421-tick post-home window and the strict 2,400-tick proof passed. Checkpoint 42 also makes sheltered sleep outrank standing shelter at night; all nine off-watch founders visibly slept while the guard patrolled.                                                                                              | Keep the watched run and strict telemetry proof as mandatory regression gates.                    |
+| R3 — persistent construction     | Complete    | All 12 town objectives finish from physical elements, retain two-exit/access rules where applicable, derive complete buildings only after supported roofs, and pass commissioning plus exact save/load in five full-town runs.                                                                                                                | Keep physical-element, roof, commissioning, and save/load proofs mandatory.                       |
+| R4 — food and domestic logistics | In progress | Food planning distinguishes survival and stability reserves. Checkpoint 111 closes the broad founding/life regression at 144/144, including physical farm delivery, simultaneous forestry/sawing, cooked food, bounded storage, and conserved carcass meat.                                                                                   | Complete the watched farmstead and prove sustained harvest, cooking, storage, and consumption.    |
+| R5 — scheduler and timing        | In progress | Ordinary work rests at night, interrupted jobs reopen, and checkpoint 111 proves readiness-aware skill selection, helper construction, truthful standby, scheduled governance, guard preemption, and completion of household mourning.                                                                                                        | Prove the same behavior over a watched full-day employment ledger with no long unexplained waits. |
+| R6 — readability and pawns       | In progress | Finished buildings retain English captions. Cattle and deer now share the accepted overhead style with original pig, sheep, dog, chicken, wolf, wild-boar, and bear sprites; watched native proof shows the domestic set without the old green ground patch.                                                                                  | Add sex/age variation, animation states, and complete the watched quality gate.                   |
+| R7 — release gate                | Complete    | The suite passes 339/339. Five unique towns build all 12 roofed and commissioned objectives, then each survives 2,400 natural ticks with safe needs, valid sheltered sleep, no permanent blocks, bounded storage, visible resources, food provenance, and exact save/load hashes.                                                             | Preserve this matrix; population growth remains disabled until R8.6/R8.7.                         |
+| R8 — proper village systems      | In progress | R8.0–R8.3 are complete. Checkpoint 111 closes every current automated R8.4 burial, mourning, carcass, disposition, and persistence proof. Security planning, mustering, armory accounting, training, gatehouse, and palisade contracts remain implemented but still require natural physical completion and operation in the main saved town. | Build and operate every security facility in the main saved town, then complete R8.5–R8.7.        |
 
 ## Product gate
 
@@ -7115,3 +7115,44 @@ builds the hut and forge, sustains a positive multi-day food reserve, and all
 ten founders pass the 2,400-tick danger-threshold proof. R5 remains under live
 scheduler validation, R6 remains unproven in the current clean run, and R8
 remains in progress behind the same natural town-build and survival gates.
+
+## Repair checkpoint 172 / Farmland layout and bounded barn storage
+
+Food sustainability now continues on the dedicated `codex/farmland` branch.
+The farm architect places 8×8 cultivated interiors inside complete 10×10 field
+boundaries and reserves a two-cell access and defensive sightline apron around
+each fence. A circular scheduler dependency had prevented those aprons from
+being cleared before the first fence segment existed. A farmstead whose barn
+and pasture core are physically complete now authorizes the clearance queue,
+so lumber is generated from the future fields before field-fence construction
+and founders do not abandon the higher-priority shelter core prematurely.
+
+The farmstead now contains a physical food and fodder barn rather than relying
+on unlimited ground storage. Grain bins, seed bins, produce shelving, and a hay
+loft occupy a bounded twenty-cell interior storage area. Before the barn is
+complete, farm goods use a bounded two-row staging lane between the grain and
+vegetable fields; this lane does not overlap either cultivated area or its
+two-cell tree-clearance apron. On barn completion those goods transfer to the
+dry granary plan with explicit cell allowance and stack-slot limits. Trough
+water remains with livestock supplies instead of incorrectly consuming the
+food barn, and stable feed now belongs to the farm storage group.
+
+Automated proof covers core-ready apron-clearing work, protected crop
+interiors, physical grain/seed/produce/fodder fixtures, temporary staging
+separation, completed-barn storage, hard capacity, hauling destinations, and
+production reservations. The focused architecture, economy, and storage
+suites pass 70/70, and the two targeted clearance proofs pass 2/2. A broader
+181-test sweep reached 174 passes but is not release-green: six assertions and
+one interrupted file remain, including the expensive natural proof that every
+expanded-field fence finishes. Those failures are recorded rather than hidden
+behind the focused results. The strict audit covers 2,125 functions with 141
+documented template exemptions and zero functions over thirty lines;
+formatting and `git diff --check` are clean.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 has
+complete focused contracts for expanded protected fields, net fishing, bow
+hunting, and bounded barn storage, but remains in progress until a clean
+visible settlement naturally completes and operates the chain while sustaining
+a positive multi-day reserve. R5 remains under scheduler validation, R6 remains
+unproven in the current clean run, and R8 remains in progress behind the full
+natural town-build, survival, and visual acceptance gates.
