@@ -7248,6 +7248,18 @@ economy and food regressions passed before the expensive founding suite was
 interrupted after 39 additional passes and no assertion failure; that
 interrupted suite is not counted as a full green run.
 
+The requested visible 16× observation continued beyond ten real minutes to
+tick 695 (Day 1, 12:57). At the final checkpoint all ten founders had concrete
+work: three tended the kitchen garden, two sawed lumber, two delivered lumber
+to walls, one fished, one collected the river catch, and the guard used the
+current town work area. Five caught fish had been physically hauled and showed
+`stored: 5`; untouched starting meals and seed still showed `stored: 0`.
+Short contention waits occurred while lumber was being sawn, then cleared as
+delivery work became ready. No farmhouse or barn plan disappeared, no starting
+farm supply teleported into the staging lane, and no field/storage overlap was
+observed. The economy and food suites pass 39/39, the combined architecture and
+storage suites pass 61/61, and the branch is synced to the remote.
+
 Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 remains
 in progress until the corrected visible run proves physical hauling, field
 work, harvest, storage, and sustained food reserves. R5 remains under scheduler
