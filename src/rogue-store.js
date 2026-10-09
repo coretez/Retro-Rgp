@@ -52,6 +52,24 @@ export class RogueStore {
     return parseRogueState(JSON.parse(row.state));
   }
 
+  saveSnapshot(state) {
+    const serialized = serializeRogueState(state);
+    this.db.exec("BEGIN IMMEDIATE");
+    try {
+      const result = this.db
+        .prepare("UPDATE rogue_runs SET state=? WHERE id=?")
+        .run(JSON.stringify(serialized), state.id);
+      check(result.changes === 1, "NOT_FOUND", "Roguelike run not found.", {
+        runId: state.id,
+      });
+      this.db.exec("COMMIT");
+      return { runId: state.id, revision: state.revision };
+    } catch (error) {
+      this.db.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   create(input) {
     this.db.exec("BEGIN IMMEDIATE");
     try {
@@ -156,7 +174,7 @@ export class RogueStore {
     return rogueRunView(state, latest ? JSON.parse(latest.result).events : []);
   }
 
-  unityView(runId) {
+  unityView(runId, options = {}) {
     const state = this.get(runId),
       latest = this.db
         .prepare(
@@ -164,7 +182,7 @@ export class RogueStore {
         )
         .get(runId),
       events = latest ? JSON.parse(latest.result).events : [];
-    return rogueUnityView(state, events);
+    return rogueUnityView(state, events, options);
   }
 
   groups(runId) {

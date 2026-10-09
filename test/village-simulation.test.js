@@ -14,7 +14,9 @@ import {
 import { isUuid } from "../src/identity.js";
 import { RogueStore } from "../src/rogue-store.js";
 import {
+  analyzeVillagePath,
   planVillageRoute,
+  resolveVillageCrowdBlock,
   villageIntentAdvancesSimulation,
   villageMovementCost,
 } from "../src/village-simulation.js";
@@ -27,6 +29,39 @@ const input = {
   form: "hybrid",
   size: "small",
 };
+
+test("R4 path analysis distinguishes blocked work from tree-clearable work", () => {
+  const state = stonebridgeState(),
+    npc = state.village.npcStates[0],
+    terrainAt = ({ x, y }) =>
+      y !== 0 ? "outdoor_rock" : x === 1 ? "outdoor_tree" : "outdoor_grass";
+  npc.position = { x: 0, y: 0 };
+  state.village.npcStates = [npc];
+  const route = analyzeVillagePath(
+    state,
+    npc,
+    { x: 3, y: 0 },
+    terrainAt,
+    { allowTreeClearing: true },
+  );
+  assert.equal(route.ok, true);
+  assert.equal(route.readiness, "requires_clearing");
+  assert.deepEqual(route.clearableCells, [{ x: 1, y: 0 }]);
+  assert.equal(route.terrain.outdoor_tree, 1);
+});
+
+test("R4 path analysis already prefers a longer road when it is faster", () => {
+  const state = stonebridgeState(),
+    npc = state.village.npcStates[0],
+    terrainAt = ({ y }) => (y === 1 ? "road_dirt" : "outdoor_grass");
+  npc.position = { x: 0, y: 0 };
+  state.village.npcStates = [npc];
+  const route = analyzeVillagePath(state, npc, { x: 3, y: 0 }, terrainAt);
+  assert.equal(route.ok, true);
+  assert.equal(route.readiness, "ready");
+  assert.ok(route.terrain.road_dirt >= 3);
+  assert.ok(route.stepCount > 3);
+});
 
 function stonebridgeState(overrides = {}) {
   const state = newRogueRun({ ...input, ...overrides });
@@ -55,6 +90,10 @@ function publicSimulationEvents(events) {
       materialId: _materialId,
       toolId: _toolId,
       jobId: _jobId,
+      yieldedForActorId: _yieldedForActorId,
+      blockerId: _blockerId,
+      requestedByActorId: _requestedByActorId,
+      orderId: _orderId,
       ...event
     }) => event,
   );
@@ -105,14 +144,15 @@ function digVisibleGrass(state) {
 }
 
 test("M-1 defines which accepted intents advance the village simulation", () => {
-  for (const kind of ["local_move", "local_manipulate", "shop_buy", "equip"])
-    assert.equal(villageIntentAdvancesSimulation(kind), true);
   for (const kind of [
-    "local_examine",
-    "local_talk",
-    "set_party_movement",
-    "open_world",
+    "local_move",
+    "local_manipulate",
+    "shop_buy",
+    "equip",
+    "wait",
   ])
+    assert.equal(villageIntentAdvancesSimulation(kind), true);
+  for (const kind of ["local_examine", "local_talk", "open_world"])
     assert.equal(villageIntentAdvancesSimulation(kind), false);
 });
 
@@ -161,6 +201,7 @@ test("M-1 identical village inputs produce identical simulation outcomes", () =>
 test("M-1 each accepted village intent advances exactly one game tick", () => {
   const cases = [
     [() => stonebridgeState(), { kind: "local_move", x: 19, y: 13 }],
+    [() => stonebridgeState(), { kind: "wait" }],
     [() => stonebridgeState(), { kind: "local_examine", x: 19, y: 13 }],
     [() => stonebridgeState(), { kind: "local_talk", x: 20, y: 9 }],
     [
@@ -326,6 +367,28 @@ test("M-2 village routing can detour beyond the former fixed margin", () => {
   assert.ok(result.path.some(({ y }) => Math.abs(y) === 21));
 });
 
+test("R3 village routing reaches a distant specialist site across grass", () => {
+  const npc = { id: "specialist-builder", position: { x: -16, y: 19 } },
+    state = {
+      village: {
+        heroPosition: { x: 999, y: 999 },
+        companionPositions: [],
+        npcStates: [npc],
+        animals: [],
+      },
+    },
+    result = planVillageRoute(
+      state,
+      npc,
+      { x: 61, y: 50 },
+      () => "outdoor_grass",
+      true,
+    );
+  assert.equal(result.ok, true);
+  assert.equal(result.path.length, 108);
+  assert.equal(result.cost, 428);
+});
+
 test("M-2 village terrain declares costs and impassable objects", () => {
   for (const tile of [
     "outdoor_tree",
@@ -337,7 +400,7 @@ test("M-2 village terrain declares costs and impassable objects", () => {
   ])
     assert.equal(villageMovementCost(tile), null);
   assert.equal(villageMovementCost("road_stone"), 1);
-  assert.equal(villageMovementCost("road_dirt"), 2);
+  assert.equal(villageMovementCost("road_dirt"), 1);
   assert.equal(villageMovementCost("outdoor_grass"), 4);
 });
 
@@ -351,8 +414,30 @@ test("M-2 Stonebridge principal roads are two cells wide and unobstructed", () =
       ({ x, y }) => y === 11 || y === 12 || x === 19 || x === 20,
     );
   assert.ok(principalRoad.length > 150);
-  assert.ok(principalRoad.every((cell) => cell.tile === "road_stone"));
+  assert.ok(
+    principalRoad.every((cell) =>
+      ["road_stone", "road_dirt", "road_bridge_wood"].includes(cell.tile),
+    ),
+  );
+  assert.ok(
+    principalRoad
+      .filter(({ x, y }) => x >= -20 && x <= 60 && y >= -5 && y <= 40)
+      .every((cell) => cell.tile === "road_stone"),
+  );
+  assert.ok(principalRoad.some((cell) => cell.tile === "road_dirt"));
   assert.deepEqual(villageRoadBuildingConflicts(), []);
+});
+
+test("R8 founding roads begin as dirt and bridges remain passable", () => {
+  const state = stonebridgeState({ scenario: "founding" }),
+    cells = rogueRunView(state).village.map.cells,
+    road = cells.filter(
+      ({ x, y }) => (y === 11 || y === 12) && x >= -25 && x <= -5,
+    );
+  assert.ok(road.length > 30);
+  assert.ok(road.every((cell) => cell.tile === "road_dirt"));
+  assert.equal(villageMovementCost("road_bridge_wood"), 1);
+  assert.equal(villageMovementCost("outdoor_rock"), null);
 });
 
 test("M-2 moving residents use both road lanes without stacking", () => {
@@ -390,7 +475,7 @@ test("M-2 moving residents use both road lanes without stacking", () => {
   assert.equal(usedPassingLane, true);
 });
 
-test("M-2 unreachable NPC work emits a stable blocking reason", () => {
+test("M-2 unreachable NPC work emits a stable bounded-search reason", () => {
   const state = stonebridgeState(),
     guard = state.village.npcStates.find((npc) => npc.personKey === "watchman");
   Object.assign(guard, {
@@ -405,7 +490,7 @@ test("M-2 unreachable NPC work emits a stable blocking reason", () => {
     blocked = outcome.events.find(
       (event) => event.type === "npc_blocked" && event.actorId === guard.id,
     );
-  assert.equal(blocked.reason, "search_limit");
+  assert.equal(blocked.reason, "no_path");
   assert.deepEqual(blocked.destination, { x: 11, y: 3 });
   assert.deepEqual(guard.position, { x: 20, y: 9 });
 });
@@ -426,13 +511,13 @@ test("M-2 an NPC already in position waits instead of claiming movement", () => 
   assert.deepEqual(guard.position, before);
 });
 
-test("M-2 the guard completes an entire continuous patrol circuit", () => {
+test("R1 the guard completes one bounded patrol shift", () => {
   const state = stonebridgeState(),
     guard = state.village.npcStates.find((npc) => npc.personKey === "watchman"),
     axe = state.hero.inventory.find((item) => item.kind === "hand_axe"),
     positions = [{ ...guard.position }];
-  let completedCircuit = false;
-  for (let turn = 0; turn < 40 && !completedCircuit; turn += 1) {
+  let completedShift = false;
+  for (let turn = 0; turn < 120 && !completedShift; turn += 1) {
     const before = { ...guard.position };
     applyRogueTurn(state, { kind: "equip", itemId: axe.id });
     const distance =
@@ -443,11 +528,150 @@ test("M-2 the guard completes an entire continuous patrol circuit", () => {
     const patrol = state.village.jobs.find(
       (job) => job.jobType === "patrol_route",
     );
-    completedCircuit =
-      patrol?.progress.completed >= 6 && guard.routeIndex === 0;
+    completedShift = patrol?.status === "completed";
   }
-  assert.equal(completedCircuit, true);
-  assert.deepEqual(guard.position, positions[0]);
+  assert.equal(completedShift, true);
+  assert.ok(
+    Math.abs(guard.position.x - positions[0].x) +
+      Math.abs(guard.position.y - positions[0].y) <=
+      1,
+  );
   assert.equal(guard.routeIndex, 0);
-  assert.ok(positions.some(({ y }) => y === 12));
+  assert.equal(state.tick - state.village.lastGuardPatrolAtTick, 1);
+});
+
+test("R1 the guard abandons routine patrol during a founding food emergency", () => {
+  const state = stonebridgeState({ scenario: "founding" }),
+    axe = state.hero.inventory.find((item) => item.kind === "hand_axe");
+  for (const stockpile of state.village.stockpiles)
+    if (["inn_meals", "inn_fish", "wild_forage", "farm_grain", "farm_vegetables", "dairy_milk", "pasture_meat"].includes(stockpile.key))
+      stockpile.quantity = 0;
+  for (let turn = 0; turn < 4; turn += 1)
+    applyRogueTurn(state, { kind: "equip", itemId: axe.id });
+  assert.ok(
+    state.village.jobs
+      .filter((job) => job.jobType === "patrol_route")
+      .every((job) => ["completed", "cancelled"].includes(job.status)),
+  );
+});
+
+test("M-10 a stationary actor yields out of a one-cell traffic lane", () => {
+  const mover = {
+      id: "d3350136-9cbe-42b5-b0a0-3d160c1783a2",
+      name: "Mover",
+      position: { x: 0, y: 0 },
+    },
+    blocker = {
+      id: "ed3dbd7c-3a64-4e16-8b90-e7b78e1906e0",
+      name: "Blocker",
+      position: { x: 1, y: 0 },
+    },
+    state = {
+      tick: 1,
+      village: {
+        heroPosition: { x: 9, y: 9 },
+        partyMovement: "follow",
+        companionPositions: [],
+        companionStates: [],
+        npcStates: [mover, blocker],
+        incidents: [],
+        jobs: [],
+        reservations: [],
+      },
+    },
+    open = new Set(["0,0", "1,0", "2,0", "3,0", "1,1"]),
+    terrainAt = (position) =>
+      open.has(key(position)) ? "road_stone" : "village_building",
+    before = planVillageRoute(state, mover, { x: 3, y: 0 }, terrainAt, false),
+    events = [],
+    movedActors = new Set();
+  assert.equal(before.ok, false);
+  assert.equal(
+    resolveVillageCrowdBlock(
+      state,
+      mover,
+      { x: 3, y: 0 },
+      terrainAt,
+      false,
+      events,
+      movedActors,
+    ),
+    true,
+  );
+  assert.deepEqual(blocker.position, { x: 1, y: 1 });
+  assert.deepEqual(
+    events.map((event) => event.type),
+    ["passage_requested", "passage_yielded"],
+  );
+  assert.equal(
+    planVillageRoute(state, mover, { x: 3, y: 0 }, terrainAt, false).ok,
+    true,
+  );
+  blocker.position = { x: 1, y: 0 };
+  const repeatedEvents = [];
+  assert.equal(
+    resolveVillageCrowdBlock(
+      state,
+      mover,
+      { x: 3, y: 0 },
+      terrainAt,
+      false,
+      repeatedEvents,
+      movedActors,
+    ),
+    false,
+  );
+  assert.deepEqual(blocker.position, { x: 1, y: 0 });
+  assert.deepEqual(
+    repeatedEvents.map((event) => [event.type, event.reason ?? null]),
+    [
+      ["passage_requested", null],
+      ["passage_refused", "already_moved"],
+    ],
+  );
+  state.tick += 1;
+  mover.id = "19d490a4-d1ae-4aa3-b072-0cbfe9d0eb90";
+  mover.position = { x: 0, y: 1 };
+  blocker.position = { x: 1, y: 1 };
+  open.add("0,1");
+  open.add("2,1");
+  open.add("3,1");
+  open.add("1,2");
+  const cooldownEvents = [];
+  assert.equal(
+    resolveVillageCrowdBlock(
+      state,
+      mover,
+      { x: 3, y: 1 },
+      terrainAt,
+      false,
+      cooldownEvents,
+      new Set(),
+    ),
+    false,
+  );
+  assert.deepEqual(blocker.position, { x: 1, y: 1 });
+  assert.equal(cooldownEvents.at(-1).reason, "yield_cooldown");
+  blocker.position = { x: 1, y: 0 };
+  state.village.incidents.push({ kind: "danger", status: "reported" });
+  const combatEvents = [];
+  assert.equal(
+    resolveVillageCrowdBlock(
+      state,
+      mover,
+      { x: 3, y: 0 },
+      terrainAt,
+      false,
+      combatEvents,
+    ),
+    false,
+  );
+  assert.deepEqual(blocker.position, { x: 1, y: 0 });
+  assert.deepEqual(
+    combatEvents.map((event) => [event.type, event.reason ?? null]),
+    [
+      ["passage_requested", null],
+      ["passage_refused", "tactical_hold"],
+    ],
+  );
 });

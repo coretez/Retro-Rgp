@@ -154,11 +154,45 @@ function rebuildWeightedPath(previous, from, destination) {
   return path;
 }
 
-function takeLowestCost(queue, costs) {
-  queue.sort(
-    (a, b) => costs.get(key(a)) - costs.get(key(b)) || a.y - b.y || a.x - b.x,
+function compareRouteNode(left, right) {
+  return (
+    (left.priority ?? left.cost) - (right.priority ?? right.cost) ||
+    left.cost - right.cost ||
+    left.y - right.y ||
+    left.x - right.x
   );
-  return queue.shift();
+}
+
+function pushRouteNode(heap, node) {
+  heap.push(node);
+  let index = heap.length - 1;
+  while (index > 0) {
+    const parent = Math.floor((index - 1) / 2);
+    if (compareRouteNode(heap[parent], node) <= 0) break;
+    heap[index] = heap[parent];
+    index = parent;
+  }
+  heap[index] = node;
+}
+
+function popRouteNode(heap) {
+  const first = heap[0],
+    last = heap.pop();
+  if (!heap.length) return first;
+  let index = 0;
+  while (index * 2 + 1 < heap.length) {
+    let child = index * 2 + 1;
+    if (
+      child + 1 < heap.length &&
+      compareRouteNode(heap[child + 1], heap[child]) < 0
+    )
+      child += 1;
+    if (compareRouteNode(last, heap[child]) <= 0) break;
+    heap[index] = heap[child];
+    index = child;
+  }
+  heap[index] = last;
+  return first;
 }
 
 export function weightedRoute({
@@ -170,13 +204,23 @@ export function weightedRoute({
   occupied = new Set(),
   adjacent = false,
   maxVisited = Infinity,
+  minimumStepCost = 0,
 }) {
   const unavailable = (position) =>
       !withinBounds(position, bounds) ||
       isBlocked(position) ||
       (key(position) !== key(from) && occupied.has(key(position))),
     candidates = adjacent ? orthogonalNeighbors(to) : [to],
-    goals = new Set(candidates.filter((goal) => !unavailable(goal)).map(key));
+    goalPositions = candidates.filter((goal) => !unavailable(goal)),
+    goals = new Set(goalPositions.map(key)),
+    estimate = (position) =>
+      minimumStepCost *
+      Math.min(
+        ...goalPositions.map(
+          (goal) =>
+            Math.abs(goal.x - position.x) + Math.abs(goal.y - position.y),
+        ),
+      );
   if (!adjacent && isBlocked(to))
     return navigationFailure("destination_blocked", to);
   if (!adjacent && occupied.has(key(to)))
@@ -184,26 +228,33 @@ export function weightedRoute({
   if (!goals.size) return navigationFailure("destination_unreachable", to);
   const costs = new Map([[key(from), 0]]),
     previous = new Map(),
-    queue = [{ ...from }],
+    queue = [{ ...from, cost: 0, priority: estimate(from) }],
     settled = new Set();
   while (queue.length && settled.size < maxVisited) {
-    const current = takeLowestCost(queue, costs);
+    const current = popRouteNode(queue);
     if (settled.has(key(current))) continue;
     settled.add(key(current));
     if (goals.has(key(current)))
       return {
         ok: true,
-        path: rebuildWeightedPath(previous, from, current),
+        path: rebuildWeightedPath(previous, from, {
+          x: current.x,
+          y: current.y,
+        }),
         cost: costs.get(key(current)),
-        destination: { ...current },
+        destination: { x: current.x, y: current.y },
       };
     for (const next of orthogonalNeighbors(current)) {
       if (unavailable(next)) continue;
-      const nextCost = costs.get(key(current)) + terrainCost(next);
+      const nextCost = current.cost + terrainCost(next);
       if (nextCost >= (costs.get(key(next)) ?? Infinity)) continue;
       costs.set(key(next), nextCost);
-      previous.set(key(next), current);
-      queue.push(next);
+      previous.set(key(next), { x: current.x, y: current.y });
+      pushRouteNode(queue, {
+        ...next,
+        cost: nextCost,
+        priority: nextCost + estimate(next),
+      });
     }
   }
   if (queue.length) return navigationFailure("search_limit", to);

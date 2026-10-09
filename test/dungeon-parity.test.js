@@ -18,6 +18,7 @@ const input = {
   levels: 3,
 };
 
+// function-length-exempt: template -- test fixture construction
 function corridorState(doorState = "closed") {
   const state = newRogueRun(input),
     level = state.levels[0],
@@ -105,7 +106,7 @@ test("D-M1 through D-M4 expose scoped dungeon contracts and smart objects", () =
   const state = corridorState(),
     door = dungeonWorldObjectAt(state, 3, 2),
     before = state.tick;
-  assert.equal(state.schemaVersion, 16);
+  assert.equal(state.schemaVersion, 22);
   assert.equal(door.kind, "door");
   assert.deepEqual(door.affordanceKeys, ["examine", "open"]);
   const opened = applyRogueTurn(state, { kind: "open", direction: "west" });
@@ -187,7 +188,7 @@ test("schema 13 saves acquire dungeon work state and monster capabilities", () =
     }
   }
   const migrated = parseRogueState(snapshot);
-  assert.equal(migrated.schemaVersion, 16);
+  assert.equal(migrated.schemaVersion, 22);
   assert.ok(migrated.levels.every((level) => Array.isArray(level.jobs)));
   assert.ok(
     migrated.levels.every((level) =>

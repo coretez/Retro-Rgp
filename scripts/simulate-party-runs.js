@@ -224,6 +224,23 @@ function recordEvents(summary, events) {
   }
 }
 
+function completeSummary(summary, view) {
+  summary.status = view.status;
+  summary.hp = `${view.hero.hp}/${view.hero.maxHp}`;
+  summary.treasureCp = view.hero.goldCp;
+  summary.party = view.groups.party.memberStatus.map((member) => ({
+    name: member.name,
+    hp: member.hp,
+    maxHp: member.maxHp,
+    alive: member.alive,
+    conditions: member.conditions,
+  }));
+  summary.partyPositions = view.groups.party.memberStatus.map(
+    (member) => member.position,
+  );
+  return summary;
+}
+
 async function play(config, index) {
   let view = await createGame(config, index);
   const visits = new Map(),
@@ -248,20 +265,7 @@ async function play(config, index) {
     summary.turns += 1;
     summary.depth = view.depth;
   }
-  summary.status = view.status;
-  summary.hp = `${view.hero.hp}/${view.hero.maxHp}`;
-  summary.treasureCp = view.hero.goldCp;
-  summary.party = view.groups.party.memberStatus.map((member) => ({
-    name: member.name,
-    hp: member.hp,
-    maxHp: member.maxHp,
-    alive: member.alive,
-    conditions: member.conditions,
-  }));
-  summary.partyPositions = view.groups.party.memberStatus.map(
-    (member) => member.position,
-  );
-  return summary;
+  return completeSummary(summary, view);
 }
 
 const results = [];

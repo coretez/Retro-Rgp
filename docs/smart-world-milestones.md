@@ -29,20 +29,30 @@ The public engine contracts remain stable while the internals change:
 
 ## Status
 
-| Milestone                             | State    |
-| ------------------------------------- | -------- |
-| M-1 · Contracts and simulation seam   | Complete |
-| M-2 · Navigation and credible roads   | Complete |
-| M-3 · Smart objects and interactions  | Complete |
-| M-4 · Job board and reservations      | Complete |
-| M-5 · Carter delivery                 | Complete |
-| D-M1–D-M5 · Dungeon parity            | Complete |
-| D-M5.1 · Unity dungeon playability    | Complete |
-| D-M5.2 · Native dungeon hardening     | Complete |
-| M-6 · Reactive guard work             | Complete |
-| M-7 · Working residents and economy   | Complete |
-| M-8 · Autonomous dispersed companions | Next     |
-| M-9 through M-10                      | Planned  |
+| Milestone                                 | State       |
+| ----------------------------------------- | ----------- |
+| M-1 · Contracts and simulation seam       | Complete    |
+| M-2 · Navigation and credible roads       | Complete    |
+| M-3 · Smart objects and interactions      | Complete    |
+| M-4 · Job board and reservations          | Complete    |
+| M-5 · Carter delivery                     | Complete    |
+| D-M1–D-M5 · Dungeon parity                | Complete    |
+| D-M5.1 · Unity dungeon playability        | Complete    |
+| D-M5.2 · Native dungeon hardening         | Complete    |
+| M-6 · Reactive guard work                 | Complete    |
+| M-7 · Working residents and economy       | Complete    |
+| M-7.1 · Economy hardening gate            | Complete    |
+| M-8 · Autonomous dispersed companions     | Complete    |
+| M-9 · Needs, schedules, social life       | Complete    |
+| M-10 · Continuous simulation controls     | Complete    |
+| M-11 · Village priorities and subsistence | In progress |
+
+M-11 is now governed by the phased program in
+[`stonebridge-colony-simulation-spec.md`](stonebridge-colony-simulation-spec.md).
+The earlier smart-world milestones remain valid infrastructure, but their
+discrete adventure-turn contracts do not authorize aggregate village labor,
+whole-project spawning, remote work, or presentation-only activity. D&D combat
+remains unchanged while the village simulation proceeds through S0–S10.
 
 ## Target architecture
 
@@ -604,6 +614,32 @@ social relationships.
   staffed Red Hammer Smithy displayed its newly forged `Ash spear ×1` in the
   visible shop overlay.
 
+## M-7.1 — Economy hardening gate
+
+### Result
+
+- An available actor may hold only one job. Higher-priority jobs win genuine
+  contention; queued work remains available rather than reporting a false
+  failure, while guard preemption remains explicit.
+- Blocked jobs use bounded exponential retry backoff and immediately reconsider
+  changed locked-door access. Job routes retain valid path segments instead of
+  replanning the entire route every tick.
+- Weighted navigation uses a deterministic binary heap. A 100-turn village
+  benchmark improved from roughly 249 ms to 20 ms per turn without restoring a
+  fixed map boundary.
+- Every stockpile container UUID resolves to its current world object, including
+  repaired references in existing saves. Delivery descriptions name their real
+  cargo and destination.
+- The herbalist can consume remedy stock to heal the most injured party member.
+  Resident inspection exposes permissions, capabilities, and priorities in both
+  projections.
+- Consumables purchased for a companion now enter that companion's inventory.
+- The regression suite passes with 116 tests, formatting is clean, and Unity
+  scripts compile successfully under Unity 6000.5.10f1.
+- The native visible-controls run showed delivery enabling ash-spear production,
+  concurrent remedy production and resident healing, and meaningful work events
+  without API-driven turn advancement.
+
 ## M-8 — Autonomous dispersed companions
 
 ### Player-visible result
@@ -639,6 +675,35 @@ danger interrupts those objectives and returns the party to leadership control.
 
 Companion romance, deep personality simulation, or unsupervised major
 financial decisions.
+
+### Completion evidence
+
+- Companion work state is keyed by actor UUID and carries role-derived
+  capabilities, permissions, priorities, current objective, action, reason,
+  discoveries, and completed objective history.
+- Dispersed companions independently perform healing, scouting, training,
+  research, rumor gathering, rest, and paid work through the shared job,
+  reservation, navigation, and smart-object systems.
+- Follow-leader and reported danger suspend active personal work, release its
+  claims, and begin a one-cell-at-a-time regroup. Re-dispersing resumes eligible
+  suspended work instead of recreating it.
+- Regrouping opens unlocked building access through the shared interaction
+  executor, blocks the leader from stepping onto companions, and recalculates
+  dynamic occupancy so companions never stack while returning.
+- The party spending policy supports approval-only, routine-supplies, and
+  autonomous modes with a copper limit. Autonomous equipment and over-limit
+  purchases are rejected; explicit player purchases remain approvals.
+- Unity exposes Disperse/Regroup, spending policy, and a village Wait action in
+  the compact command strip, with keyboard shortcuts and companion work details
+  in selection data. The accepted dungeon interface remains unchanged.
+- Save schema 17 migrates partial legacy companion records and preserves jobs,
+  claims, work history, and actor references. The full regression suite passes
+  with 125 tests, formatting is clean, and the macOS Unity player builds under
+  Unity 6000.5.10f1.
+- The native gate dispersed the party into rumor gathering, chapel rest, and
+  guild research, recalled all three through visible Unity controls, and used
+  visible Wait turns until every companion returned without teleporting,
+  stacking, stale reservations, or lost objectives.
 
 ## M-9 — Needs, schedules, and social life
 
@@ -676,6 +741,51 @@ the inspector.
 Generative-AI dialogue, family simulation, politics, or a complete sociology
 model.
 
+### Accepted implementation
+
+- NPCs, the hero, and every companion use the same bounded life-state contract
+  for hunger, fatigue, safety, social contact, morale, schedule, recent
+  memories, and recommendations. Authority is explicit: residents are
+  autonomous; the hero is recommendation-only; companions self-direct only
+  while dispersed.
+- A deterministic quarter-hour Stonebridge clock selects work, rest, and
+  free-time blocks. Schedule modifiers change shared job-board scores without
+  moving actors or bypassing ordinary turn resolution.
+- Meals, beds, chapel benches, prayer places, public benches, and conversation
+  partners are UUID-backed smart resources. Jobs reserve the actor, object, and
+  social partner atomically and use the existing navigation and access-door
+  logic.
+- Critical needs can replace stale queued life work and suspend ordinary work,
+  while priority-100 danger response remains authoritative. Completed life
+  jobs record bounded meaningful memories and release every claim.
+- Unity displays the town clock and selected actors' needs, schedule, current
+  reason, and latest memory. Player-controlled characters expose the same data
+  without silently taking control away from the player.
+- Save schema 18 migrates clocks and life state. Nine focused M-9 gates cover
+  shared contracts, determinism, authority, preemption, danger priority,
+  reservations, a complete town day, and Unity inspection.
+- The native Unity gate advanced from day 1 at 06:00 to day 2 at 06:00 using
+  only the visible Wait control. The map showed residents converging on meals
+  and beds, the activity feed reported meal work, and the resulting inspector
+  projection contained completed meal, sleep, and social memories.
+
+### Party-management extension
+
+- The four established characters are the default starting roster, not a
+  party-size limit. Party membership, Unity projection, selection, and
+  management are UUID-driven and scroll over an arbitrary member array.
+- Every member now has a separate character sheet, six abilities, twelve
+  trainable skills, a combat role, and prioritized activities. Skills advance
+  only from the work, combat, exploration, and social actions a character
+  actually completes.
+- The Unity Party panel is available in town and dungeon play, with Overview,
+  Activities, Combat, and read-only Skills tabs plus a full individual sheet.
+  Specialized practice is gated by physical facilities, and management changes
+  do not consume a simulation turn.
+- Save schema 19 adds development and management safely to existing party
+  members. Five focused party gates include a five-member projection test; the
+  complete 141-test suite and Unity script compilation pass.
+
 ## M-10 — Continuous simulation controls
 
 ### Player-visible result
@@ -702,6 +812,97 @@ speeds. All modes execute the same deterministic simulation step.
 - Run, pause, single-step, resume, and enter danger while confirming consistent
   state and readable events.
 
+### Completion evidence
+
+- The Unity HUD now exposes Pause, Step, Run 1×, and Fast 4× in one compact
+  strip over the map. F5–F8 provide the same controls without opening another
+  panel or reducing the playfield.
+- Every mode executes the existing authoritative `wait` intent. Normal and fast
+  alter client scheduling frequency only; requests remain serialized and every
+  accepted tick is rendered in order.
+- Pause is accepted even while a server turn is resolving. That already
+  accepted turn finishes atomically, then no further turn is scheduled.
+- Simulation eligibility is projected from authoritative state. Dungeon play,
+  unresolved village danger, non-active run states, and world/regional travel
+  decisions cannot advance continuously. Tactical cases surface an explicit
+  pause reason.
+- Reservation UUIDs are deterministic across replay while still distinguishing
+  later reservation attempts for the same job and resource.
+- Seven focused M-10 gates prove manual/continuous equivalence, zero mutation
+  while paused, speed equivalence, dungeon and village-danger tactical pauses,
+  explicit travel suspension, and actor passage negotiation. The complete
+  148-test M-10 suite passes, the
+  macOS player builds, and the visible Unity controls pass step, run, fast, and
+  fast-to-pause checks.
+
+## M-11 — Village priorities and subsistence
+
+The authoritative cross-system requirements and acceptance order for the live
+Stonebridge founding simulation are maintained in
+[`stonebridge-rimworld-baseline.md`](stonebridge-rimworld-baseline.md). Detailed
+construction, household/housing, and art rules remain in their linked supporting
+contracts. An M-11 feature is not accepted until it satisfies that plan's test,
+deterministic replay, live Unity, and truthful-inspector proof rules.
+
+### Player-visible result
+
+Stonebridge evaluates settlement-wide needs instead of merely filling isolated
+resident jobs. The current priority is visible in Unity, projects explain their
+dependencies, and production expands the village's persistent capacity.
+
+### Delivery stages
+
+1. **Lumber infrastructure — complete.** A woodcutter harvests generated trees,
+   leaves persistent stumps, stores bounded log inventory, constructs a lumber
+   yard from four logs, and converts later logs into building lumber. Her
+   forestry, construction, and carpentry ranks improve through completed work.
+2. **Food security — complete.** A farmstead consumes lumber, crops consume a
+   finite seed reserve, grain can be retained as future seed, and a persistent
+   breeding herd produces milk or can be culled without consuming its last
+   breeding pair. Grain, vegetables, milk and meat feed real meal production,
+   and eating consumes one prepared meal.
+3. **Kitchens and households — next.** Stonebridge currently has five inn beds
+   for eighteen residents. A focused night audit produced sixteen blocked sleep
+   jobs and confirmed that no resident can construct a bed. Give homes beds,
+   household kitchens and storage while retaining an inn or communal kitchen
+   for residents without a household.
+   The first M-11.1 slice now persists deterministic UUID-backed households and
+   exclusive resident membership without creating free housing or fixtures.
+4. **Housing growth.** Spend lumber and other materials on plotted homes, add
+   beds and household capacity, and allow population only when food and housing
+   support it.
+
+### Automated gate
+
+- A full 24-hour day advances in exactly 2,400 deterministic 36-second beats;
+  at the native normal cadence this is approximately 30 real minutes.
+- Dawn, day, dusk and night derive from the persisted clock, and the Unity
+  terrain shade consumes the same authoritative daylight value.
+- Time-based work and needs advance in game minutes rather than raw turns, so
+  changing the calendar scale does not make a tree, meal or night's sleep
+  complete in a few seconds of world time.
+- Priority scores and dependency explanations are deterministic and survive
+  save/load with UUID-backed projects.
+- A named village administrator owns UUID-backed work orders, and development
+  jobs reference the active order rather than appearing without authority.
+- Harvesting changes one real tree into one persistent stump and adds exactly
+  two logs without duplicating resources.
+- Lumber-yard construction consumes four stored logs exactly once.
+- Sawing consumes logs and creates bounded lumber inventory.
+- Farm construction consumes four lumber; crop, dairy and meat output remains
+  bounded by seed, herd, storage and labor rather than appearing implicitly.
+- Ada Weiss and Niko Brand accumulate farming, construction, husbandry and
+  butchery practice from completed work.
+- One satisfied hunger job consumes exactly one prepared meal.
+- Continuous and manual turns still execute the same simulation step.
+
+### Scope boundary
+
+The rolling map remains spatially open. M-11 grows its meaningful sites and
+production regions rather than imposing a hard town rectangle. Farms, homes and
+livestock are not considered complete until their own vertical stages and tests
+pass.
+
 ## Smart-world completion criteria
 
 The first smart-world release is complete when all of the following are true:
@@ -720,7 +921,6 @@ The first smart-world release is complete when all of the following are true:
 
 ## Immediate next objective
 
-Implement **M-8 only**: allow dispersed companions to choose useful personal
-work, then prove that regroup and danger safely interrupt those jobs and return
-the party to leadership control. Preserve the accepted D-M5.2 Unity dungeon
-interface unless a later milestone explicitly reopens it.
+M-1 through M-10 are complete. M-11 is active: preserve the accepted D-M5.2
+dungeon interface and extend the shared deterministic simulation from tested
+lumber and food security into household kitchens and material-backed housing.

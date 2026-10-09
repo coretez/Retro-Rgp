@@ -1,5 +1,250 @@
 # Changelog
 
+## Interactive Version 1 · Traveling merchant and milling economy
+
+- Added a persisted traveling merchant with finite stock, finite coin, a
+  map-visible two-day visit, deterministic recurrence, and conserved village
+  buy/sell transactions.
+- Evaluated 14-, 18-, 21-, and 90-day cadences against import coverage and
+  caravan overhead; selected eighteen days as the current test baseline.
+- Added explicit seed, iron, steel, copper, tin, and brass stores plus a village
+  treasury and reserve-aware reeve purchasing policy.
+- Added mill-gated grain-to-flour production with food provenance and milling
+  skill practice; flour above the village reserve can be exported for coin.
+- Added planned woodland field expansion: trees become stored timber, the area
+  opens only after clearing, and the crop scheduler supports multiple plots.
+
+## Interactive Version 1 · R6–R7 colony release gate
+
+- Completed visual registry version 2 across actors, animals, crops, trees,
+  materials, construction, floors, roofs, fences, doors, gates, fixtures,
+  signs, terrain, condition, and damage states.
+- Added an original strict-overhead modular pawn anchor plus cached Unity pawn
+  recipes for deterministic body, skin, hair, clothing, facing, locomotion,
+  work, equipment, and carried-item layers.
+- Made construction supply, frames, progress, connected structures, crops,
+  individual co-located stock contents, damage, cattle, and work effects readable
+  from authoritative state; the runtime visual audit now has 35 accepted sprite
+  anchors, no missing key, and truthful diagnostic fallback.
+- Replaced the cow and deer with original strict-overhead transparent sprites,
+  registered all emitted animal states, and archived the superseded hybrid-view
+  cow outside runtime resources.
+- Added the R7 ten-seed one-day survival matrix, repeated three- and five-day
+  food runs, exact blueprint/delivery/frame/sleep/harvest/meal save-load matrix,
+  scheduler parity, resource visibility, memory budget, and disabled population
+  growth gates.
+- Preserved unmatched physical gates and unfinished-building doors through save
+  migration, deduplicated fresh-run work permissions, and kept every co-located
+  stockpile inspectable in the Unity projection.
+- Protected the founding farm specialist from unrelated construction after the
+  farm exists while allowing the farmstead's own commissioning tick to finish.
+- Made mature saved runs resume directly from their local snapshot instead of
+  projecting multi-megabyte history through MCP before the live session starts.
+- Rebuilt and watched the exact canonical run in Unity at founding and tick
+  33,007; the mature view contained 751 accepted visual cells and no fallback.
+- Added a five-seed full-town release proof. Every seed constructs and
+  commissions all 12 roofed strategic objectives, houses all ten founders, then
+  survives a natural 2,400-tick day with clean storage, provenance, strategy,
+  visibility, blocked-work, and save/load audits.
+- Fixed a project self-deadlock in which a parent builder could preempt its own
+  helper and wait forever on that helper's claimed wall section.
+- Enforced a 30-line maximum across 1,178 named JavaScript/C# functions with
+  explicit template/data-projection exemptions; all 278 tests and final static,
+  visual, Unity-build, and formatting gates pass.
+
+## Interactive Version 1 · M-11 village priorities and subsistence
+
+- Added colony-sim-style right-mouse map dragging alongside middle-mouse drag,
+  scroll-wheel zoom, Shift+WASD/arrow panning, and Home recentering, with a
+  compact control reminder in the village command bar.
+- Established the versioned `stonebridge-colony-v1` art contract with a shared
+  generation prompt, controlled pawn and object variants, asset provenance,
+  runtime-scale review, and consistent Unity import rules.
+- Defined material-plus-state image keys for paired open and closed doors and
+  the future tree, sapling, stump, log, board, and firewood lifecycle. The
+  renderer accepts state-specific doors while retaining the current closed-door
+  fallback; species-specific processed wood waits for authoritative tracking.
+- Replaced Stonebridge's environmental font markers with transparent top-down
+  picture sprites for pine, elm, maple, oak and birch trees, timber walls,
+  wooden doors, tables, chairs, villagers, guards, shopkeepers and party
+  members. The same renderer already supports stone walls and steel doors when
+  those material-backed objects enter the world.
+- Added authoritative tree species, wood class, wall material and door material
+  metadata so the graphical differences can become harvesting, construction,
+  durability and repair rules rather than remaining cosmetic variants.
+- Refined the Unity-only Stonebridge glyph language with connected box-drawn
+  walls, readable door and sign symbols, and five deterministic tree species
+  with distinct markers and colors. Dungeon walls retain their established
+  ASCII presentation.
+- Began M-11.1 with deterministic UUID-backed household identities and exactly
+  one household assignment per resident. Save migration repairs membership but
+  intentionally creates no homes, beds, kitchens, storage, materials, or labor.
+- Separated household membership from nullable residence assignment. Residents
+  without usable housing are explicitly tagged homeless and prioritize food,
+  then temporary shelter; destroyed or uninhabitable residences do not count.
+- Documented the staged household, residence, construction, fixture, sleeping,
+  and multi-day survival contracts and their acceptance gates. Saves advance to
+  schema 22.
+- Replaced the Unity village's camera-bound picture frame with a movable
+  100×60 observation window. Panning near an edge streams another deterministic
+  terrain window without moving the party or inflating every simulation tick.
+- Added Unity landmark and inspection metadata so selecting a sign reveals its
+  text and selecting any cell of a known building identifies that building.
+- Corrected village work routing to approach closed access doors before routing
+  into interiors, report real path failures instead of `no_eligible_actor`, and
+  collapse duplicate blocking notices in the visible activity log.
+- Expanded the native village projection from 76×46 to 100×60 cells while
+  retaining a sub-500 KB snapshot. Unity now preserves zoom across simulation
+  updates, supports middle-mouse dragging and Shift+WASD/arrow panning during
+  live simulation, recenters with Home, and clamps zoom to the available map
+  instead of revealing an empty picture frame.
+- Slowed normal village time to one 24-hour day per 2,400 authoritative beats,
+  approximately 30 real minutes at the native client's normal 0.75-second
+  cadence. Fast mode changes scheduling frequency without changing outcomes.
+- Added a persisted second-resolution clock and fixed dawn, day, dusk, and
+  night phases. Unity now shades outdoor ASCII terrain continuously from the
+  authoritative daylight level while keeping interiors readable.
+- Converted production, companion activities, meals, social activity, worship,
+  shelter and sleep to game-minute progress. Need decay now scales with elapsed
+  game time instead of firing at the old 15-minute-per-turn rate.
+- Audited a deterministic morning and night run. Parallel morning production
+  remained useful, but the night run exposed five inn beds for eighteen
+  residents, sixteen blocked sleep jobs, no household beds, and no bed-building
+  work; housing is therefore the next hard dependency.
+- Added deterministic village-wide priorities for lumber infrastructure, food
+  security, and housing, including scores, explanations, dependencies, and
+  UUID-backed persistent development projects.
+- Added woodcutter Klara Holt with explicit forestry, construction, and sawing
+  permissions and priorities. Her ranked forestry, construction, and carpentry
+  skills gain practice only when the corresponding work completes.
+- Added village reeve Edda Voss as the persistent administrator. She evaluates
+  settlement priorities every simulation tick and issues UUID-backed work
+  orders that authorize the relevant jobs without player micromanagement while
+  the village clock advances.
+- Added a real lumber economy: generated trees become persistent stumps, logs
+  enter a bounded camp stockpile, four logs construct the lumber yard, and
+  later logs become bounded building-lumber inventory.
+- Exposed the active village priority through the web and Unity projections and
+  placed it compactly in the native top bar without reducing the map viewport.
+- Advanced saves to schema 21 and ruleset `party-roguelike-v11`; migration adds
+  missing projects, stockpiles, and the woodcutter with stable UUID references.
+- Added farmer Ada Weiss and herder Niko Brand, a lumber-backed farmstead,
+  finite seed and breeding-herd resources, and bounded grain, vegetable, milk,
+  meat and prepared-meal production. Eating now consumes one stored meal.
+- Kept household kitchens and material-backed housing as the remaining M-11
+  stages instead of simulating those resources implicitly.
+- Added seven M-11 gates; all 155 tests pass, Unity scripts compile, the macOS
+  player builds, and the migrated live village visibly assigns Klara a real
+  timber-tree job while remaining paused between requested turns.
+
+## Interactive Version 1 · M-10 continuous simulation controls
+
+- Split characters from the static ASCII terrain mesh and added eased,
+  identity-preserving movement between authoritative grid positions. Manual and
+  normal-speed turns use a readable glide; accelerated simulation shortens the
+  animation without skipping a simulation state.
+- Added compact native Unity Pause, Step, Run 1×, and Fast 4× controls with
+  F5–F8 shortcuts while preserving the full map viewport.
+- Routed single-step and both continuous speeds through the same authoritative
+  `wait` turn used by manual play; speed changes only how often that turn is
+  requested and never changes simulation outcomes.
+- Added explicit simulation eligibility to the Unity projection. Dungeon play,
+  unresolved town danger, dying/completed runs, and travel decisions cannot
+  silently advance and force an explanatory pause where tactical input is
+  required.
+- Made Pause interrupt continuous scheduling even while the current networked
+  turn is resolving; the accepted turn completes, but no later turn begins.
+- Added actor-to-actor passage negotiation when a route is occupied. A blocker
+  may yield one legal adjacent step, refuse because it already moved or lacks
+  space, or deliberately hold a doorway while danger is active. Yielding uses
+  the actor's movement for that turn, preventing traffic resolution from
+  creating teleports or double moves.
+- Replaced random reservation claim identities with replay-stable UUIDs derived
+  from the job, resource claim, and reservation attempt.
+- Added seven focused M-10 regression gates. The complete 148-test suite passes,
+  the macOS Unity build succeeds, and native play verifies step, normal, fast,
+  and fast-to-pause behavior through visible controls.
+
+## Interactive Version 1 · Party management and character development
+
+- Added a persistent `Manage Group` action beneath the gameplay roster. It
+  opens a true group-level landing page for shared movement, spending policy,
+  tactical orders, party health, roles, and priorities before drilling into an
+  individual character. Character pages now provide a visible route back to
+  group management.
+- Added a UUID-driven, scrollable party roster with no four-member limit; the
+  established four remain the starting party rather than a system cap.
+- Added Unity screens for each member's activity priorities, fighting role,
+  current work, equipment, needs, abilities, and skills.
+- Added individual character sheets and twelve trainable physical, combat,
+  field, craft, knowledge, and social skills with class-based starting ranks.
+- Made Party Management and Character Record opaque modal workspaces that hide
+  the active map and suspend gameplay input until the player returns. Added
+  fixed Back to Party and Return to Game controls plus visible keyboard
+  shortcuts for every page.
+- Added a persistent collapsible Group accordion to gameplay with a scrollable
+  uncapped roster, health totals, condition markers, health bars, and direct
+  member selection into Party Management.
+- Skills now advance only through real combat, exploration, social, and work
+  events. Activity priorities replace direct skill-training buttons; specialized
+  archery and tournament practice remain locked until their facilities exist.
+- Added schema-19 migration for existing characters and converted the old
+  generic training job into concrete work and facility-backed activities.
+- Made party configuration authoritative and non-turn-consuming across dungeon,
+  village, exterior, and world contexts.
+- Expanded the suite to 141 passing tests and completed a successful Unity
+  script compilation gate.
+
+## Interactive Version 1 · M-9 needs, schedules, and social life
+
+- Added one shared life-state contract for residents, the hero, and companions,
+  with explicit autonomous versus player-directed authority.
+- Added a deterministic quarter-hour town clock, work/rest/free-time schedule
+  scoring, and bounded hunger, fatigue, safety, social, and morale needs.
+- Added reservable meals, beds, public seating, chapel shelter, worship places,
+  conversations, and bounded recent memories through the existing job board.
+- Added critical-need interruption without overriding immediate guard danger
+  response, plus stale-life-job replacement to prevent satisfaction loops.
+- Added Unity clock, need, schedule, recommendation, and memory inspection.
+- Migrated saves to schema 18 and added nine focused M-9 regression gates for
+  NPCs and player-controlled characters. The full 134-test suite and macOS
+  Unity build pass, and the native visible-control gate completed a town day.
+
+## Interactive Version 1 · M-8 autonomous dispersed companions
+
+- Added UUID-keyed companion work state with role-derived capabilities,
+  permissions, priorities, objective history, and inspectable action reasons.
+- Added autonomous healing, scouting, training, research, rumor gathering,
+  rest, and paid work through the shared jobs, reservations, smart objects, and
+  one-cell navigation systems.
+- Added leadership recall and danger overrides that suspend work, release
+  claims, open unlocked access doors, and regroup without teleporting or
+  stacking. Re-dispersal resumes eligible suspended objectives.
+- Added approval-only, routine-supplies, and autonomous spending policies with
+  equipment restrictions and copper limits.
+- Added compact Unity Disperse/Regroup, spending-policy, and village Wait
+  controls plus companion objective details without changing the frozen native
+  dungeon interface.
+- Migrated saves to schema 17, expanded the suite to 125 passing tests, built
+  the macOS Unity player, and passed the native gate with three distinct jobs
+  followed by a complete visible-controls recall.
+
+## Interactive Version 1 · M-7.1 economy hardening
+
+- Enforced one active job per resident while retaining explicit guard
+  preemption, and made qualified busy work wait without false blocked events.
+- Added deterministic route caching, bounded blocked-job retry backoff, and a
+  binary-heap weighted router. The 100-turn benchmark improved from roughly
+  249 ms to 20 ms per village turn.
+- Repaired every stockpile-to-container UUID reference, including save
+  migration, and made delivery status name the real cargo and destination.
+- Added actual herbalist treatment using remedy stock, complete resident work
+  permissions/capabilities in both inspectors, and correct companion recipients
+  for consumable purchases.
+- Expanded the regression suite to 116 passing tests, compiled the Unity client,
+  and completed the delivery-to-forging-to-stock gate through visible Unity
+  controls with `Ash spear ×1` displayed in the staffed smithy.
+
 ## Interactive Version 1 · M-7 working residents and local economy
 
 - Added bounded work templates for the smith, herbalist, armorer, innkeeper,

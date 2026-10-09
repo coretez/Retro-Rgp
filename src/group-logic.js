@@ -117,27 +117,31 @@ export function createGroup({
   };
 }
 
+function leadershipSuccessor(group, byId) {
+  const assignments = new Map(
+    group.assignments.map((assignment) => [assignment.actorId, assignment]),
+  );
+  return group.memberIds
+    .filter((actorId) => living(byId.get(actorId)))
+    .map(
+      (actorId) =>
+        assignments.get(actorId) ?? {
+          actorId,
+          role: "member",
+          commandScore: 0,
+        },
+    )
+    .sort(
+      (a, b) =>
+        b.commandScore - a.commandScore || a.actorId.localeCompare(b.actorId),
+    )[0];
+}
+
 export function reconcileGroupLeadership(group, actors) {
   const byId = new Map(actors.map((actor) => [actor.id, actor]));
   if (!group.memberIds.some((actorId) => byId.has(actorId))) return null;
   if (living(byId.get(group.leaderId))) return null;
-  const assignments = new Map(
-      group.assignments.map((assignment) => [assignment.actorId, assignment]),
-    ),
-    successor = group.memberIds
-      .filter((actorId) => living(byId.get(actorId)))
-      .map(
-        (actorId) =>
-          assignments.get(actorId) ?? {
-            actorId,
-            role: "member",
-            commandScore: 0,
-          },
-      )
-      .sort(
-        (a, b) =>
-          b.commandScore - a.commandScore || a.actorId.localeCompare(b.actorId),
-      )[0],
+  const successor = leadershipSuccessor(group, byId),
     previousLeaderId = group.leaderId,
     leaderId = successor?.actorId ?? null;
   if (previousLeaderId === leaderId) return null;
@@ -154,7 +158,7 @@ export function reconcileGroupLeadership(group, actors) {
   };
 }
 
-export function issueGroupOrder(group, command, tick) {
+function validateCommandAuthority(group, command) {
   check(
     group.leaderId,
     "GROUP_HAS_NO_LEADER",
@@ -180,6 +184,52 @@ export function issueGroupOrder(group, command, tick) {
       actualCommandRevision: group.commandRevision,
     },
   );
+}
+
+function validateGroupOrder(order) {
+  check(
+    GROUP_OBJECTIVES.includes(order.objective),
+    "INVALID_GROUP_OBJECTIVE",
+    "Unknown group objective.",
+  );
+  check(
+    GROUP_FORMATIONS.includes(order.formation),
+    "INVALID_FORMATION",
+    "Unknown group formation.",
+  );
+  check(
+    GROUP_RESOURCE_POLICIES.includes(order.resourcePolicy),
+    "INVALID_RESOURCE_POLICY",
+    "Unknown group resource policy.",
+  );
+  check(
+    GROUP_MOVEMENT_MODES.includes(order.movementMode),
+    "INVALID_MOVEMENT_MODE",
+    "Unknown group movement mode.",
+  );
+  check(
+    validRetreatThreshold(order.retreatThreshold),
+    "INVALID_RETREAT_THRESHOLD",
+    "retreatThreshold must be an integer from 0 to 100.",
+  );
+  check(
+    order.objective !== "focus" || order.targetId,
+    "GROUP_TARGET_REQUIRED",
+    "A focus order requires a targetId.",
+  );
+  check(
+    order.objective !== "retreat" || order.destination,
+    "GROUP_DESTINATION_REQUIRED",
+    "A retreat order requires a destination.",
+  );
+}
+
+function validRetreatThreshold(value) {
+  return Number.isInteger(value) && value >= 0 && value <= 100;
+}
+
+export function issueGroupOrder(group, command, tick) {
+  validateCommandAuthority(group, command);
   const next = {
     ...group.order,
     objective: command.objective,
@@ -192,48 +242,13 @@ export function issueGroupOrder(group, command, tick) {
     issuedBy: command.issuerId,
     issuedAtTick: tick,
   };
-  check(
-    GROUP_OBJECTIVES.includes(next.objective),
-    "INVALID_GROUP_OBJECTIVE",
-    "Unknown group objective.",
-  );
-  check(
-    GROUP_FORMATIONS.includes(next.formation),
-    "INVALID_FORMATION",
-    "Unknown group formation.",
-  );
-  check(
-    GROUP_RESOURCE_POLICIES.includes(next.resourcePolicy),
-    "INVALID_RESOURCE_POLICY",
-    "Unknown group resource policy.",
-  );
-  check(
-    GROUP_MOVEMENT_MODES.includes(next.movementMode),
-    "INVALID_MOVEMENT_MODE",
-    "Unknown group movement mode.",
-  );
-  check(
-    Number.isInteger(next.retreatThreshold) &&
-      next.retreatThreshold >= 0 &&
-      next.retreatThreshold <= 100,
-    "INVALID_RETREAT_THRESHOLD",
-    "retreatThreshold must be an integer from 0 to 100.",
-  );
-  check(
-    next.objective !== "focus" || next.targetId,
-    "GROUP_TARGET_REQUIRED",
-    "A focus order requires a targetId.",
-  );
-  check(
-    next.objective !== "retreat" || next.destination,
-    "GROUP_DESTINATION_REQUIRED",
-    "A retreat order requires a destination.",
-  );
+  validateGroupOrder(next);
   group.commandRevision += 1;
   group.order = next;
   return { ...structuredClone(next), commandRevision: group.commandRevision };
 }
 
+// function-length-exempt: template -- group protocol projection
 export function groupView(group, actors) {
   const byId = new Map(actors.map((actor) => [actor.id, actor])),
     assignments = new Map(

@@ -8,15 +8,21 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 import { RogueStore } from "../src/rogue-store.js";
 import { rogueUnityView } from "../src/rogue-engine.js";
+import {
+  RogueLiveSession,
+  resumeRememberedRun,
+} from "../src/rogue-live-session.js";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const port = Number(process.env.DND_ROGUE_PORT ?? 4321);
+const scenario = process.env.DND_ROGUE_SCENARIO ?? "founding";
+const scenarioVersion = "v6";
 const database = resolve(
   process.env.DND_ROGUE_DB ?? resolve(root, "var/rogue-demo.sqlite"),
 );
 const activeRunFile = resolve(
   process.env.DND_ROGUE_ACTIVE_RUN_FILE ??
-    resolve(root, "var/rogue-active-run.txt"),
+    resolve(root, `var/rogue-active-${scenario}-${scenarioVersion}-run.txt`),
 );
 const client = new Client({ name: "rogue-html-workbench", version: "1" });
 await client.connect(
@@ -28,6 +34,7 @@ await client.connect(
   }),
 );
 await client.listTools();
+const unityStore = new RogueStore(database);
 
 async function call(name, args) {
   const response = await client.callTool({ name, arguments: args });
@@ -42,26 +49,23 @@ let active;
 const rememberedRunId = existsSync(activeRunFile)
   ? readFileSync(activeRunFile, "utf8").trim()
   : "";
-if (rememberedRunId) {
-  try {
-    active = await call("rogue_run_get", { runId: rememberedRunId });
-  } catch {
-    active = null;
-  }
-}
+active = resumeRememberedRun(unityStore, rememberedRunId);
 active ??= await call("rogue_run_create", {
-  requestId: "rogue-viewer-default-v3",
+  requestId: `rogue-viewer-${scenario}-${scenarioVersion}`,
   seed: "the-river-below",
   heroName: "Mara Thorn",
   heroClass: "fighter",
   form: "hybrid",
   size: "small",
   levels: 5,
+  scenario,
+  worldGeneration: "regional_v3",
 });
 let runId = active.runId;
 writeFileSync(activeRunFile, `${runId}\n`);
 let queue = Promise.resolve();
-const unityStore = new RogueStore(database);
+let liveSession = new RogueLiveSession(active.state ?? unityStore.get(runId));
+const MAX_JSON_BODY_BYTES = 64 * 1024;
 
 const originAllowed = (request) =>
   request.headers.origin === `http://127.0.0.1:${port}` ||
@@ -73,7 +77,7 @@ async function jsonBody(request) {
   let body = "";
   for await (const chunk of request) {
     body += chunk;
-    if (body.length > 8192) throw new Error("Request too large");
+    if (body.length > MAX_JSON_BODY_BYTES) throw new Error("Request too large");
   }
   return JSON.parse(body);
 }
@@ -88,13 +92,60 @@ function sendHtml(response, file) {
   response.end(readFileSync(resolve(root, "viewer", file), "utf8"));
 }
 
-async function handleGet(pathname, response) {
+function villageCenter(searchParams) {
+  if (!searchParams.has("centerX") || !searchParams.has("centerY")) return null;
+  const x = Number(searchParams.get("centerX")),
+    y = Number(searchParams.get("centerY"));
+  return Number.isInteger(x) && Number.isInteger(y) ? { x, y } : null;
+}
+
+function queryChunkRevisions(searchParams) {
+  const entries = (searchParams.get("chunkRevisions") ?? "")
+    .split(",")
+    .map((entry) => entry.split(":"))
+    .filter(([id, revision]) => id && revision);
+  return Object.fromEntries(entries);
+}
+
+function queryCellChunkRevisions(searchParams) {
+  const entries = (searchParams.get("cellChunkRevisions") ?? "")
+    .split(",")
+    .map((entry) => entry.split(":"))
+    .filter(([id, revision]) => id && revision);
+  return Object.fromEntries(entries);
+}
+
+function bodyChunkRevisions(body) {
+  return Object.fromEntries(
+    (body.chunkRevisions ?? [])
+      .filter((entry) => entry.id && entry.revision)
+      .map((entry) => [entry.id, entry.revision]),
+  );
+}
+
+function bodyCellChunkRevisions(body) {
+  return Object.fromEntries(
+    (body.cellChunkRevisions ?? [])
+      .filter((entry) => entry.id && entry.revision)
+      .map((entry) => [entry.id, entry.revision]),
+  );
+}
+
+async function handleGet(pathname, response, searchParams) {
   if (pathname === "/") return sendHtml(response, "rogue.html");
   if (pathname === "/manual") return sendHtml(response, "monster-manual.html");
   if (pathname === "/api/state")
-    return sendJson(response, await call("rogue_run_get", { runId }));
+    return sendJson(response, liveSession.runView());
   if (pathname === "/api/unity/state")
-    return sendJson(response, unityStore.unityView(runId));
+    return sendJson(
+      response,
+      liveSession.unityView({
+        villageCenter: villageCenter(searchParams),
+        knownChunkRevisions: queryChunkRevisions(searchParams),
+        cellChunkProtocol: searchParams.get("cellChunks") === "1",
+        knownCellChunkRevisions: queryCellChunkRevisions(searchParams),
+      }),
+    );
   if (pathname === "/api/bestiary")
     return sendJson(response, await call("rogue_bestiary_get", {}));
   return false;
@@ -112,23 +163,20 @@ async function createRun(request, response) {
     form: body.form,
     size: body.size === "medium" ? "medium" : "small",
     levels: [3, 5, 8].includes(Number(body.levels)) ? Number(body.levels) : 5,
+    scenario: ["established", "founding"].includes(body.scenario)
+      ? body.scenario
+      : scenario,
+    worldGeneration: "regional_v3",
   });
   runId = created.runId;
+  liveSession.replace(unityStore.get(runId));
   writeFileSync(activeRunFile, `${runId}\n`);
   sendJson(response, created.view);
 }
 
 async function performAction(request, response) {
   const body = await jsonBody(request);
-  const task = queue.then(async () => {
-    const view = await call("rogue_run_get", { runId });
-    return call("rogue_act", {
-      runId,
-      expectedRevision: view.revision,
-      requestId: randomUUID(),
-      intent: body.intent,
-    });
-  });
+  const task = queue.then(() => liveSession.act(body.intent));
   queue = task.catch(() => {});
   sendJson(response, await task);
 }
@@ -136,25 +184,34 @@ async function performAction(request, response) {
 async function performUnityAction(request, response) {
   const body = await jsonBody(request),
     task = queue.then(() => {
-      const state = unityStore.get(runId),
-        result = unityStore.act(
-          {
-            runId,
-            expectedRevision: state.revision,
-            requestId: randomUUID(),
-            intent: body.intent,
-          },
-          rogueUnityView,
-        );
+      const options = {
+          villageCenter: body.viewportCenterSet
+            ? {
+                x: Number(body.viewportCenterX),
+                y: Number(body.viewportCenterY),
+              }
+            : null,
+          knownChunkRevisions: bodyChunkRevisions(body),
+          cellChunkProtocol: body.cellChunkProtocol === true,
+          knownCellChunkRevisions: bodyCellChunkRevisions(body),
+        },
+        result = liveSession.act(body.intent, rogueUnityView, options);
       return result.view;
     });
   queue = task.catch(() => {});
   sendJson(response, await task);
 }
 
+function saveLiveSession(response) {
+  const saved = unityStore.saveSnapshot(liveSession.state);
+  liveSession.markSaved();
+  sendJson(response, { ...saved, saved: true });
+}
+
 async function handlePost(pathname, request, response) {
   if (pathname === "/api/unity/action")
     return performUnityAction(request, response);
+  if (pathname === "/api/unity/save") return saveLiveSession(response);
   if (!originAllowed(request)) throw new Error("Same-origin request required");
   if (pathname === "/api/new") return createRun(request, response);
   if (pathname === "/api/action") return performAction(request, response);
@@ -172,10 +229,13 @@ async function handleRequest(request, response) {
   response.setHeader("X-Content-Type-Options", "nosniff");
   try {
     if (!validHost(request)) throw new Error("Invalid host");
-    const { pathname } = new URL(request.url, `http://127.0.0.1:${port}`);
+    const { pathname, searchParams } = new URL(
+      request.url,
+      `http://127.0.0.1:${port}`,
+    );
     const handled =
       request.method === "GET"
-        ? await handleGet(pathname, response)
+        ? await handleGet(pathname, response, searchParams)
         : request.method === "POST"
           ? await handlePost(pathname, request, response)
           : false;
@@ -202,6 +262,7 @@ async function shutdown() {
   if (shuttingDown) return;
   shuttingDown = true;
   server.close();
+  if (liveSession.dirty) unityStore.saveSnapshot(liveSession.state);
   unityStore.close();
   await client.close();
   process.exit(0);

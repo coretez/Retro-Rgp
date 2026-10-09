@@ -6,7 +6,7 @@ replace Stonebridge's existing scripted behavior.
 ## Baseline
 
 - Save schema: `11`
-- Ruleset: `party-roguelike-v9`
+- Ruleset: `party-roguelike-v11`
 - Turn entry point: `applyRogueTurn(state, intent, dice)`
 - UI projection: `rogueRunView(state, recentEvents)`
 - Persistence boundary: `serializeRogueState` and `parseRogueState`

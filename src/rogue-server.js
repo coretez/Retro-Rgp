@@ -33,6 +33,7 @@ const wrap = (handler) => async (args) => {
   }
 };
 
+// function-length-exempt: template -- declarative MCP route/schema registration
 export function buildRogueServer(store) {
   const server = new McpServer(
     { name: "dungeon-rogue", version: "0.2.0-alpha.5" },
@@ -53,6 +54,10 @@ export function buildRogueServer(store) {
           seed: text(),
           heroName: text().default("The Delver"),
           heroClass: z.enum(["fighter", "mage", "cleric"]).default("fighter"),
+          scenario: z.enum(["established", "founding"]).default("established"),
+          worldGeneration: z
+            .enum(["legacy_origin", "regional_v2", "regional_v3"])
+            .default("legacy_origin"),
           form: z.enum(DUNGEON_FORMS).default("auto"),
           size: z.enum(["small", "medium"]).default("small"),
           levels: z
@@ -115,6 +120,23 @@ export function buildRogueServer(store) {
               })
               .strict(),
             z.object({ kind: z.literal("wait") }).strict(),
+            z
+              .object({
+                kind: z.literal("configure_party_member"),
+                actorId: id,
+                combatRole: z
+                  .enum([
+                    "leader",
+                    "scout",
+                    "frontline",
+                    "support",
+                    "rear_guard",
+                  ])
+                  .optional(),
+                jobFocus: z.string().min(1).optional(),
+                workPriority: z.number().int().min(0).max(100).optional(),
+              })
+              .strict(),
             z
               .object({
                 kind: z.literal("command"),
@@ -188,6 +210,59 @@ export function buildRogueServer(store) {
               .strict(),
             z
               .object({
+                kind: z.literal("set_spending_policy"),
+                mode: z.enum([
+                  "approval_required",
+                  "routine_supplies",
+                  "autonomous",
+                ]),
+                limitCp: z.number().int().min(0).default(0),
+              })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("decide_village_proposal"),
+                proposalId: id,
+                outcome: z.enum([
+                  "approved",
+                  "deferred",
+                  "rejected",
+                  "revision_requested",
+                ]),
+                reason: z.string().min(1).max(240),
+              })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("revise_village_proposal"),
+                proposalId: id,
+                reason: z.string().min(1).max(240),
+              })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("decide_architect_plan"),
+                planId: id,
+                alternativeId: id.optional(),
+                outcome: z.enum([
+                  "approved",
+                  "deferred",
+                  "rejected",
+                  "revision_requested",
+                ]),
+                reason: z.string().min(1).max(240),
+              })
+              .strict(),
+            z
+              .object({
+                kind: z.literal("set_village_commission_status"),
+                commissionId: id,
+                status: z.enum(["active", "suspended"]),
+                reason: z.string().min(1).max(240),
+              })
+              .strict(),
+            z
+              .object({
                 kind: z.literal("world_move"),
                 x: z.number().int(),
                 y: z.number().int(),
@@ -204,6 +279,7 @@ export function buildRogueServer(store) {
                 kind: z.literal("shop_buy"),
                 actorId: id,
                 itemKind: text(),
+                autonomous: z.boolean().default(false),
               })
               .strict(),
             z.object({ kind: z.literal("death_save") }).strict(),

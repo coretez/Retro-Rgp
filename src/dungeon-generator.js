@@ -312,7 +312,7 @@ function buildRooms({ width, height, count, form, theme, rng }) {
   });
 }
 
-function roomGraph(rooms, rng, loops) {
+function spanningRoomEdges(rooms, rng) {
   const remaining = new Set(rooms.slice(1).map((room) => room.id));
   const connected = [rooms[0]];
   const edges = [];
@@ -334,24 +334,32 @@ function roomGraph(rooms, rng, loops) {
     connected.push(best.to);
     remaining.delete(best.to.id);
   }
-  const existing = new Set(
-    edges.map(({ from, to }) => [from.id, to.id].sort().join(":")),
-  );
+  return edges;
+}
+
+function alternateRoomEdges(rooms, existing) {
   const candidates = [];
   for (let i = 0; i < rooms.length; i++)
     for (let j = i + 1; j < rooms.length; j++) {
-      const key = [rooms[i].id, rooms[j].id].sort().join(":");
-      if (!existing.has(key)) {
-        const a = center(rooms[i]),
-          b = center(rooms[j]);
-        candidates.push({
-          from: rooms[i],
-          to: rooms[j],
-          distance: Math.abs(a.x - b.x) + Math.abs(a.y - b.y),
-        });
-      }
+      const edgeKey = [rooms[i].id, rooms[j].id].sort().join(":");
+      if (existing.has(edgeKey)) continue;
+      const a = center(rooms[i]),
+        b = center(rooms[j]);
+      candidates.push({
+        from: rooms[i],
+        to: rooms[j],
+        distance: Math.abs(a.x - b.x) + Math.abs(a.y - b.y),
+      });
     }
-  candidates.sort((a, b) => a.distance - b.distance);
+  return candidates.sort((a, b) => a.distance - b.distance);
+}
+
+function roomGraph(rooms, rng, loops) {
+  const edges = spanningRoomEdges(rooms, rng),
+    existing = new Set(
+      edges.map(({ from, to }) => [from.id, to.id].sort().join(":")),
+    ),
+    candidates = alternateRoomEdges(rooms, existing);
   for (const candidate of rng
     .shuffle(candidates.slice(0, Math.max(loops * 3, loops)))
     .slice(0, loops))
@@ -367,6 +375,59 @@ function roomGraph(rooms, rng, loops) {
   }));
 }
 
+function roomEncounter(
+  room,
+  index,
+  occupied,
+  request,
+  theme,
+  rng,
+  difficultyFactor,
+) {
+  const catalogId = rng.pick(theme.inhabitants),
+    weight = { bandit: 1, goblin: 1, skeleton: 1, ogre: 4 }[catalogId],
+    count = Math.max(
+      1,
+      Math.min(
+        8,
+        Math.round(
+          (request.partyLevel * request.partySize * difficultyFactor) /
+            (5 * weight),
+        ),
+      ),
+    );
+  const encounter = {
+    id: `encounter-${String(index + 1).padStart(2, "0")}`,
+    roomId: room.id,
+    catalogId,
+    count,
+    role: index === occupied - 1 ? "level_anchor" : "patrol_or_lair",
+    difficulty: request.difficulty,
+    guidance:
+      "Draft stocking only. Resolve final encounter XP, terrain advantage, reinforcements and rest access before installation.",
+  };
+  room.contents.push({ type: "creature_group", ...encounter });
+  return encounter;
+}
+
+function roomHazard(rooms, request, theme, rng) {
+  const room = rng.pick(rooms.slice(1, -1).length ? rooms.slice(1, -1) : rooms),
+    hazard = {
+      type: "hazard",
+      name: rng.pick(theme.hazards),
+      dc: Math.min(
+        20,
+        10 +
+          Math.ceil(request.partyLevel / 3) +
+          (request.difficulty === "deadly" ? 2 : 0),
+      ),
+      guidance:
+        "Choose a suitable ability/save and consequence during mission authoring; this draft does not apply damage.",
+    };
+  room.contents.push(hazard);
+  return { roomId: room.id, ...hazard };
+}
+
 function populate(rooms, request, theme, rng) {
   const densityRate = { sparse: 0.25, normal: 0.45, dense: 0.7 }[
     request.density
@@ -378,56 +439,28 @@ function populate(rooms, request, theme, rng) {
     1,
     Math.min(rooms.length - 1, Math.round(rooms.length * densityRate)),
   );
-  const candidates = rng.shuffle(rooms.slice(1));
-  const encounters = candidates.slice(0, occupied).map((room, index) => {
-    const catalogId = rng.pick(theme.inhabitants);
-    const weight = { bandit: 1, goblin: 1, skeleton: 1, ogre: 4 }[catalogId];
-    const count = Math.max(
-      1,
-      Math.min(
-        8,
-        Math.round(
-          (request.partyLevel * request.partySize * difficultyFactor) /
-            (5 * weight),
+  const encounters = rng
+      .shuffle(rooms.slice(1))
+      .slice(0, occupied)
+      .map((room, index) =>
+        roomEncounter(
+          room,
+          index,
+          occupied,
+          request,
+          theme,
+          rng,
+          difficultyFactor,
         ),
       ),
-    );
-    const encounter = {
-      id: `encounter-${String(index + 1).padStart(2, "0")}`,
-      roomId: room.id,
-      catalogId,
-      count,
-      role: index === occupied - 1 ? "level_anchor" : "patrol_or_lair",
-      difficulty: request.difficulty,
-      guidance:
-        "Draft stocking only. Resolve final encounter XP, terrain advantage, reinforcements and rest access before installation.",
-    };
-    room.contents.push({ type: "creature_group", ...encounter });
-    return encounter;
-  });
-  const hazardRoom = rng.pick(
-    rooms.slice(1, -1).length ? rooms.slice(1, -1) : rooms,
-  );
-  const hazard = {
-    type: "hazard",
-    name: rng.pick(theme.hazards),
-    dc: Math.min(
-      20,
-      10 +
-        Math.ceil(request.partyLevel / 3) +
-        (request.difficulty === "deadly" ? 2 : 0),
-    ),
-    guidance:
-      "Choose a suitable ability/save and consequence during mission authoring; this draft does not apply damage.",
-  };
-  hazardRoom.contents.push(hazard);
+    hazard = roomHazard(rooms, request, theme, rng);
   return {
     density: request.density,
     targetDifficulty: request.difficulty,
     dominantCatalogIds: theme.inhabitants,
     occupiedRoomCount: occupied,
     encounters,
-    hazards: [{ roomId: hazardRoom.id, ...hazard }],
+    hazards: [hazard],
     ecology:
       "The entrance, water/food access, patrol loops and fallback room should be reviewed together before play.",
   };
@@ -516,6 +549,23 @@ function difficultTerrain(form, width, rooms, floorCells, rng) {
     .slice(0, Math.floor(floorCells.length * difficultRate));
 }
 
+function dungeonGeometry(normalized, form, baseTheme, rng) {
+  const { width, height, rooms: count } = dimensions(normalized.size),
+    rooms = buildRooms({ width, height, count, form, theme: baseTheme, rng }),
+    loopCount =
+      normalized.size === "small" ? 1 : normalized.size === "large" ? 3 : 2,
+    connections = roomGraph(rooms, rng, loopCount),
+    { floor, floorCells, blocked } = carveMap(
+      width,
+      height,
+      rooms,
+      connections,
+    ),
+    difficult = difficultTerrain(form, width, rooms, floorCells, rng);
+  return { width, height, rooms, connections, floor, blocked, difficult };
+}
+
+// function-length-exempt: template -- authored dungeon result projection
 function dungeonResult(context) {
   const {
     campaign,
@@ -589,26 +639,10 @@ export function generateDungeon(campaign, request) {
   );
   const form = formFor(normalized, rng),
     baseTheme = THEMES[form],
-    theme = buildTheme(normalized, form, rng);
-  const { width, height, rooms: count } = dimensions(normalized.size);
-  const rooms = buildRooms({
-    width,
-    height,
-    count,
-    form,
-    theme: baseTheme,
-    rng,
-  });
-  const loopCount =
-    normalized.size === "small" ? 1 : normalized.size === "large" ? 3 : 2;
-  const connections = roomGraph(rooms, rng, loopCount);
-  const { floor, floorCells, blocked } = carveMap(
-      width,
-      height,
-      rooms,
-      connections,
-    ),
-    difficult = difficultTerrain(form, width, rooms, floorCells, rng);
+    theme = buildTheme(normalized, form, rng),
+    geometry = dungeonGeometry(normalized, form, baseTheme, rng);
+  const { width, height, rooms, connections, floor, blocked, difficult } =
+    geometry;
   const population = populate(rooms, normalized, baseTheme, rng);
   return dungeonResult({
     campaign,

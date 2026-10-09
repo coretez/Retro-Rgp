@@ -59,6 +59,16 @@ test("M-4 lifecycle permits suspension but rejects illegal transitions", () => {
   assert.throws(() => transitionJob(job, "available", 6), /Illegal/);
 });
 
+test("M-4 suspended work can block when its world target disappears", () => {
+  const state = villageState(),
+    job = stocktakeJob(state);
+  transitionJob(job, "reserved", 1);
+  transitionJob(job, "suspended", 2, "higher_priority_work");
+  transitionJob(job, "blocked", 3, "target_missing");
+  assert.equal(job.status, "blocked");
+  assert.equal(job.blockingReason, "target_missing");
+});
+
 test("M-4 reservations are atomic, exclusive, and released together", () => {
   const state = villageState(),
     first = stocktakeJob(state),
@@ -100,6 +110,23 @@ test("M-4 capability and permission checks reject incompatible actors", () => {
   assert.equal(actorCanPerform(actor, job), false);
 });
 
+test("V1 assignments enforce commission crews and council holds", () => {
+  const state = villageState(),
+    job = stocktakeJob(state),
+    actor = state.village.npcStates[0];
+  job.plan = {};
+  job.plan.allowedActorIds = [actor.id];
+  assert.equal(actorCanPerform(actor, job), true);
+  job.plan.allowedActorIds = ["bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"];
+  assert.equal(actorCanPerform(actor, job), false);
+  job.plan.allowedActorIds = [actor.id];
+  job.plan.commissionSuspended = true;
+  assert.equal(actorCanPerform(actor, job), false);
+  delete job.plan.commissionSuspended;
+  job.plan.budgetBlocked = true;
+  assert.equal(actorCanPerform(actor, job), false);
+});
+
 test("M-4 assignment ties resolve by actor UUID", () => {
   const job = {
       priority: 50,
@@ -120,6 +147,22 @@ test("M-4 assignment ties resolve by actor UUID", () => {
     ],
     selected = chooseAssignment(job, actors, () => ({ ok: true, cost: 4 }));
   assert.equal(selected.actor.id, actors[1].id);
+});
+
+test("M-7.1 a working actor cannot accept a second job without preemption", () => {
+  const job = {
+      priority: 90,
+      jobType: "inspect_object",
+      requiredCapabilities: ["inspect"],
+    },
+    actor = {
+      id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      workState: "working",
+      capabilityTags: ["inspect"],
+      workPermissions: { allowedJobTypes: ["inspect_object"] },
+    };
+  assert.equal(actorCanPerform(actor, job), false);
+  assert.equal(actorCanPerform(actor, job, { allowWorking: true }), true);
 });
 
 test("M-4 stocktake runs through real navigation and object interaction", () => {
@@ -184,7 +227,15 @@ test("M-4 invalid job targets release every claim deterministically", () => {
   assert.equal(job.status, "blocked");
   assert.equal(job.blockingReason, "target_missing");
   assert.equal(job.assignedActorId, null);
-  assert.equal(actor.workState, "available");
+  assert.ok(
+    actor.workState === "available" ||
+      state.village.jobs.some(
+        (candidate) =>
+          candidate.id !== job.id &&
+          candidate.assignedActorId === actor.id &&
+          ["reserved", "active"].includes(candidate.status),
+      ),
+  );
   assert.ok(
     state.village.reservations
       .filter((claim) => claim.jobId === job.id)
@@ -215,10 +266,11 @@ test("M-4 save migration preserves jobs, claims, and actor work data", () => {
   reserveAll(state, job, [{ kind: "job", targetId: job.id }]);
   const restored = parseRogueState(serializeRogueState(state)),
     view = rogueRunView(restored).village.jobs[0];
-  assert.equal(restored.schemaVersion, 16);
+  assert.equal(restored.schemaVersion, 22);
   assert.equal(restored.village.jobs[0].assignedActorId, actor.id);
   assert.equal(restored.village.reservations[0].jobId, job.id);
-  assert.deepEqual(restored.village.npcStates[0].capabilityTags, ["inspect"]);
+  assert.ok(restored.village.npcStates[0].capabilityTags.includes("inspect"));
+  assert.ok(restored.village.npcStates[0].capabilityTags.includes("eat"));
   assert.equal(view.assignedActorName, "Greta Voll");
 });
 
@@ -236,7 +288,7 @@ test("M-4 schema-11 saves acquire empty work state and actor profiles", () => {
     delete actor.risk;
   }
   const migrated = parseRogueState(legacy);
-  assert.equal(migrated.schemaVersion, 16);
+  assert.equal(migrated.schemaVersion, 22);
   assert.deepEqual(migrated.village.jobs, []);
   assert.deepEqual(migrated.village.reservations, []);
   assert.ok(
@@ -251,10 +303,14 @@ test("M-4 schema-11 saves acquire empty work state and actor profiles", () => {
 
 test("M-4 cancelling work releases claims exactly once", () => {
   const state = villageState(),
-    job = stocktakeJob(state);
+    job = stocktakeJob(state),
+    actor = state.village.npcStates[0];
   transitionJob(job, "reserved", state.tick);
+  job.assignedActorId = actor.id;
+  actor.workState = "working";
   reserveAll(state, job, [{ kind: "job", targetId: job.id }]);
   assert.equal(cancelJob(state, job, "player_cancelled"), true);
   assert.equal(cancelJob(state, job, "player_cancelled"), false);
   assert.equal(state.village.reservations[0].state, "released");
+  assert.equal(actor.workState, "available");
 });

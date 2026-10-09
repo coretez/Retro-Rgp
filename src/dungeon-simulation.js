@@ -171,42 +171,43 @@ function resumeInvestigation(state, job, actor, context, events) {
   events.push(jobEvent(state, "job_resumed", job, actor));
 }
 
+function unavailableInvestigator(state, job, actor, events) {
+  if (!job.assignedActorId || (actor && actor.hp > 0)) return false;
+  releaseJobReservations(state, job.id, "actor_unavailable", "dungeon");
+  job.assignedActorId = null;
+  if (job.status === "blocked") job.blockingReason = "actor_unavailable";
+  else transitionJob(job, "blocked", state.tick, "actor_unavailable");
+  events.push(
+    jobEvent(state, "job_blocked", job, null, { reason: "actor_unavailable" }),
+  );
+  return true;
+}
+
+function processJob(state, level, job, status, context, events) {
+  if (TERMINAL.has(job.status)) return;
+  const actor = level.enemies.find((enemy) => enemy.id === job.assignedActorId);
+  if (unavailableInvestigator(state, job, actor, events)) return;
+  if (status === "available")
+    assignInvestigation(state, level, job, context, events);
+  if (status === "reserved") {
+    transitionJob(job, "active", state.tick);
+    actor.currentAction = "Investigating dungeon noise";
+    events.push(jobEvent(state, "job_started", job, actor));
+  }
+  if (status === "active")
+    advanceInvestigation(state, job, actor, context, events);
+  if (status === "blocked" && actor)
+    resumeInvestigation(state, job, actor, context, events);
+  if (status === "blocked" && !actor) {
+    transitionJob(job, "available", state.tick);
+    events.push(jobEvent(state, "job_reopened", job, null));
+  }
+}
+
 function processJobs(state, level, context, events) {
   const starting = new Map(level.jobs.map((job) => [job.id, job.status]));
-  for (const job of [...level.jobs].sort((a, b) => a.id.localeCompare(b.id))) {
-    if (TERMINAL.has(job.status)) continue;
-    const actor = level.enemies.find(
-        (enemy) => enemy.id === job.assignedActorId,
-      ),
-      status = starting.get(job.id);
-    if (job.assignedActorId && (!actor || actor.hp <= 0)) {
-      releaseJobReservations(state, job.id, "actor_unavailable", "dungeon");
-      job.assignedActorId = null;
-      if (job.status === "blocked") job.blockingReason = "actor_unavailable";
-      else transitionJob(job, "blocked", state.tick, "actor_unavailable");
-      events.push(
-        jobEvent(state, "job_blocked", job, null, {
-          reason: "actor_unavailable",
-        }),
-      );
-      continue;
-    }
-    if (status === "available")
-      assignInvestigation(state, level, job, context, events);
-    if (status === "reserved") {
-      transitionJob(job, "active", state.tick);
-      actor.currentAction = "Investigating dungeon noise";
-      events.push(jobEvent(state, "job_started", job, actor));
-    }
-    if (status === "active")
-      advanceInvestigation(state, job, actor, context, events);
-    if (status === "blocked" && actor)
-      resumeInvestigation(state, job, actor, context, events);
-    if (status === "blocked" && !actor) {
-      transitionJob(job, "available", state.tick);
-      events.push(jobEvent(state, "job_reopened", job, null));
-    }
-  }
+  for (const job of [...level.jobs].sort((a, b) => a.id.localeCompare(b.id)))
+    processJob(state, level, job, starting.get(job.id), context, events);
   return new Set(
     level.jobs
       .filter((job) => job.assignedActorId && !TERMINAL.has(job.status))

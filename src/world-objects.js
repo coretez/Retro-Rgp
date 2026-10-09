@@ -43,6 +43,27 @@ export const WORLD_AFFORDANCES = Object.freeze({
     effect: "dig_ground",
     duration: 1,
   },
+  prospect: {
+    key: "prospect",
+    label: "Prospect rock face",
+    requirements: { maxRange: 1 },
+    effect: "reveal_geology",
+    duration: 4,
+  },
+  pan: {
+    key: "pan",
+    label: "Pan river sediment",
+    requirements: { maxRange: 1 },
+    effect: "pan_placer_minerals",
+    duration: 4,
+  },
+  quarry: {
+    key: "quarry",
+    label: "Quarry stone",
+    requirements: { maxRange: 1, toolTag: "breach" },
+    effect: "quarry_stone",
+    duration: 4,
+  },
   harvest: {
     key: "harvest",
     label: "Harvest",

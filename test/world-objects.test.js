@@ -20,6 +20,10 @@ import {
   queryAffordances,
   WORLD_AFFORDANCES,
 } from "../src/world-objects.js";
+import {
+  regionalHydrology,
+  regionalPlacerMineral,
+} from "../src/village-region.js";
 
 const input = {
   requestId: "smart-objects",
@@ -68,7 +72,11 @@ test("M-3 village cells expose UUID objects and distinct smart-object types", ()
   const view = rogueRunView(villageState()).village,
     objects = view.map.cells.map((cell) => cell.object),
     kinds = new Set(objects.map((object) => object.objectKind));
-  assert.equal(view.entityCount, view.map.cells.length);
+  assert.ok(view.entityCount < view.map.cells.length);
+  assert.equal(
+    view.entityCount,
+    new Set(objects.map((object) => object.id)).size,
+  );
   assert.ok(objects.every((object) => isUuid(object.id)));
   for (const kind of [
     "sign",
@@ -144,6 +152,110 @@ test("M-3 unavailable tool actions remain visible with a reason", () => {
     harvest = actions.find((action) => action.key === "harvest");
   assert.equal(harvest.available, false);
   assert.match(harvest.reason, /Requires a tool/);
+});
+
+test("R5 a resident remains visible while standing on loose material", () => {
+  const state = villageState(),
+    resident = state.village.npcStates[0];
+  state.village.looseMaterials.push({
+    id: "material-under-resident",
+    entityType: "material",
+    kind: "timber",
+    name: "Cut timber",
+    quantity: 1,
+    ...resident.position,
+  });
+  const object = villageWorldObjectAt(
+    state,
+    resident.position.x,
+    resident.position.y,
+  );
+  assert.equal(object.objectKind, "resident");
+  assert.equal(object.id, resident.id);
+});
+
+test("R8 a finite quarry face produces physical stone and remains depleted", () => {
+  const state = villageState(),
+    position = { x: -135, y: 45 },
+    object = villageWorldObjectAt(state, position.x, position.y),
+    events = [];
+  assert.equal(object.objectKind, "stone_deposit");
+  assert.deepEqual(object.affordanceKeys, ["examine", "quarry"]);
+  state.village.heroPosition = { x: position.x + 1, y: position.y };
+  executeVillageInteraction(
+    state,
+    {
+      actorId: state.hero.id,
+      objectId: object.id,
+      action: "quarry",
+      ...position,
+    },
+    events,
+  );
+  assert.equal(state.village.looseMaterials.at(-1).kind, "stone");
+  assert.equal(state.village.looseMaterials.at(-1).quantity, 3);
+  assert.equal(
+    villageWorldObjectAt(state, position.x, position.y).objectKind,
+    "material",
+  );
+  assert.equal(state.village.modifications.at(-1).kind, "quarried_rock");
+  assert.equal(events.at(-1).action, "quarry");
+});
+
+test("R8 river panning yields one conserved finite mineral concentrate", () => {
+  const state = newRogueRun({
+    ...input,
+    seed: "the-river-below",
+    scenario: "founding",
+    worldGeneration: "regional_v3",
+  });
+  state.location = "village";
+  const regional = state.village.development.masterPlan.regionalContext,
+    directions = [[0, -1], [1, 0], [0, 1], [-1, 0]];
+  let target;
+  for (let y = regional.site.hub.y - 96; y <= regional.site.hub.y + 96; y += 1)
+    for (let x = regional.site.hub.x - 96; x <= regional.site.hub.x + 96; x += 1) {
+      const mineralKind = regionalPlacerMineral(state.seed, x, y, "regional_v3");
+      if (!mineralKind) continue;
+      const access = directions
+        .map(([dx, dy]) => ({ x: x + dx, y: y + dy }))
+        .find(
+          (cell) =>
+            !regionalHydrology(state.seed, cell.x, cell.y, "regional_v3").water,
+        );
+      if (access) target = { global: { x, y }, access, mineralKind };
+      if (target) break;
+    }
+  assert.ok(target);
+  const local = {
+      x: target.global.x - regional.site.origin.x,
+      y: target.global.y - regional.site.origin.y,
+    },
+    access = {
+      x: target.access.x - regional.site.origin.x,
+      y: target.access.y - regional.site.origin.y,
+    },
+    object = villageWorldObjectAt(state, local.x, local.y),
+    events = [];
+  state.village.heroPosition = access;
+  executeVillageInteraction(
+    state,
+    { actorId: state.hero.id, objectId: object.id, action: "pan", ...local },
+    events,
+  );
+  const material = state.village.looseMaterials.at(-1),
+    revisited = villageWorldObjectAt(state, local.x, local.y);
+  assert.equal(material.kind, target.mineralKind);
+  assert.equal(material.quantity, 1);
+  assert.deepEqual({ x: material.x, y: material.y }, access);
+  assert.equal(events.at(-1).type, "placer_mineral_recovered");
+  assert.equal(revisited.placerExhausted, true);
+  assert.equal(revisited.affordanceKeys.includes("pan"), false);
+  assert.deepEqual(
+    serializeRogueState(state).village.development.masterPlan.regionalContext
+      .geologyKnowledge.placerSites,
+    regional.geologyKnowledge.placerSites,
+  );
 });
 
 test("M-3 player and NPC door interactions apply the same effect", () => {

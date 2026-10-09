@@ -5,6 +5,22 @@ using UnityEngine.SceneManagement;
 
 public static class RetroProjectSetup
 {
+    public static void BuildMac()
+    {
+        const string scene = "Assets/Scenes/RetroRpg.unity";
+        const string output = "Builds/Retro RPG.app";
+        var options = new BuildPlayerOptions
+        {
+            scenes = new[] { scene },
+            locationPathName = output,
+            target = BuildTarget.StandaloneOSX,
+            options = BuildOptions.None
+        };
+        var report = BuildPipeline.BuildPlayer(options);
+        if (report.summary.result != UnityEditor.Build.Reporting.BuildResult.Succeeded)
+            throw new System.InvalidOperationException(report.summary.result.ToString());
+    }
+
     public static void Configure()
     {
         var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Single);

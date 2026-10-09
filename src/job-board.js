@@ -1,5 +1,6 @@
-import { definitionId, newInstanceId } from "./identity.js";
+import { definitionId, namedUuid } from "./identity.js";
 import { key } from "./spatial.js";
+import { depositFood } from "./village-food.js";
 
 export const JOB_STATES = Object.freeze([
   "available",
@@ -13,7 +14,7 @@ export const JOB_STATES = Object.freeze([
 
 const TERMINAL_STATES = new Set(["completed", "cancelled"]);
 const TRANSITIONS = Object.freeze({
-  available: new Set(["reserved", "blocked", "cancelled"]),
+  available: new Set(["reserved", "blocked", "suspended", "cancelled"]),
   reserved: new Set([
     "active",
     "blocked",
@@ -23,7 +24,7 @@ const TRANSITIONS = Object.freeze({
   ]),
   active: new Set(["blocked", "suspended", "completed", "cancelled"]),
   blocked: new Set(["available", "active", "cancelled"]),
-  suspended: new Set(["active", "available", "cancelled"]),
+  suspended: new Set(["active", "available", "blocked", "cancelled"]),
   completed: new Set(),
   cancelled: new Set(),
 });
@@ -33,6 +34,7 @@ export function transitionJob(job, status, tick, reason = null) {
     throw new Error(`Illegal job transition: ${job.status} -> ${status}`);
   job.status = status;
   job.updatedAtTick = tick;
+  job.statusReason = reason;
   job.blockingReason = status === "blocked" ? reason : null;
   if (TERMINAL_STATES.has(status)) job.completedAtTick = tick;
   return job;
@@ -44,6 +46,18 @@ function workStore(state, scope = "village") {
   throw new Error(`Unknown work scope: ${scope}`);
 }
 
+function defaultJobId(state, scope, store, input) {
+  const target =
+      input.targetId ??
+      `${input.targetPosition?.x ?? "none"},${input.targetPosition?.y ?? "none"}`,
+    owner = input.plan?.ownerActorId ?? "world";
+  return namedUuid(
+    state.id,
+    `job:${scope}:${input.jobType}:${target}:${owner}:${state.tick}:${store.jobs.length}`,
+  );
+}
+
+// function-length-exempt: template -- canonical job construction
 export function createJob(state, input) {
   const scope = input.scope ?? "village",
     store = workStore(state, scope),
@@ -51,11 +65,13 @@ export function createJob(state, input) {
       (job) =>
         !TERMINAL_STATES.has(job.status) &&
         job.jobType === input.jobType &&
-        job.targetId === input.targetId,
+        job.targetId === input.targetId &&
+        job.plan?.ownerActorId === input.plan?.ownerActorId &&
+        job.plan?.parallelSlot === input.plan?.parallelSlot,
     );
   if (duplicate) return { job: duplicate, created: false };
   const job = {
-    id: input.id ?? newInstanceId(),
+    id: input.id ?? defaultJobId(state, scope, store, input),
     definitionId: definitionId("job", input.jobType),
     entityType: "job",
     scope,
@@ -81,6 +97,8 @@ export function createJob(state, input) {
     production: input.production ? structuredClone(input.production) : null,
     reason: input.reason ?? "world_condition",
     blockingReason: null,
+    retryCount: 0,
+    nextRetryAtTick: null,
     createdAtTick: state.tick,
     updatedAtTick: state.tick,
     completedAtTick: null,
@@ -95,6 +113,10 @@ function reservationKey(reservation) {
   return `${reservation.kind}:${reservation.targetId}`;
 }
 
+function reservationId(job, claim, revision) {
+  return namedUuid(job.id, `reservation:${reservationKey(claim)}:${revision}`);
+}
+
 export function reserveAll(state, job, claims) {
   const store = workStore(state, job.scope),
     active = store.reservations.filter(
@@ -104,8 +126,9 @@ export function reserveAll(state, job, claims) {
     requested = claims.map((claim) => ({ ...claim, jobId: job.id }));
   if (requested.some((claim) => occupied.has(reservationKey(claim))))
     return { ok: false, reason: "resource_reserved" };
+  job.reservationRevision = (job.reservationRevision ?? 0) + 1;
   const reservations = requested.map((claim) => ({
-    id: newInstanceId(),
+    id: reservationId(job, claim, job.reservationRevision),
     definitionId: definitionId("reservation", claim.kind),
     entityType: "reservation",
     state: "held",
@@ -134,22 +157,58 @@ export function releaseJobReservations(
   return released;
 }
 
-export function actorCanPerform(actor, job) {
-  if (!["available", "working"].includes(actor.workState)) return false;
+export function actorCanPerform(actor, job, options = {}) {
+  const eligibleStates = options.allowWorking
+    ? ["available", "working"]
+    : ["available"];
+  if (!eligibleStates.includes(actor.workState)) return false;
+  if (job.plan?.commissionSuspended || job.plan?.budgetBlocked) return false;
+  const assignedCrew = job.plan?.allowedActorIds;
+  if (assignedCrew?.length && !assignedCrew.includes(actor.id)) return false;
   const allowed = actor.workPermissions?.allowedJobTypes ?? [];
   if (!allowed.includes(job.jobType)) return false;
   const capabilities = new Set(actor.capabilityTags ?? []);
   return job.requiredCapabilities.every((tag) => capabilities.has(tag));
 }
 
-function assignmentTuple(actor, job, route) {
+function assignmentTuple(
+  actor,
+  job,
+  route,
+  actorKey = (candidate) => candidate.id,
+) {
+  const preferredSkills = job.plan?.skills ?? [],
+    skillRank = preferredSkills.reduce(
+      (total, skill) => total + (actor.skills?.[skill] ?? 0),
+      0,
+    );
   return [
     -job.priority,
+    -skillRank,
     actor.lastJobType === job.jobType ? -1 : 0,
     -(actor.skills?.observation ?? 0),
     actor.risk ?? 0,
     route.cost,
-    actor.id,
+    actorKey(actor),
+  ];
+}
+
+function actorPreferenceTuple(actor, job) {
+  const preferredSkills = job.plan?.skills ?? [],
+    workPriority = preferredSkills.reduce(
+      (best, skill) => Math.min(best, actor.skillPriorities?.[skill] ?? 5),
+      5,
+    ),
+    skillRank = preferredSkills.reduce(
+      (total, skill) => total + (actor.skills?.[skill] ?? 0),
+      0,
+    );
+  return [
+    workPriority,
+    -skillRank,
+    actor.lastJobType === job.jobType ? -1 : 0,
+    -(actor.skills?.observation ?? 0),
+    actor.risk ?? 0,
   ];
 }
 
@@ -161,16 +220,42 @@ function compareTuple(left, right) {
   return 0;
 }
 
-export function chooseAssignment(job, actors, routeForActor) {
-  return actors
+export function chooseAssignment(
+  job,
+  actors,
+  routeForActor,
+  actorKey = (actor) => actor.id,
+) {
+  const ranked = actors
     .filter((actor) => actorCanPerform(actor, job))
-    .map((actor) => ({ actor, route: routeForActor(actor, job) }))
-    .filter((candidate) => candidate.route.ok)
-    .map((candidate) => ({
-      ...candidate,
-      tuple: assignmentTuple(candidate.actor, job, candidate.route),
-    }))
-    .sort((left, right) => compareTuple(left.tuple, right.tuple))[0];
+    .map((actor) => ({ actor, preference: actorPreferenceTuple(actor, job) }))
+    .sort(
+      (left, right) =>
+        compareTuple(left.preference, right.preference) ||
+        String(actorKey(left.actor)).localeCompare(
+          String(actorKey(right.actor)),
+        ),
+    );
+  for (let index = 0; index < ranked.length;) {
+    let end = index + 1;
+    while (
+      end < ranked.length &&
+      compareTuple(ranked[index].preference, ranked[end].preference) === 0
+    )
+      end += 1;
+    const choice = ranked
+      .slice(index, end)
+      .map(({ actor }) => ({ actor, route: routeForActor(actor, job) }))
+      .filter((candidate) => candidate.route.ok)
+      .map((candidate) => ({
+        ...candidate,
+        tuple: assignmentTuple(candidate.actor, job, candidate.route, actorKey),
+      }))
+      .sort((left, right) => compareTuple(left.tuple, right.tuple))[0];
+    if (choice) return choice;
+    index = end;
+  }
+  return undefined;
 }
 
 export function jobView(job, reservations, actors) {
@@ -190,22 +275,61 @@ export function jobView(job, reservations, actors) {
 
 export function cancelJob(state, job, reason = "cancelled") {
   if (TERMINAL_STATES.has(job.status)) return false;
+  const actorId = job.assignedActorId;
   restoreJobTransfer(state, job);
   transitionJob(job, "cancelled", state.tick, reason);
   releaseJobReservations(state, job.id, reason, job.scope);
   job.assignedActorId = null;
+  const actor = [
+    ...(state.village?.npcStates ?? []),
+    ...(state.village?.companionStates ?? []),
+  ].find((candidate) => candidate.id === actorId);
+  if (actor) actor.workState = "available";
   return true;
 }
 
+// function-length-exempt: template -- legacy transfer-state migration
 export function restoreJobTransfer(state, job) {
-  const transfer = job.transfer;
-  if (!transfer?.carriedQuantity) return 0;
-  const source = state.village.stockpiles?.find(
-    (stockpile) => stockpile.id === transfer.sourceStockpileId,
-  );
-  if (!source) return 0;
-  source.quantity += transfer.carriedQuantity;
-  const restored = transfer.carriedQuantity;
-  transfer.carriedQuantity = 0;
+  const carried = [
+    ...(job.transfer?.carriedQuantity
+      ? [{ ...job.transfer, stockpileId: job.transfer.sourceStockpileId }]
+      : []),
+    ...(job.production?.inputs ?? []).filter(
+      (input) => input.carriedQuantity > 0,
+    ),
+  ];
+  let restored = 0;
+  for (const item of carried) {
+    const source = state.village.stockpiles?.find(
+        (stockpile) => stockpile.id === item.stockpileId,
+      ),
+      foodCargoIndex = job.transfer
+        ? -1
+        : (job.plan?.foodInputCargo ?? []).findIndex(
+            (cargo) => cargo.stockpileId === item.stockpileId,
+          ),
+      foodCargoEntry =
+        foodCargoIndex >= 0 ? job.plan.foodInputCargo[foodCargoIndex] : null;
+    const foodCargo = job.transfer
+      ? job.plan?.foodCargo
+      : foodCargoEntry?.portions;
+    if (source && foodCargo?.length)
+      depositFood(state, source.id, source.itemKind, foodCargo, {
+        type: "food_transfer_restored",
+        jobId: job.id,
+      });
+    if (source) source.quantity += item.carriedQuantity;
+    restored += item.carriedQuantity;
+    item.carriedQuantity = 0;
+    if (job.transfer) job.transfer.carriedQuantity = 0;
+    if (job.transfer && job.plan) job.plan.foodCargo = [];
+    if (!job.transfer && foodCargoIndex >= 0)
+      job.plan.foodInputCargo.splice(foodCargoIndex, 1);
+    const actor = [
+      ...(state.village.npcStates ?? []),
+      ...(state.village.companionStates ?? []),
+    ].find((candidate) => candidate.id === job.assignedActorId);
+    if (actor) actor.carriedItem = null;
+  }
   return restored;
 }

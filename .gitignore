@@ -10,3 +10,6 @@ UnityClient/[Uu]ser[Ss]ettings/
 UnityClient/[Bb]uilds/
 UnityClient/[Mm]emoryCaptures/
 UnityClient/.vs/
+UnityClient/build.log
+UnityClient/ProjectSettings/ProjectAuditorSettings [0-9]*.asset
+src/* 2.js

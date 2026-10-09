@@ -38,13 +38,109 @@ import { advanceDungeonSimulation } from "./dungeon-simulation.js";
 import { createEntityIndex, describeAffordances } from "./world-objects.js";
 import { createJob, jobView } from "./job-board.js";
 import {
+  clampVillageViewportCenter,
+  regionalGeology,
+  regionalGround,
+  regionalHydrology,
+  regionalPlacerMineral,
+  regionalRiverAt,
+  regionalSourceCatalog,
+  regionalSurveyGeometry,
+  regionalTrailAt,
+  VILLAGE_REGION,
+  villageHighlandAt,
+  villageQuarryFaceAt,
+} from "./village-region.js";
+import {
+  ensureRegionalSimulation,
+  regionalChunkState,
+  syncRegionalSimulation,
+} from "./village-region-simulation.js";
+import {
+  createFoundingStockpiles,
   createVillageStockpiles,
   RESIDENT_JOB_TEMPLATES,
   SHOP_PROPRIETORS,
   shopStock,
 } from "./village-economy.js";
+import {
+  createVillageDevelopment,
+  decideVillageArchitectPlan,
+  decideVillageProposal,
+  DEVELOPMENT_JOB_TEMPLATES,
+  ensureVillageDevelopment,
+  FOUNDER_FACILITY_PLANS,
+  reviseVillageProposal,
+  setVillageCommissionStatus,
+  syncFoundingFacilityStructures,
+} from "./village-development.js";
+import {
+  createVillageHouseholds,
+  ensureFoundingSleepingPlaces,
+  ensureVillageHouseholds,
+  syncResidentHousing,
+} from "./village-households.js";
+import {
+  constructionElements,
+  deriveVillageArchitecture,
+  FOUNDER_HOUSE_PLOTS,
+  HOUSE_ARCHETYPES,
+  upgradeMissingHouseExits,
+  upgradeMissingConstructionRoofs,
+} from "./village-architecture.js";
+import {
+  createVillageAnimals,
+  createFarmsteadPasture,
+  ensureVillageAnimals,
+  FARMSTEAD_PASTURE,
+  livingAnimals,
+} from "./village-animals.js";
+import {
+  cropCellGrowthAt,
+  cropPlotAt,
+  ensureVillageFoodSystem,
+  foragePatchAt,
+} from "./village-food.js";
+import { setVillageCemeteryPolicy } from "./village-civic.js";
+import { ensureVillageTradeSystem, villageTradeView } from "./village-trade.js";
+import {
+  reconcileVillageStorage,
+  storageCellAt,
+  storageDestinationAt,
+} from "./village-storage.js";
+import { villageMeaningView } from "./village-richness.js";
+import { ensureVillageDemography } from "./village-demography.js";
+import {
+  companionActivityAvailable,
+  companionTemplate,
+  companionWorkProfile,
+  createCompanionWorkState,
+} from "./companion-work.js";
+import {
+  createLifeState,
+  createTownClock,
+  daylightLevel,
+  daylightPhase,
+  lifeCapabilities,
+  lifeJobTypes,
+  NEED_JOB_TYPES,
+  scheduleBlock,
+} from "./village-life.js";
+import {
+  awardPartyPractice,
+  CHARACTER_SKILLS,
+  characterSkillView,
+  COMBAT_ROLES,
+  createCharacterDevelopment,
+  createPartyManagement,
+  defaultAbilities,
+} from "./party-development.js";
+import {
+  VILLAGE_VISUAL_REGISTRY_VERSION,
+  villageVisualDescriptor,
+} from "./village-visual-registry.js";
 
-export const ROGUE_RULESET = "party-roguelike-v9";
+export const ROGUE_RULESET = "party-roguelike-v11";
 export const DIRECTIONS = {
   north: [0, -1],
   northeast: [1, -1],
@@ -234,7 +330,7 @@ const VILLAGE = {
   ],
 };
 
-const UNITY_VILLAGE_VIEWPORT = { width: 76, height: 46 };
+const UNITY_VILLAGE_VIEWPORT = { width: 280, height: 168 };
 const UNITY_DUNGEON_VIEWPORT = { width: 30, height: 20 };
 
 const WORLD = {
@@ -330,28 +426,33 @@ const COMPANION_TEMPLATES = [
 const FORMATION_SLOTS = {
   column: {
     scout: { forward: -1, right: 0 },
+    frontline: { forward: -1, right: 0 },
     support: { forward: -2, right: 0 },
     rear_guard: { forward: -3, right: 0 },
   },
   line: {
     scout: { forward: 0, right: -1 },
+    frontline: { forward: 0, right: -1 },
     support: { forward: 0, right: 1 },
     rear_guard: { forward: -1, right: 0 },
   },
   wedge: {
     scout: { forward: -1, right: -1 },
+    frontline: { forward: -1, right: -1 },
     support: { forward: -1, right: 1 },
     rear_guard: { forward: -2, right: 0 },
   },
   scatter: {
     scout: { forward: 1, right: -1 },
+    frontline: { forward: 1, right: -1 },
     support: { forward: -1, right: 1 },
     rear_guard: { forward: -2, right: -1 },
   },
 };
 
+// function-length-exempt: template -- actor projection
 function companionActor(template, id) {
-  return {
+  const actor = {
     id,
     definitionId: definitionId("actor-archetype", template.key),
     entityType: "actor",
@@ -362,6 +463,8 @@ function companionActor(template, id) {
     glyph: template.glyph,
     glyphReading: template.glyphReading,
     level: 3,
+    abilities: defaultAbilities(template.class),
+    proficiencyBonus: 2,
     speedFeet: 30,
     x: 0,
     y: 0,
@@ -387,6 +490,9 @@ function companionActor(template, id) {
     inventory: [],
     equipment: { weapon: null, armor: null, offhand: null },
   };
+  actor.development = createCharacterDevelopment(actor);
+  actor.management = createPartyManagement(actor);
+  return actor;
 }
 
 const createCompanions = (idFor = () => newInstanceId()) =>
@@ -498,6 +604,7 @@ const commandScore = (role) =>
   ({ boss: 100, sentinel: 70, guardian: 60, support: 50, brute: 40 })[role] ??
   20;
 
+// function-length-exempt: template -- group projection
 function buildEnemyGroups(enemies, depth) {
   const packs = Map.groupBy(
     enemies,
@@ -572,6 +679,44 @@ function effectiveMap(state) {
   return { ...level.map, blocked: [...level.map.blocked, ...closed] };
 }
 
+// function-length-exempt: template -- combat event projection
+function attackEvent(attacker, defender, actorKind, attackRoll, hit, damage) {
+  return {
+    type: "attack",
+    actorKind,
+    actorId: attacker.id,
+    actorName: attacker.name,
+    actorTemplate: attacker.template ?? null,
+    targetId: defender.id,
+    targetName: defender.name,
+    targetTemplate: defender.template ?? null,
+    position: { x: defender.x, y: defender.y },
+    attack: attackRoll,
+    hit,
+    damage,
+    appliedDamage: damage?.applied ?? null,
+    targetHp: defender.hp,
+  };
+}
+
+function recordDefeat(defender, events) {
+  if (defender.hp !== 0) return;
+  const kind = defender.template
+    ? "enemy"
+    : defender.role
+      ? "companion"
+      : "hero";
+  if (kind !== "enemy" && !defender.conditions.includes("unconscious"))
+    defender.conditions.push("unconscious");
+  events.push({
+    type: defeatEventType(kind, defender.dead),
+    actorId: defender.id,
+    actorName: defender.name,
+    actorTemplate: defender.template ?? null,
+    position: { x: defender.x, y: defender.y },
+  });
+}
+
 function attack(attacker, defender, dice, events, actorKind) {
   const attackRoll = dice.d20(attacker.attackBonus);
   const hit =
@@ -591,41 +736,10 @@ function attack(attacker, defender, dice, events, actorKind) {
       { critical: attackRoll.natural === 20 },
     );
   }
-  events.push({
-    type: "attack",
-    actorKind,
-    actorId: attacker.id,
-    actorName: attacker.name,
-    actorTemplate: attacker.template ?? null,
-    targetId: defender.id,
-    targetName: defender.name,
-    targetTemplate: defender.template ?? null,
-    position: { x: defender.x, y: defender.y },
-    attack: attackRoll,
-    hit,
-    damage,
-    appliedDamage: damage?.applied ?? null,
-    targetHp: defender.hp,
-  });
-  if (defender.hp === 0) {
-    const defenderKind = defender.template
-      ? "enemy"
-      : defender.role
-        ? "companion"
-        : "hero";
-    if (
-      defenderKind !== "enemy" &&
-      !defender.conditions.includes("unconscious")
-    )
-      defender.conditions.push("unconscious");
-    events.push({
-      type: defeatEventType(defenderKind, defender.dead),
-      actorId: defender.id,
-      actorName: defender.name,
-      actorTemplate: defender.template ?? null,
-      position: { x: defender.x, y: defender.y },
-    });
-  }
+  events.push(
+    attackEvent(attacker, defender, actorKind, attackRoll, hit, damage),
+  );
+  recordDefeat(defender, events);
 }
 
 function defeatEventType(defenderKind, dead) {
@@ -635,6 +749,7 @@ function defeatEventType(defenderKind, dead) {
   return dead ? "hero_defeated" : "hero_unconscious";
 }
 
+// function-length-exempt: template -- visibility projection
 function visibleFloorKeys(state) {
   const visible = new Set(),
     map = effectiveMap(state),
@@ -708,64 +823,77 @@ function addNoise(state, events, volume, source, cause) {
   });
 }
 
-function collectGround(state, events) {
-  const level = active(state);
+function collectTreasure(state, level, events) {
   const treasure = level.treasures.find(
     (item) => !item.collected && !item.hidden && same(item, state.hero),
   );
-  if (treasure) {
-    treasure.collected = true;
-    state.hero.goldCp += treasure.valueCp;
-    state.hero.treasures.push({
-      id: treasure.id,
-      definitionId: treasure.definitionId,
-      entityType: treasure.entityType,
-      name: treasure.name,
-      valueCp: treasure.valueCp,
-    });
-    events.push({
-      type: "treasure_collected",
-      actorId: state.hero.id,
-      itemId: treasure.id,
-      itemName: treasure.name,
-      valueCp: treasure.valueCp,
-      totalCp: state.hero.goldCp,
-      position: { x: treasure.x, y: treasure.y },
-    });
-  }
-  const item = level.features.find(
-    (f) =>
-      f.kind === "item" && !f.collected && !f.hidden && same(f, state.hero),
-  );
-  if (item) {
-    item.collected = true;
-    if (ROGUE_EQUIPMENT[item.itemKind])
-      state.hero.inventory.push(equipmentItem(item.id, item.itemKind));
-    else if (ROGUE_RELICS[item.itemKind])
-      state.hero.inventory.push({
+  if (!treasure) return;
+  treasure.collected = true;
+  state.hero.goldCp += treasure.valueCp;
+  state.hero.treasures.push({
+    id: treasure.id,
+    definitionId: treasure.definitionId,
+    entityType: treasure.entityType,
+    name: treasure.name,
+    valueCp: treasure.valueCp,
+  });
+  events.push({
+    type: "treasure_collected",
+    actorId: state.hero.id,
+    itemId: treasure.id,
+    itemName: treasure.name,
+    valueCp: treasure.valueCp,
+    totalCp: state.hero.goldCp,
+    position: { x: treasure.x, y: treasure.y },
+  });
+}
+
+function collectedItem(item) {
+  if (ROGUE_EQUIPMENT[item.itemKind])
+    return equipmentItem(item.id, item.itemKind);
+  const definition = ROGUE_RELICS[item.itemKind];
+  return definition
+    ? {
         id: item.id,
         definitionId: item.definitionId,
         entityType: item.entityType,
         kind: item.itemKind,
-        ...ROGUE_RELICS[item.itemKind],
+        ...definition,
         quantity: 1,
-      });
-    else
-      state.hero.inventory.push({
+      }
+    : {
         id: item.id,
         definitionId: item.definitionId,
         entityType: item.entityType,
         kind: item.itemKind,
         name: item.name,
         quantity: 1,
-      });
-    events.push({
-      type: "item_collected",
-      itemId: item.id,
-      itemName: item.name,
-      position: { x: item.x, y: item.y },
-    });
-  }
+      };
+}
+
+function collectFloorItem(state, level, events) {
+  const item = level.features.find(
+    (feature) =>
+      feature.kind === "item" &&
+      !feature.collected &&
+      !feature.hidden &&
+      same(feature, state.hero),
+  );
+  if (!item) return;
+  item.collected = true;
+  state.hero.inventory.push(collectedItem(item));
+  events.push({
+    type: "item_collected",
+    itemId: item.id,
+    itemName: item.name,
+    position: { x: item.x, y: item.y },
+  });
+}
+
+function collectGround(state, events) {
+  const level = active(state);
+  collectTreasure(state, level, events);
+  collectFloorItem(state, level, events);
 }
 
 function triggerTrap(state, dice, events) {
@@ -1049,6 +1177,37 @@ function moveCompanionToCombat(
   moveCompanion(state, companion, destination, reason, events);
 }
 
+function withdrawRearGuard(state, companion, targets, slot, events) {
+  const pressured = targets.some(
+    (enemy) => gridDistance("square", companion, enemy) <= 2,
+  );
+  return (
+    companion.role === "rear_guard" &&
+    pressured &&
+    moveCompanion(
+      state,
+      companion,
+      rangedRetreatStep(state, companion, targets, slot),
+      "withdraw_to_ranged_position",
+      events,
+    )
+  );
+}
+
+function takeFormationSlot(state, companion, slot, events) {
+  return (
+    state.partyTactics.phase !== "travel" &&
+    !same(companion, slot) &&
+    moveCompanion(
+      state,
+      companion,
+      stepTowardPosition(state, companion, slot),
+      "take_formation_slot",
+      events,
+    )
+  );
+}
+
 function resolveCompanion(state, companion, dice, events) {
   const targets = visibleEnemiesFor(state, companion),
     slot = formationPosition(state, companion),
@@ -1059,22 +1218,8 @@ function resolveCompanion(state, companion, dice, events) {
   )
     return;
   if (state.partyGroup.order.objective === "retreat") return;
-  const target = targets.length ? partyTarget(state, companion, targets) : null,
-    pressured = targets.some(
-      (enemy) => gridDistance("square", companion, enemy) <= 2,
-    );
-  if (
-    companion.role === "rear_guard" &&
-    pressured &&
-    moveCompanion(
-      state,
-      companion,
-      rangedRetreatStep(state, companion, targets, slot),
-      "withdraw_to_ranged_position",
-      events,
-    )
-  )
-    return;
+  const target = targets.length ? partyTarget(state, companion, targets) : null;
+  if (withdrawRearGuard(state, companion, targets, slot, events)) return;
   if (target && canAttack(state, companion, target)) {
     attack(companion, target, dice, events, "companion");
     addNoise(state, events, 6, companion, "companion_combat");
@@ -1088,18 +1233,7 @@ function resolveCompanion(state, companion, dice, events) {
       events,
       "protect_ranged_ally",
     );
-  if (
-    state.partyTactics.phase !== "travel" &&
-    !atSlot &&
-    moveCompanion(
-      state,
-      companion,
-      stepTowardPosition(state, companion, slot),
-      "take_formation_slot",
-      events,
-    )
-  )
-    return;
+  if (!atSlot && takeFormationSlot(state, companion, slot, events)) return;
   if (!target || companion.role !== "scout") return;
   moveCompanionToCombat(state, companion, target, events);
 }
@@ -1409,6 +1543,7 @@ function spawnEnemyPacks(rooms, roster, depth) {
   });
 }
 
+// function-length-exempt: template -- authored level-state construction
 function buildLevel(input, depth, maxDepth) {
   const dungeon = instantiateDungeonGeometry(
     generateDungeon(
@@ -1661,28 +1796,59 @@ function placePartyAt(state, position) {
   }
 }
 
+// function-length-exempt: template -- complete persisted run-state construction
 export function newRogueRun(input) {
-  const maxDepth = [3, 5, 8].includes(input.levels) ? input.levels : 5,
+  const scenario = input.scenario ?? "established",
+    founding = scenario === "founding",
+    maxDepth = [3, 5, 8].includes(input.levels) ? input.levels : 5,
     archetype = HERO_ARCHETYPES[input.heroClass] ?? HERO_ARCHETYPES.fighter,
-    startingWeapon = equipmentItem(newInstanceId(), archetype.weapon, true),
-    startingArmor = equipmentItem(newInstanceId(), archetype.armor, true),
+    runId = input.runId ?? newInstanceId(),
+    runInstanceId = input.runId
+      ? (name) => namedUuid(runId, `run-instance:${name}`)
+      : () => newInstanceId(),
+    startingWeapon = equipmentItem(
+      runInstanceId("hero:starting-weapon"),
+      archetype.weapon,
+      true,
+    ),
+    startingArmor = equipmentItem(
+      runInstanceId("hero:starting-armor"),
+      archetype.armor,
+      true,
+    ),
     startingOffhand = archetype.offhand
-      ? equipmentItem(newInstanceId(), archetype.offhand, true)
+      ? equipmentItem(
+          runInstanceId("hero:starting-offhand"),
+          archetype.offhand,
+          true,
+        )
       : null,
-    startingAxe = equipmentItem(newInstanceId(), "hand_axe"),
-    startingShovel = equipmentItem(newInstanceId(), "field_shovel"),
+    startingAxe = equipmentItem(runInstanceId("hero:starting-axe"), "hand_axe"),
+    startingShovel = equipmentItem(
+      runInstanceId("hero:starting-shovel"),
+      "field_shovel",
+    ),
     startingAc = startingArmor.ac + (startingOffhand?.acBonus ?? 0),
-    runId = newInstanceId(),
-    heroId = newInstanceId(),
-    companions = createCompanions();
+    heroId = runInstanceId("hero"),
+    companions = createCompanions((key) => runInstanceId(`companion:${key}`)),
+    villageResidents = createVillageNpcStates(runId, scenario),
+    villageBuildings = founding ? [] : structuredClone(VILLAGE_BUILDINGS),
+    heroPosition = founding ? { x: -10, y: 18 } : VILLAGE.heroPosition,
+    companionPositions = founding
+      ? [
+          { x: -9, y: 18 },
+          { x: -8, y: 18 },
+          { x: -7, y: 18 },
+        ]
+      : VILLAGE.companionPositions;
   const state = {
-    schemaVersion: 16,
+    schemaVersion: 22,
     ruleset: ROGUE_RULESET,
     id: runId,
     revision: 0,
     tick: 0,
     status: "active",
-    location: "dungeon",
+    location: founding ? "village" : "dungeon",
     villageVisits: 0,
     world: {
       position: "dungeon_entrance",
@@ -1695,19 +1861,52 @@ export function newRogueRun(input) {
       companionPositions: structuredClone(EXTERIOR.companionPositions),
     },
     village: {
-      heroPosition: { ...VILLAGE.heroPosition },
-      companionPositions: structuredClone(VILLAGE.companionPositions),
+      scenario,
+      adventurersPresent: false,
+      buildings: villageBuildings,
+      clock: createTownClock(),
+      facilities: [],
+      development: createVillageDevelopment(
+        runId,
+        input.seed,
+        input.worldGeneration,
+      ),
+      heroPosition: { ...heroPosition },
+      companionPositions: structuredClone(companionPositions),
       viewportOrigin: { ...VILLAGE.viewportOrigin },
       partyMovement: "follow",
+      regrouping: false,
+      spendingPolicy: {
+        mode: "approval_required",
+        autonomousLimitCp: 0,
+        spentCp: 0,
+      },
+      companionStates: companions.map((actor, index) =>
+        createCompanionWorkState(actor, companionPositions[index]),
+      ),
+      playerCharacterStates: [createLifeState(heroId, "player_directed")],
       modifications: [],
       looseMaterials: [],
+      constructionPrimitives: [],
+      constructionMaterials: [],
+      constructionHistory: [],
+      rooms: [],
+      architectureDirty: true,
       wantedLevel: 0,
       incidents: [],
       jobs: [],
       reservations: [],
-      stockpiles: createVillageStockpiles(runId),
-      npcStates: createVillageNpcStates(runId),
-      doors: VILLAGE_BUILDINGS.map((building) => ({
+      stockpiles: founding
+        ? createFoundingStockpiles(runId)
+        : createVillageStockpiles(runId),
+      npcStates: villageResidents,
+      households: createVillageHouseholds(runId, villageResidents),
+      residences: [],
+      fixtures: [],
+      animals: createVillageAnimals(runId, scenario),
+      animalSerial: founding ? 2 : 3,
+      pastures: founding ? [] : [createFarmsteadPasture(runId)],
+      doors: villageBuildings.map((building) => ({
         id: newInstanceId(),
         entityType: "door",
         buildingKey: building.key,
@@ -1758,6 +1957,13 @@ export function newRogueRun(input) {
         remaining: archetype.power.uses,
       },
       leadership: { role: "leader", commandBonus: 2 },
+      development: createCharacterDevelopment({
+        class: archetype.name.toLowerCase(),
+      }),
+      management: createPartyManagement({
+        class: archetype.name.toLowerCase(),
+        role: "leader",
+      }),
       tempHp: 0,
       resistances: [],
       vulnerabilities: [],
@@ -1775,7 +1981,7 @@ export function newRogueRun(input) {
         startingShovel,
         ...(startingOffhand ? [startingOffhand] : []),
         {
-          id: newInstanceId(),
+          id: runInstanceId("hero:healing-potion"),
           definitionId: definitionId("item", "healing_potion"),
           entityType: "item",
           kind: "healing_potion",
@@ -1824,6 +2030,14 @@ export function newRogueRun(input) {
   attachActive(state);
   placePartyAt(state, state.entrance);
   visibility(state);
+  ensureVillageAnimals(state);
+  ensureVillageFoodSystem(state);
+  ensureVillageTradeSystem(state);
+  ensureVillageDemography(state);
+  reconcileVillageStorage(state);
+  syncResidentHousing(state);
+  ensureFoundingSleepingPlaces(state);
+  ensureRegionalSimulation(state);
   return state;
 }
 
@@ -1991,6 +2205,52 @@ function magicalDamage(
     });
 }
 
+function invokeTome(state, item, events) {
+  if (!["tome_vigor", "tome_might"].includes(item.kind)) return false;
+  const vigor = item.kind === "tome_vigor";
+  if (vigor) {
+    state.hero.maxHp += 3;
+    state.hero.hp += 3;
+  } else {
+    state.hero.combatBonus += 1;
+    recalculateHero(state);
+  }
+  events.push({
+    type: "permanent_gain",
+    actorId: state.hero.id,
+    itemName: item.name,
+    gain: vigor ? "+3 maximum HP" : "+1 weapon attack",
+    position: { x: state.hero.x, y: state.hero.y },
+  });
+  return true;
+}
+
+function invokeMagicItem(state, item, intent, dice, events) {
+  const magic = {
+    scroll_flame: {
+      name: "Flame",
+      formula: "3d6",
+      damageType: "fire",
+      source: "scroll",
+    },
+    wand_arc: {
+      name: "Arcing Sparks",
+      formula: "2d6",
+      damageType: "lightning",
+      source: "wand",
+    },
+  }[item.kind];
+  if (!magic) return false;
+  const enemy = visibleEnemyTarget(state, intent.targetId);
+  check(
+    enemy,
+    "NO_VISIBLE_TARGET",
+    `No enemy is visible for the ${magic.source}.`,
+  );
+  magicalDamage(state, enemy, dice, events, magic);
+  return true;
+}
+
 function invokeItem(state, intent, dice, events) {
   const item = state.hero.inventory.find(
     (entry) =>
@@ -1998,45 +2258,11 @@ function invokeItem(state, intent, dice, events) {
       ((entry.quantity ?? 0) > 0 || (entry.charges ?? 0) > 0),
   );
   check(item, "ITEM_NOT_FOUND", "That item is not in the inventory.");
-  if (item.kind === "tome_vigor") {
-    state.hero.maxHp += 3;
-    state.hero.hp += 3;
-    events.push({
-      type: "permanent_gain",
-      actorId: state.hero.id,
-      itemName: item.name,
-      gain: "+3 maximum HP",
-      position: { x: state.hero.x, y: state.hero.y },
-    });
-  } else if (item.kind === "tome_might") {
-    state.hero.combatBonus += 1;
-    recalculateHero(state);
-    events.push({
-      type: "permanent_gain",
-      actorId: state.hero.id,
-      itemName: item.name,
-      gain: "+1 weapon attack",
-      position: { x: state.hero.x, y: state.hero.y },
-    });
-  } else if (item.kind === "scroll_flame") {
-    const enemy = visibleEnemyTarget(state, intent.targetId);
-    check(enemy, "NO_VISIBLE_TARGET", "No enemy is visible for the scroll.");
-    magicalDamage(state, enemy, dice, events, {
-      name: "Flame",
-      formula: "3d6",
-      damageType: "fire",
-      source: "scroll",
-    });
-  } else if (item.kind === "wand_arc") {
-    const enemy = visibleEnemyTarget(state, intent.targetId);
-    check(enemy, "NO_VISIBLE_TARGET", "No enemy is visible for the wand.");
-    magicalDamage(state, enemy, dice, events, {
-      name: "Arcing Sparks",
-      formula: "2d6",
-      damageType: "lightning",
-      source: "wand",
-    });
-  } else throw new RuleError("ITEM_NOT_USABLE", "That item cannot be invoked.");
+  if (
+    !invokeTome(state, item, events) &&
+    !invokeMagicItem(state, item, intent, dice, events)
+  )
+    throw new RuleError("ITEM_NOT_USABLE", "That item cannot be invoked.");
   if (item.itemType === "wand") item.charges -= 1;
   else item.quantity -= 1;
 }
@@ -2133,6 +2359,7 @@ function dungeonObject(entity, kind, name, description, affordanceKeys) {
   };
 }
 
+// function-length-exempt: template -- inspectable world-object projection
 export function dungeonWorldObjectAt(state, x, y) {
   const level = active(state),
     position = { x, y },
@@ -2219,6 +2446,28 @@ function dungeonEntityIndex(state) {
   ]);
 }
 
+function applyDungeonInteraction(state, actor, object, action, events) {
+  if (action === "examine")
+    return events.push({
+      type: "dungeon_examined",
+      actorId: actor.id,
+      objectId: object.id,
+      name: object.name,
+      detail: object.description,
+      position: { ...object.position },
+    });
+  if (action !== "open") return;
+  const door = active(state).doors.find((entry) => entry.id === object.id);
+  door.state = "open";
+  events.push({
+    type: "door_opened",
+    actorId: actor.id,
+    doorId: door.id,
+    position: { ...object.position },
+  });
+  addNoise(state, events, 5, object.position, "door");
+}
+
 function executeDungeonInteraction(state, input, events) {
   const actor = partyActors(state)
       .concat(active(state).enemies)
@@ -2236,26 +2485,27 @@ function executeDungeonInteraction(state, input, events) {
     "That object does not support this action.",
   );
   check(affordance.available, "ACTION_UNAVAILABLE", affordance.reason);
-  if (input.action === "examine")
-    return events.push({
-      type: "dungeon_examined",
-      actorId: actor.id,
-      objectId: object.id,
-      name: object.name,
-      detail: object.description,
-      position: { ...object.position },
-    });
-  if (input.action === "open") {
-    const door = active(state).doors.find((entry) => entry.id === object.id);
-    door.state = "open";
-    events.push({
-      type: "door_opened",
-      actorId: actor.id,
-      doorId: door.id,
-      position: { ...object.position },
-    });
-    addNoise(state, events, 5, object.position, "door");
-  }
+  return applyDungeonInteraction(state, actor, object, input.action, events);
+}
+
+function useHealingPower(state, power, dice, events) {
+  check(
+    state.hero.hp < state.hero.maxHp,
+    "FULL_HEALTH",
+    "Health is already full.",
+  );
+  const formula = power.key === "second_wind" ? "1d10+3" : "1d4+3",
+    healing = dice.roll(formula),
+    before = state.hero.hp;
+  state.hero.hp = Math.min(state.hero.maxHp, state.hero.hp + healing.total);
+  events.push({
+    type: "class_power",
+    actorId: state.hero.id,
+    actorName: state.hero.name,
+    powerName: power.name,
+    healing: state.hero.hp - before,
+    position: { x: state.hero.x, y: state.hero.y },
+  });
 }
 
 function useClassPower(state, intent, dice, events) {
@@ -2274,25 +2524,7 @@ function useClassPower(state, intent, dice, events) {
       damageType: "force",
       source: "class_power",
     });
-  } else {
-    check(
-      state.hero.hp < state.hero.maxHp,
-      "FULL_HEALTH",
-      "Health is already full.",
-    );
-    const formula = power.key === "second_wind" ? "1d10+3" : "1d4+3",
-      healing = dice.roll(formula),
-      before = state.hero.hp;
-    state.hero.hp = Math.min(state.hero.maxHp, state.hero.hp + healing.total);
-    events.push({
-      type: "class_power",
-      actorId: state.hero.id,
-      actorName: state.hero.name,
-      powerName: power.name,
-      healing: state.hero.hp - before,
-      position: { x: state.hero.x, y: state.hero.y },
-    });
-  }
+  } else useHealingPower(state, power, dice, events);
   power.remaining -= 1;
 }
 
@@ -2382,44 +2614,48 @@ function triggerShrine(state, events) {
   });
 }
 
+function awardDefeatExperience(state, defeated, events) {
+  const monster = ROGUE_BESTIARY[defeated.actorTemplate],
+    gained = Math.max(
+      40,
+      Math.round((monster.hp + monster.ac * 2 + monster.attackBonus * 4) / 10) *
+        10,
+    );
+  state.hero.xp += gained;
+  events.push({
+    type: "xp_gained",
+    actorId: state.hero.id,
+    amount: gained,
+    defeatedName: defeated.actorName,
+    position: { ...defeated.position },
+  });
+}
+
+function levelUpHero(state, events) {
+  state.hero.xp -= state.hero.xpToNext;
+  state.hero.level += 1;
+  state.hero.xpToNext += 200;
+  state.hero.maxHp += state.hero.levelHp;
+  state.hero.hp = state.hero.maxHp;
+  if (state.hero.level === 4) state.hero.combatBonus += 1;
+  state.hero.classPower.remaining = state.hero.classPower.uses;
+  recalculateHero(state);
+  events.push({
+    type: "level_up",
+    actorId: state.hero.id,
+    level: state.hero.level,
+    hpGain: state.hero.levelHp,
+    attackGain: state.hero.level === 4 ? 1 : 0,
+    position: { x: state.hero.x, y: state.hero.y },
+  });
+}
+
 function grantExperience(state, events) {
   for (const defeated of events.filter(
     (event) => event.type === "enemy_defeated",
-  )) {
-    const monster = ROGUE_BESTIARY[defeated.actorTemplate],
-      gained = Math.max(
-        40,
-        Math.round(
-          (monster.hp + monster.ac * 2 + monster.attackBonus * 4) / 10,
-        ) * 10,
-      );
-    state.hero.xp += gained;
-    events.push({
-      type: "xp_gained",
-      actorId: state.hero.id,
-      amount: gained,
-      defeatedName: defeated.actorName,
-      position: { ...defeated.position },
-    });
-  }
-  while (state.hero.xp >= state.hero.xpToNext) {
-    state.hero.xp -= state.hero.xpToNext;
-    state.hero.level += 1;
-    state.hero.xpToNext += 200;
-    state.hero.maxHp += state.hero.levelHp;
-    state.hero.hp = state.hero.maxHp;
-    if (state.hero.level === 4) state.hero.combatBonus += 1;
-    state.hero.classPower.remaining = state.hero.classPower.uses;
-    recalculateHero(state);
-    events.push({
-      type: "level_up",
-      actorId: state.hero.id,
-      level: state.hero.level,
-      hpGain: state.hero.levelHp,
-      attackGain: state.hero.level === 4 ? 1 : 0,
-      position: { x: state.hero.x, y: state.hero.y },
-    });
-  }
+  ))
+    awardDefeatExperience(state, defeated, events);
+  while (state.hero.xp >= state.hero.xpToNext) levelUpHero(state, events);
 }
 
 function equipItem(state, intent, events) {
@@ -2655,6 +2891,7 @@ function localMapBounds(state, target) {
   };
 }
 
+// function-length-exempt: template -- spatial projection
 function localSpatialMap(state, target) {
   const { tileAt } = localAreaDefinition(state.location),
     bounds = localMapBounds(state, target),
@@ -2728,37 +2965,71 @@ function executeHeroObjectAction(state, object, action, events) {
   );
 }
 
-function moveLocalParty(state, intent, events) {
-  const area = state[state.location],
-    target = { x: intent.x, y: intent.y };
-  if (openLocalDoor(state, target, events)) return;
+function localPartyPath(state, area, target) {
   const spatial = localSpatialMap(state, target),
     localize = (position) => ({
       x: position.x - spatial.origin.x,
       y: position.y - spatial.origin.y,
-    }),
-    path = route(
-      spatial,
-      localize(area.heroPosition),
-      localize(target),
-      new Set(),
-    ).path.map((position) => ({
-      x: position.x + spatial.origin.x,
-      y: position.y + spatial.origin.y,
-    })),
-    trail = [area.heroPosition, ...area.companionPositions].map((position) => ({
-      ...position,
-    }));
-  if (state.location === "village" && area.partyMovement === "dispersed")
-    area.heroPosition = path.at(-1);
-  else {
-    for (const step of path.slice(1)) {
-      trail.unshift({ ...step });
-      trail.pop();
-    }
-    area.heroPosition = trail[0];
-    area.companionPositions = trail.slice(1);
+    });
+  return route(
+    spatial,
+    localize(area.heroPosition),
+    localize(target),
+    new Set(),
+  ).path.map((position) => ({
+    x: position.x + spatial.origin.x,
+    y: position.y + spatial.origin.y,
+  }));
+}
+
+function applyLocalPartyPath(area, path) {
+  const trail = [area.heroPosition, ...area.companionPositions].map(
+    (position) => ({ ...position }),
+  );
+  for (const step of path.slice(1)) {
+    trail.unshift({ ...step });
+    trail.pop();
   }
+  area.heroPosition = trail[0];
+  area.companionPositions = trail.slice(1);
+}
+
+function syncVillageCompanionWorkers(state, area) {
+  if (
+    state.location !== "village" ||
+    area.partyMovement !== "follow" ||
+    area.regrouping
+  )
+    return;
+  for (const [index, actor] of state.companions.entries()) {
+    const worker = area.companionStates.find(
+      (candidate) => candidate.actorId === actor.id,
+    );
+    worker.position = { ...area.companionPositions[index] };
+  }
+}
+
+function moveLocalParty(state, intent, events) {
+  const area = state[state.location],
+    target = { x: intent.x, y: intent.y };
+  if (openLocalDoor(state, target, events)) return;
+  if (
+    state.location === "village" &&
+    (area.partyMovement === "dispersed" || area.regrouping)
+  )
+    check(
+      !area.companionPositions.some((position) => same(position, target)),
+      "LOCAL_DESTINATION_OCCUPIED",
+      "A companion already occupies that destination.",
+    );
+  const path = localPartyPath(state, area, target);
+  if (
+    state.location === "village" &&
+    (area.partyMovement === "dispersed" || area.regrouping)
+  )
+    area.heroPosition = path.at(-1);
+  else applyLocalPartyPath(area, path);
+  syncVillageCompanionWorkers(state, area);
   events.push({
     type: "local_travel",
     area: state.location,
@@ -2775,6 +3046,13 @@ function setVillagePartyMovement(state, intent, events) {
     "Choose follow or dispersed movement.",
   );
   state.village.partyMovement = intent.mode;
+  state.village.regrouping = intent.mode === "follow";
+  if (intent.mode === "dispersed")
+    for (const worker of state.village.companionStates) {
+      worker.objective = "choose_personal_work";
+      worker.currentAction = "Choosing an independent objective";
+      worker.actionReason = "party_dispersed";
+    }
   events.push({
     type: "party_movement_changed",
     mode: intent.mode,
@@ -2782,6 +3060,33 @@ function setVillagePartyMovement(state, intent, events) {
   });
 }
 
+function setVillageSpendingPolicy(state, intent, events) {
+  check(
+    ["approval_required", "routine_supplies", "autonomous"].includes(
+      intent.mode,
+    ),
+    "SPENDING_POLICY_INVALID",
+    "Choose approval required, routine supplies, or autonomous spending.",
+  );
+  const limit = intent.mode === "approval_required" ? 0 : intent.limitCp;
+  check(
+    Number.isInteger(limit) && limit >= 0,
+    "SPENDING_LIMIT_INVALID",
+    "The autonomous spending limit must be a non-negative copper amount.",
+  );
+  state.village.spendingPolicy = {
+    mode: intent.mode,
+    autonomousLimitCp: limit,
+    spentCp: 0,
+  };
+  events.push({
+    type: "spending_policy_changed",
+    mode: intent.mode,
+    limitCp: limit,
+  });
+}
+
+// function-length-exempt: template -- inspector projection
 function villageExamination(state, target) {
   const terrain = villageTile(state, target.x, target.y);
   if (terrain.material)
@@ -2791,8 +3096,14 @@ function villageExamination(state, target) {
     };
   if (terrain.modification)
     return {
-      name: terrain.tile.replaceAll("_", " "),
-      detail: `This place was changed from ${terrain.modification.originalTile.replaceAll("_", " ")} on turn ${terrain.modification.createdAtTick}.`,
+      name:
+        terrain.modification.kind === "quarried_rock"
+          ? "Excavated mountain chamber"
+          : terrain.tile.replaceAll("_", " "),
+      detail:
+        terrain.modification.kind === "quarried_rock"
+          ? `Solid rock was removed here on turn ${terrain.modification.createdAtTick}. The chamber remains beneath a natural mountain roof and can expose another mineable face.`
+          : `This place was changed from ${terrain.modification.originalTile.replaceAll("_", " ")} on turn ${terrain.modification.createdAtTick}.`,
     };
   if (terrain.sign)
     return {
@@ -2864,6 +3175,9 @@ const MATERIAL_DEFINITIONS = {
   timber: { name: "Cut timber", unit: "bundle" },
   stone: { name: "Building stone", unit: "piece" },
   earth: { name: "Excavated earth", unit: "load" },
+  iron_ore: { name: "Iron ore", unit: "chunk" },
+  copper_ore: { name: "Copper ore", unit: "chunk" },
+  tin_ore: { name: "Tin ore", unit: "chunk" },
 };
 
 function interactionTool(actor, tag) {
@@ -2975,13 +3289,11 @@ function villageGood(itemKind) {
   return equipment ? { itemKind, itemType: "equipment", ...equipment } : null;
 }
 
-function buyConsumable(state, good) {
-  const existing = state.hero.inventory.find(
-    (item) => item.kind === good.itemKind,
-  );
+function buyConsumable(actor, good) {
+  const existing = actor.inventory.find((item) => item.kind === good.itemKind);
   if (existing) existing.quantity += 1;
   else
-    state.hero.inventory.push({
+    actor.inventory.push({
       id: newInstanceId(),
       definitionId: definitionId("item", good.itemKind),
       entityType: "item",
@@ -2989,7 +3301,7 @@ function buyConsumable(state, good) {
       name: good.name,
       quantity: 1,
     });
-  return state.hero;
+  return actor;
 }
 
 function buyEquipment(state, actor, good) {
@@ -2999,15 +3311,30 @@ function buyEquipment(state, actor, good) {
   return actor;
 }
 
-function shopBuy(state, intent, events) {
-  const good = villageGood(intent.itemKind),
-    actor = partyActorById(state, intent.actorId),
-    shop = VILLAGE.shops.find((candidate) =>
-      candidate.goods.includes(intent.itemKind),
-    ),
-    currentShop = villageShopAt(state.village.heroPosition),
-    status = shop ? villageShopStatus(state, shop) : null,
-    stock = shop ? shopStock(state, shop.id, intent.itemKind) : null;
+function authorizeAutonomousPurchase(state, intent, good) {
+  if (!intent.autonomous) return;
+  const policy = state.village.spendingPolicy,
+    remaining = policy.autonomousLimitCp - policy.spentCp;
+  check(
+    policy.mode !== "approval_required",
+    "PURCHASE_APPROVAL_REQUIRED",
+    "The party must approve this purchase.",
+  );
+  check(
+    policy.mode !== "routine_supplies" || good.itemType === "consumable",
+    "PURCHASE_APPROVAL_REQUIRED",
+    "Equipment purchases require party approval.",
+  );
+  check(
+    good.priceCp <= remaining,
+    "SPENDING_LIMIT_EXCEEDED",
+    `Only ${remaining} cp remains in the autonomous spending limit.`,
+  );
+}
+
+function validateShopPurchase(state, intent, good, actor, shop, stock) {
+  const currentShop = villageShopAt(state, state.village.heroPosition),
+    status = shop ? villageShopStatus(state, shop) : null;
   check(good, "SHOP_ITEM_NOT_FOUND", "That item is not sold in Stonebridge.");
   check(
     shop?.id === currentShop?.shopKey,
@@ -3021,18 +3348,17 @@ function shopBuy(state, intent, events) {
     `${good.name} is currently out of stock.`,
   );
   check(actor, "ACTOR_NOT_FOUND", "That buyer is not a member of the party.");
+  authorizeAutonomousPurchase(state, intent, good);
   check(
     state.hero.goldCp >= good.priceCp,
     "INSUFFICIENT_FUNDS",
     `The party needs ${good.priceCp} cp for ${good.name}.`,
   );
-  stock.quantity -= 1;
-  state.hero.goldCp -= good.priceCp;
-  const recipient =
-    good.itemType === "equipment"
-      ? buyEquipment(state, actor, good)
-      : buyConsumable(state, good);
-  events.push({
+}
+
+// function-length-exempt: template -- purchase event projection
+function purchaseEvent(state, intent, good, recipient) {
+  return {
     type: "item_purchased",
     actorId: recipient.id,
     actorName: recipient.name,
@@ -3040,13 +3366,150 @@ function shopBuy(state, intent, events) {
     itemName: good.name,
     priceCp: good.priceCp,
     remainingCp: state.hero.goldCp,
+    autonomous: Boolean(intent.autonomous),
     villageName: VILLAGE.name,
     position: null,
+  };
+}
+
+function shopBuy(state, intent, events) {
+  const good = villageGood(intent.itemKind),
+    actor = partyActorById(state, intent.actorId),
+    shop = VILLAGE.shops.find((candidate) =>
+      candidate.goods.includes(intent.itemKind),
+    ),
+    stock = shop ? shopStock(state, shop.id, intent.itemKind) : null;
+  validateShopPurchase(state, intent, good, actor, shop, stock);
+  stock.quantity -= 1;
+  state.hero.goldCp -= good.priceCp;
+  if (intent.autonomous) state.village.spendingPolicy.spentCp += good.priceCp;
+  const recipient =
+    good.itemType === "equipment"
+      ? buyEquipment(state, actor, good)
+      : buyConsumable(actor, good);
+  events.push(purchaseEvent(state, intent, good, recipient));
+}
+
+const VILLAGE_MANAGEMENT_INTENTS = new Set([
+  "set_party_movement",
+  "set_spending_policy",
+  "decide_village_proposal",
+  "revise_village_proposal",
+  "decide_architect_plan",
+  "set_village_commission_status",
+  "set_crop_plan",
+  "set_cemetery_policy",
+  "shop_buy",
+  "equip",
+  "unequip",
+]);
+
+function setCropDestination(state, plot, cellId) {
+  const stockpile = state.village.stockpiles.find(
+      (item) =>
+        item.itemKind === plot.cropKind && item.containerKind !== "field_pile",
+    ),
+    destination = stockpile
+      ? storageDestinationAt(state, stockpile.id, cellId, plot.workPosition)
+      : null;
+  check(
+    destination,
+    "CROP_DESTINATION_INVALID",
+    "Choose an available compatible storage cell for this crop.",
+  );
+  plot.harvestDestinationStockpileId = destination.stockpileId;
+  plot.harvestDestinationCellId = destination.cellId;
+  plot.harvestDestinationPosition = { ...destination.position };
+}
+
+const CROP_PLAN_ACTIONS = new Set([
+  "select_crop",
+  "allow_sowing",
+  "forbid_sowing",
+  "cut",
+  "set_destination",
+]);
+
+function selectCropKind(plot, itemKind) {
+  check(
+    ["fallow", "prepared"].includes(plot.stage),
+    "CROP_ALREADY_GROWING",
+    "Harvest or cut the current crop before changing this field.",
+  );
+  check(
+    ["grain", "vegetables"].includes(itemKind),
+    "CROP_KIND_UNKNOWN",
+    "Choose grain or vegetables for this field.",
+  );
+  plot.cropKind = itemKind;
+  delete plot.harvestDestinationStockpileId;
+  delete plot.harvestDestinationCellId;
+  delete plot.harvestDestinationPosition;
+}
+
+function setVillageCropPlan(state, intent, events) {
+  const plot = state.village.cropPlots?.find(
+    (candidate) => candidate.id === intent.targetId,
+  );
+  check(plot, "CROP_PLOT_NOT_FOUND", "That crop field no longer exists.");
+  check(
+    CROP_PLAN_ACTIONS.has(intent.action),
+    "CROP_PLAN_ACTION_UNKNOWN",
+    "Choose a supported field order.",
+  );
+  if (intent.action === "select_crop") selectCropKind(plot, intent.itemKind);
+  if (intent.action === "allow_sowing") plot.sowingAllowed = true;
+  if (intent.action === "forbid_sowing") plot.sowingAllowed = false;
+  if (intent.action === "cut") plot.cutOrdered = true;
+  if (intent.action === "set_destination")
+    setCropDestination(state, plot, intent.objectId);
+  events.push({
+    type: "crop_plan_changed",
+    plotId: plot.id,
+    action: intent.action,
+    destinationCellId: plot.harvestDestinationCellId,
   });
+}
+
+function resolveVillageManagement(state, intent, events) {
+  if (intent.kind === "set_party_movement")
+    return setVillagePartyMovement(state, intent, events);
+  if (intent.kind === "set_spending_policy")
+    return setVillageSpendingPolicy(state, intent, events);
+  if (intent.kind === "decide_village_proposal")
+    return decideVillageProposal(state, intent, events);
+  if (intent.kind === "revise_village_proposal")
+    return reviseVillageProposal(state, intent, events);
+  if (intent.kind === "decide_architect_plan")
+    return decideVillageArchitectPlan(state, intent, events);
+  if (intent.kind === "set_village_commission_status")
+    return setVillageCommissionStatus(state, intent, events);
+  if (intent.kind === "set_crop_plan")
+    return setVillageCropPlan(state, intent, events);
+  if (intent.kind === "set_cemetery_policy") {
+    const result = setVillageCemeteryPolicy(state, intent);
+    events.push({
+      type: "cemetery_policy_changed",
+      action: intent.action,
+      revision: result.policy.revision,
+      corpseId: result.corpseId,
+    });
+    return result;
+  }
+  if (intent.kind === "shop_buy") return shopBuy(state, intent, events);
+  if (intent.kind === "equip") return equipItem(state, intent, events);
+  return unequipItem(state, intent, events);
 }
 
 function resolveVillageAction(state, intent, events) {
   if (intent.kind === "open_world") return openWorld(state, events);
+  if (intent.kind === "wait") {
+    events.push({
+      type: "village_wait",
+      position: { ...state.village.heroPosition },
+    });
+    return;
+  }
   if (intent.kind === "local_move")
     return moveLocalParty(state, intent, events);
   if (intent.kind === "local_examine")
@@ -3063,23 +3526,41 @@ function resolveVillageAction(state, intent, events) {
     );
     return executeHeroObjectAction(state, object, intent.action, events);
   }
-  if (intent.kind === "set_party_movement")
-    return setVillagePartyMovement(state, intent, events);
-  if (intent.kind === "shop_buy") return shopBuy(state, intent, events);
-  if (intent.kind === "equip") return equipItem(state, intent, events);
-  if (intent.kind === "unequip") return unequipItem(state, intent, events);
+  if (VILLAGE_MANAGEMENT_INTENTS.has(intent.kind))
+    return resolveVillageManagement(state, intent, events);
   throw new RuleError("VILLAGE_INTENT_REQUIRED", "Choose a village action.");
 }
 
 function resolveVillageTurn(state, intent, events) {
-  const result = resolveVillageAction(state, intent, events);
+  const result = resolveVillageAction(state, intent, events),
+    terrainCache = new Map(),
+    objectCache = new Map(),
+    workObjectCache = new Map(),
+    cached = (cache, position, read) => {
+      const positionKey = `${position.x},${position.y}`;
+      if (!cache.has(positionKey)) cache.set(positionKey, read());
+      return cache.get(positionKey);
+    };
   advanceVillageSimulation(state, intent, events, {
-    terrainAt: ({ x, y }) => villageTile(state, x, y, false).tile,
-    objectAt: ({ x, y }) => villageWorldObjectAt(state, x, y),
+    terrainAt: (position) =>
+      cached(terrainCache, position, () => villageNpcTerrain(state, position)),
+    objectAt: (position) =>
+      cached(objectCache, position, () =>
+        villageWorldObjectAt(state, position.x, position.y),
+      ),
+    workObjectAt: (position) =>
+      cached(workObjectCache, position, () =>
+        villageWorldObjectAt(state, position.x, position.y, false),
+      ),
     executeInteraction: (input, interactionEvents) =>
       executeVillageInteraction(state, input, interactionEvents),
   });
   return result;
+}
+
+export function villageNpcTerrain(state, position) {
+  const terrain = villageTile(state, position.x, position.y, false, false);
+  return terrain.furniture?.walkable ? "village_floor" : terrain.tile;
 }
 
 function resolveExteriorTurn(state, intent, events) {
@@ -3135,6 +3616,94 @@ function commandGroup(state, intent, events) {
     position: { x: state.hero.x, y: state.hero.y },
   });
   adoptFormation(state, "deployed", "leader_order", events);
+}
+
+function companionWorker(state, actorId) {
+  return state.village.companionStates.find(
+    (worker) => worker.actorId === actorId,
+  );
+}
+
+function configurePartyRole(state, actor, role) {
+  check(
+    COMBAT_ROLES.includes(role),
+    "INVALID_COMBAT_ROLE",
+    "Unknown combat role.",
+  );
+  check(
+    actor.id !== state.hero.id || role === "leader",
+    "LEADER_ROLE_REQUIRED",
+    "The active party leader retains the leader role.",
+  );
+  actor.role = role;
+  actor.management.combatRole = role;
+  const assignment = state.partyGroup.assignments.find(
+    (entry) => entry.actorId === actor.id,
+  );
+  if (assignment) assignment.role = role;
+}
+
+function configurePartyJob(state, actor, jobFocus, priority) {
+  check(
+    Number.isInteger(priority) && priority >= 0 && priority <= 100,
+    "INVALID_WORK_PRIORITY",
+    "Work priority must be between 0 and 100.",
+  );
+  if (actor.id === state.hero.id) {
+    check(
+      jobFocus === "lead_party",
+      "INVALID_PARTY_JOB",
+      "The leader directs the party.",
+    );
+    actor.management.jobFocus = jobFocus;
+    actor.management.workPriority = priority;
+    return;
+  }
+  const worker = companionWorker(state, actor.id),
+    allowed = worker.workPermissions.allowedJobTypes;
+  check(
+    allowed.includes(jobFocus),
+    "INVALID_PARTY_JOB",
+    "That member cannot perform this job.",
+  );
+  actor.management.jobFocus = jobFocus;
+  actor.management.workPriority = priority;
+  worker.workPriorities[jobFocus] = priority;
+}
+
+function configurePartyMember(state, intent, events) {
+  const actor = partyActorById(state, intent.actorId);
+  check(actor, "ACTOR_NOT_FOUND", "That character is not in the party.");
+  check(
+    intent.combatRole != null ||
+      intent.jobFocus != null ||
+      intent.workPriority != null,
+    "PARTY_SETTING_REQUIRED",
+    "Choose a party setting to change.",
+  );
+  if (intent.combatRole) configurePartyRole(state, actor, intent.combatRole);
+  if (intent.jobFocus)
+    configurePartyJob(
+      state,
+      actor,
+      intent.jobFocus,
+      intent.workPriority ?? actor.management.workPriority,
+    );
+  else if (intent.workPriority != null)
+    configurePartyJob(
+      state,
+      actor,
+      actor.management.jobFocus,
+      intent.workPriority,
+    );
+  events.push({
+    type: "party_member_configured",
+    actorId: actor.id,
+    actorName: actor.name,
+    combatRole: actor.management.combatRole,
+    jobFocus: actor.management.jobFocus,
+    workPriority: actor.management.workPriority,
+  });
 }
 
 function openDoor(state, intent, events) {
@@ -3276,49 +3845,44 @@ function waitTurn(state, events) {
   adoptFormation(state, "deployed", "leader_stopped", events);
 }
 
+const DUNGEON_TURN_HANDLERS = Object.freeze({
+  command: (state, intent, dice, events) => commandGroup(state, intent, events),
+  wait: (state, intent, dice, events) => waitTurn(state, events),
+  search: (state, intent, dice, events) => search(state, dice, events),
+  use_item: (state, intent, dice, events) =>
+    useItem(state, intent, dice, events),
+  invoke_item: (state, intent, dice, events) =>
+    invokeItem(state, intent, dice, events),
+  ranged_attack: (state, intent, dice, events) =>
+    rangedAttack(state, intent, dice, events),
+  throw_item: (state, intent, dice, events) =>
+    throwItem(state, intent, dice, events),
+  examine: (state, intent, dice, events) =>
+    examineDungeon(state, intent, events),
+  class_power: (state, intent, dice, events) =>
+    useClassPower(state, intent, dice, events),
+  short_rest: (state, intent, dice, events) => shortRest(state, dice, events),
+  equip: (state, intent, dice, events) => equipItem(state, intent, events),
+  unequip: (state, intent, dice, events) => unequipItem(state, intent, events),
+  stairs: (state, intent, dice, events) => descend(state, events),
+  stairs_up: (state, intent, dice, events) => ascend(state, events),
+  open: (state, intent, dice, events) => openDoor(state, intent, events),
+  move: (state, intent, dice, events) => moveHero(state, intent, dice, events),
+});
+
 function resolveActiveTurn(state, intent, dice, events) {
+  if (intent.kind === "configure_party_member")
+    return configurePartyMember(state, intent, events);
   if (state.location === "village")
     return resolveVillageTurn(state, intent, events);
   if (state.location === "exterior")
     return resolveExteriorTurn(state, intent, events);
   if (state.location === "world")
     return resolveWorldTurn(state, intent, events);
-  switch (intent.kind) {
-    case "command":
-      return commandGroup(state, intent, events);
-    case "wait":
-      return waitTurn(state, events);
-    case "search":
-      return search(state, dice, events);
-    case "use_item":
-      return useItem(state, intent, dice, events);
-    case "invoke_item":
-      return invokeItem(state, intent, dice, events);
-    case "ranged_attack":
-      return rangedAttack(state, intent, dice, events);
-    case "throw_item":
-      return throwItem(state, intent, dice, events);
-    case "examine":
-      return examineDungeon(state, intent, events);
-    case "class_power":
-      return useClassPower(state, intent, dice, events);
-    case "short_rest":
-      return shortRest(state, dice, events);
-    case "equip":
-      return equipItem(state, intent, events);
-    case "unequip":
-      return unequipItem(state, intent, events);
-    case "stairs":
-      return descend(state, events);
-    case "stairs_up":
-      return ascend(state, events);
-    case "open":
-      return openDoor(state, intent, events);
-    case "move":
-      return moveHero(state, intent, dice, events);
-    default:
-      throw new RuleError("INVALID_INTENT", "Unsupported player intent.");
-  }
+  const handler = DUNGEON_TURN_HANDLERS[intent.kind];
+  if (!handler)
+    throw new RuleError("INVALID_INTENT", "Unsupported player intent.");
+  return handler(state, intent, dice, events);
 }
 
 export function applyRogueTurn(state, intent, dice = new Dice()) {
@@ -3328,11 +3892,19 @@ export function applyRogueTurn(state, intent, dice = new Dice()) {
     "This run has ended.",
     { status: state.status },
   );
-  const events = [];
+  const events = [],
+    managementOnly = [
+      "configure_party_member",
+      "decide_village_proposal",
+      "revise_village_proposal",
+      "decide_architect_plan",
+      "set_village_commission_status",
+      "set_cemetery_policy",
+    ].includes(intent.kind);
   if (state.status === "dying") resolveDyingTurn(state, intent, dice, events);
   else resolveActiveTurn(state, intent, dice, events);
   const workingActors =
-    state.location === "dungeon" && state.status === "active"
+    !managementOnly && state.location === "dungeon" && state.status === "active"
       ? advanceDungeonSimulation(state, intent, events, {
           level: active(state),
           route: (actor, target, adjacent) =>
@@ -3348,21 +3920,88 @@ export function applyRogueTurn(state, intent, dice = new Dice()) {
         })
       : new Set();
   if (
+    !managementOnly &&
     state.location === "dungeon" &&
     ["active", "dying"].includes(state.status)
   )
     resolveCompanions(state, dice, events);
-  grantExperience(state, events);
+  if (!managementOnly) grantExperience(state, events);
+  awardPartyPractice(state, events);
   if (
+    !managementOnly &&
     state.location === "dungeon" &&
     ["active", "dying"].includes(state.status)
   )
     resolveEnemies(state, dice, events, workingActors);
-  state.tick += 1;
+  if (!managementOnly) {
+    state.tick += 1;
+    if (state.location === "village") syncRegionalSimulation(state);
+  }
   if (state.location === "dungeon") visibility(state);
   return { events };
 }
 
+export const SIMULATION_MODES = Object.freeze(["paused", "normal", "fast"]);
+
+// function-length-exempt: template -- simulation status projection
+export function rogueSimulationStatus(state) {
+  if (state.status !== "active")
+    return {
+      canRun: false,
+      tacticalPauseRequired: true,
+      reason: `run_${state.status}`,
+    };
+  if (state.location === "dungeon")
+    return {
+      canRun: false,
+      tacticalPauseRequired: true,
+      reason: "dungeon_tactics",
+    };
+  if (state.location !== "village")
+    return {
+      canRun: false,
+      tacticalPauseRequired: false,
+      reason: "travel_decision",
+    };
+  if (
+    state.village.incidents.some(
+      (incident) =>
+        incident.kind === "danger" && incident.status !== "resolved",
+    )
+  )
+    return {
+      canRun: false,
+      tacticalPauseRequired: true,
+      reason: "village_danger",
+    };
+  return { canRun: true, tacticalPauseRequired: false, reason: null };
+}
+
+export function advanceRogueSimulation(
+  state,
+  { mode = "paused", ticks = 1, dice = new Dice() } = {},
+) {
+  check(
+    SIMULATION_MODES.includes(mode),
+    "SIMULATION_MODE_INVALID",
+    "Choose paused, normal, or fast simulation.",
+  );
+  check(
+    Number.isInteger(ticks) && ticks >= 0 && ticks <= 100,
+    "SIMULATION_TICKS_INVALID",
+    "Simulation ticks must be between 0 and 100.",
+  );
+  const events = [];
+  if (mode === "paused") return { ticksAdvanced: 0, events };
+  for (let index = 0; index < ticks; index += 1) {
+    const status = rogueSimulationStatus(state);
+    if (!status.canRun) return { ticksAdvanced: index, events, pause: status };
+    events.push(...applyRogueTurn(state, { kind: "wait" }, dice).events);
+  }
+  return { ticksAdvanced: ticks, events, pause: null };
+}
+
+// function-length-exempt: template -- client cell projection
 function cellView(state, position, currentVisible) {
   const level = active(state),
     value = key(position),
@@ -3540,7 +4179,11 @@ const VILLAGE_BUILDINGS = [
     glyph: "H",
     door: { x: 39, y: 20 },
   },
-];
+].map((building) => ({
+  ...building,
+  wallMaterial: building.wallMaterial ?? "timber",
+  door: { material: "wood", ...building.door },
+}));
 
 const VILLAGE_SIGNS = [
   { x: 7, y: 10, text: "Red Hammer Smithy · weapons and repairs" },
@@ -3554,7 +4197,8 @@ const VILLAGE_SIGNS = [
 ];
 
 export const villagePrincipalRoadAt = (x, y) =>
-  y === 11 || y === 12 || x === 19 || x === 20;
+  ((y === 11 || y === 12) && x >= -180 && x <= 180) ||
+  ((x === 19 || x === 20) && y >= -140 && y <= 160);
 
 export function villageRoadBuildingConflicts() {
   const conflicts = [];
@@ -3575,6 +4219,20 @@ const VILLAGE_PARTITIONS = [
 ];
 
 const VILLAGE_FURNITURE = [
+  ...[
+    [17, 14],
+    [23, 10],
+    [40, 14],
+    [12, 24],
+    [41, 13],
+    [0, 13],
+  ].map(([x, y]) => ({
+    x,
+    y,
+    glyph: "b",
+    name: "Town bench",
+    description: "A public bench offers a place to sit and share local news.",
+  })),
   {
     x: 3,
     y: 3,
@@ -3687,6 +4345,45 @@ const VILLAGE_FURNITURE = [
     description: "A mismatched chair has been repaired more than once.",
   },
   {
+    x: -10,
+    y: 4,
+    glyph: "%",
+    name: "Stew pot",
+    description:
+      "The inn keeps a plain hot meal ready for residents and travelers.",
+  },
+  {
+    x: -13,
+    y: 8,
+    glyph: "b",
+    name: "Guest bed",
+    description: "A narrow but clean bed offers a safe night's sleep.",
+  },
+  ...[-11, -9, -7, -5].map((x) => ({
+    x,
+    y: 8,
+    glyph: "b",
+    name: "Guest bed",
+    description: "A narrow but clean bed offers a safe night's sleep.",
+  })),
+  ...[-9, -8, -7].map((x) => ({
+    x,
+    y: 4,
+    glyph: "%",
+    name: "Meal place",
+    description: "A bowl, cup and portion of bread wait beside the stew pot.",
+  })),
+  ...[
+    [-12, 5],
+    [-10, 5],
+  ].map(([x, y]) => ({
+    x,
+    y,
+    glyph: "c",
+    name: "Common-room chair",
+    description: "A chair drawn close enough for easy conversation.",
+  })),
+  {
     x: 47,
     y: 4,
     glyph: "A",
@@ -3700,6 +4397,20 @@ const VILLAGE_FURNITURE = [
     name: "Chapel bench",
     description: "A plain bench faces the road altar.",
   },
+  ...[49, 51].map((x) => ({
+    x,
+    y: 8,
+    glyph: "B",
+    name: "Chapel bench",
+    description: "A plain bench faces the road altar.",
+  })),
+  ...[45, 49, 51].map((x) => ({
+    x,
+    y: 4,
+    glyph: "o",
+    name: "Prayer stone",
+    description: "A smooth stone marks a quiet place for private devotion.",
+  })),
   {
     x: 8,
     y: 31,
@@ -3725,9 +4436,12 @@ const VILLAGE_FURNITURE = [
   },
   {
     x: -1,
-    y: 16,
+    y: 15,
+    width: 1,
+    height: 3,
     glyph: "J",
     name: "River fishing jetty",
+    walkable: true,
     description:
       "A weathered timber jetty reaches the slow water below Stonebridge.",
   },
@@ -3739,9 +4453,128 @@ const VILLAGE_FURNITURE = [
     description:
       "Feed buckets and grooming brushes hang from a rail beside the stable yard.",
   },
+  {
+    x: -22,
+    y: 18,
+    glyph: "L",
+    name: "Lumber yard site",
+    description:
+      "Survey stakes and raised log skids mark the village lumber yard project.",
+  },
+  {
+    x: -23,
+    y: 18,
+    glyph: "W",
+    name: "Sawing trestles",
+    description:
+      "Heavy trestles hold logs above the wet ground for measuring and sawing.",
+  },
+  {
+    x: -26,
+    y: 24,
+    glyph: "S",
+    name: "Farm seed shed",
+    description:
+      "A dry timber shed protects seed grain and the farmstead's working tools.",
+  },
+  {
+    x: -27,
+    y: 24,
+    glyph: "=",
+    name: "Grain field marker",
+    description: "A marked strip of earth is reserved for village grain.",
+  },
+  {
+    x: -25,
+    y: 24,
+    glyph: ":",
+    name: "Kitchen garden marker",
+    description: "Raised rows are laid out for roots, beans and hardy greens.",
+  },
+  {
+    x: -19,
+    y: 24,
+    glyph: "U",
+    name: "Milking rail",
+    description: "A low rail and clean pails make morning milking possible.",
+  },
+  {
+    x: -21,
+    y: 24,
+    glyph: "T",
+    name: "Butcher table",
+    description:
+      "A scrubbed outdoor table is used when the herd can spare an animal.",
+  },
+  {
+    x: -14,
+    y: 18,
+    glyph: "%",
+    name: "Camp stew pot",
+    description: "Founding provisions simmer over a guarded campfire.",
+  },
+  ...[
+    [-13, 18],
+    [-14, 19],
+    [-13, 19],
+  ].map(([x, y]) => ({
+    x,
+    y,
+    glyph: "%",
+    name: "Camp meal place",
+    description: "A simple place beside the campfire for eating communal food.",
+  })),
+  {
+    x: -16,
+    y: 18,
+    glyph: "T",
+    name: "Founders' tool cache",
+    description: "Axes, saws, and hammers are kept dry beneath a canvas cover.",
+  },
+  {
+    x: -15,
+    y: 19,
+    glyph: "C",
+    name: "Founding food cache",
+    description:
+      "A covered timber chest keeps the settlement's fish pantry dry.",
+  },
+  {
+    x: 24,
+    y: 30,
+    glyph: "S",
+    name: "Quarry stone staging pallet",
+    description:
+      "A bounded timber pallet marks where finite quarried stone is counted and stored.",
+  },
+  ...[
+    [25, "Iron ore bin", "iron"],
+    [26, "Copper ore bin", "copper"],
+    [27, "Tin ore bin", "tin"],
+  ].map(([x, name, ore]) => ({
+    x,
+    y: 30,
+    glyph: "S",
+    name,
+    description: `A bounded timber bin keeps finite ${ore} ore separate for the forge.`,
+  })),
 ];
 
+const FOUNDING_FIXTURES = new Set([
+  "River fishing jetty",
+  "Lumber yard site",
+  "Sawing trestles",
+  "Grain field marker",
+  "Kitchen garden marker",
+  "Camp stew pot",
+  "Camp meal place",
+  "Founders' tool cache",
+  "Founding food cache",
+  "Quarry stone staging pallet",
+]);
+
 const VILLAGE_PEOPLE = [
+  ["merchant", "Ysabet Vale", "traveling merchant", 34, 12],
   ["miller", "Greta Voll", "miller", 14, 11],
   ["baker", "Oskar Mertens", "baker", 22, 11],
   ["porter", "Lina Roth", "porter", 19, 14],
@@ -3756,6 +4589,10 @@ const VILLAGE_PEOPLE = [
   ["herbalist", "Mei Lin", "apothecary", 37, 7],
   ["armorer", "Otto Kern", "armorer", 35, 21],
   ["innkeeper", "Marta Pell", "innkeeper", -11, 8],
+  ["woodcutter", "Klara Holt", "woodcutter", -25, 17],
+  ["reeve", "Edda Voss", "village reeve", 12, 31],
+  ["farmer", "Ada Weiss", "farmer", -28, 23],
+  ["herder", "Niko Brand", "herder", -18, 23],
 ].map(([key, name, role, x, y]) => ({
   key,
   name,
@@ -3767,6 +4604,8 @@ const VILLAGE_PEOPLE = [
 }));
 
 const VILLAGE_DIALOGUE = {
+  merchant:
+    "Seeds, sound ingots, and honest measures. I buy flour when your own pantry is secure.",
   miller: "The river is high. Good for the wheel, bad for the east ford.",
   baker:
     "If you are bound for the keep, take bread now. It keeps better than courage.",
@@ -3789,6 +4628,14 @@ const VILLAGE_DIALOGUE = {
   armorer: "A shield saves more lives than pride, especially underground.",
   innkeeper:
     "The Lantern has beds, stew, and rumors. Only the first two are dependable.",
+  woodcutter:
+    "A village grows from its timber pile outward. First a yard, then farms and roofs.",
+  reeve:
+    "Stonebridge cannot eat promises. I set the need; our people decide who can answer it.",
+  farmer:
+    "Seed is food we choose not to eat. Guard the reserve and the next harvest follows.",
+  herder:
+    "Milk keeps us today. A healthy breeding pair keeps the village next year.",
 };
 
 const VILLAGE_OBJECTIVES = {
@@ -3800,9 +4647,41 @@ const VILLAGE_OBJECTIVES = {
   herbalist: ["work_trade", "Preparing remedies"],
   armorer: ["work_trade", "Repairing armor"],
   innkeeper: ["work_trade", "Serving the common room"],
+  woodcutter: ["secure_lumber", "Surveying timber for the village"],
+  reeve: ["govern_village", "Reviewing Stonebridge's needs"],
+  farmer: ["secure_food", "Inspecting the farm plots"],
+  herder: ["secure_food", "Watching the pasture herd"],
 };
 
-function villageWorkerProfile(personKey) {
+function defaultSkillPriority(rank) {
+  if (rank >= 4) return 1;
+  if (rank >= 3) return 2;
+  if (rank >= 2) return 3;
+  return 4;
+}
+
+function villageSkillPriorities(personKey, skills) {
+  const priorities = Object.fromEntries(
+    Object.entries(skills).map(([skill, rank]) => [
+      skill,
+      defaultSkillPriority(rank),
+    ]),
+  );
+  const primary = {
+    farmer: ["farming", "architecture"],
+    herder: ["animal_husbandry", "hunting"],
+    woodcutter: ["forestry"],
+    innkeeper: ["cooking"],
+    carter: ["logistics"],
+    porter: ["logistics"],
+    fisher: ["fishing"],
+  }[personKey];
+  for (const skill of primary ?? []) priorities[skill] = 1;
+  return priorities;
+}
+
+// function-length-exempt: template -- worker projection
+function villageWorkerProfile(personKey, founding = false) {
   const observation =
     {
       carter: 4,
@@ -3812,69 +4691,355 @@ function villageWorkerProfile(personKey) {
       delver: 2,
     }[personKey] ?? 1;
   const guard = personKey === "watchman",
-    residentWork = RESIDENT_JOB_TEMPLATES.find(
-      (template) => template.personKey === personKey,
-    ),
-    residentJobs = residentWork ? [residentWork.jobType] : [],
-    residentCapabilities = residentWork ? [residentWork.capability] : [];
-  return {
+    residentWork = [
+      ...RESIDENT_JOB_TEMPLATES,
+      ...DEVELOPMENT_JOB_TEMPLATES,
+    ].filter((template) => template.personKey === personKey),
+    residentJobs = residentWork.map((template) => template.jobType),
+    residentCapabilities = [
+      ...new Set(residentWork.map((template) => template.capability)),
+    ],
+    healer = personKey === "herbalist",
+    administrator = personKey === "reeve",
+    architect = personKey === "farmer",
+    generalLabor = founding,
+    foundingFarmhand = founding,
+    sawHelper =
+      founding &&
+      ["carter", "porter", "innkeeper", "herbalist"].includes(personKey),
+    leadBuilder = founding && ["farmer", "herder"].includes(personKey),
+    projectBuilder = generalLabor,
+    forester =
+      founding && ["woodcutter", "herder", "innkeeper"].includes(personKey),
+    hunter = founding && personKey === "herder",
+    foundingSmith = founding && personKey === "woodcutter",
+    hauler = personKey === "carter" || residentCapabilities.includes("haul"),
+    tradeSkills =
+      personKey === "woodcutter"
+        ? {
+            forestry: 4,
+            construction: 2,
+            carpentry: 3,
+            ...(foundingSmith ? { metalworking: 2 } : {}),
+          }
+        : personKey === "fisher"
+          ? { fishing: 4, hunting: 3 }
+          : personKey === "innkeeper"
+            ? { cooking: 4 }
+          : personKey === "reeve"
+            ? { governance: 4, stewardship: 3, negotiation: 3 }
+            : personKey === "farmer"
+              ? { farming: 4, construction: 2, architecture: 4 }
+              : personKey === "herder"
+                ? {
+                    animal_husbandry: 4,
+                    butchery: 2,
+                    hunting: 3,
+                    construction: 3,
+                  }
+                : {};
+  const profile = {
     capabilityTags:
       personKey === "carter"
-        ? ["inspect", "haul"]
+        ? [
+            "inspect",
+            "haul",
+            ...residentCapabilities,
+            ...(generalLabor ? ["general_labor", "build", "burial"] : []),
+            ...(foundingFarmhand ? ["farm"] : []),
+            ...(sawHelper ? ["saw"] : []),
+            ...lifeCapabilities(),
+          ]
         : guard
-          ? ["inspect", "patrol", "investigate", "warn", "escort", "respond"]
-          : ["inspect", ...residentCapabilities],
+          ? [
+              "inspect",
+              "patrol",
+              "investigate",
+              "warn",
+              "escort",
+              "respond",
+              "general_labor",
+              "build",
+              "haul",
+              ...(foundingFarmhand ? ["farm"] : []),
+              "burial",
+              ...lifeCapabilities(),
+            ]
+          : [
+              "inspect",
+              ...residentCapabilities,
+              ...(generalLabor ? ["general_labor", "build"] : []),
+              ...(foundingFarmhand ? ["farm"] : []),
+              ...(generalLabor ? ["haul"] : []),
+              ...(generalLabor ? ["forage"] : []),
+              ...(sawHelper ? ["saw"] : []),
+              ...(generalLabor ? ["burial"] : []),
+              ...(projectBuilder && !residentCapabilities.includes("build")
+                ? ["build"]
+                : []),
+              ...(founding && personKey === "herder" ? ["build_farm"] : []),
+              ...(forester && !residentCapabilities.includes("forestry")
+                ? ["forestry"]
+                : []),
+              ...(hunter ? ["hunt"] : []),
+              ...(foundingSmith ? ["forge"] : []),
+              ...(hauler && !residentCapabilities.includes("haul")
+                ? ["haul"]
+                : []),
+              ...(administrator ? ["govern", "prioritize", "assign_work"] : []),
+              ...(architect ? ["architect"] : []),
+              ...(healer ? ["heal"] : []),
+              ...lifeCapabilities(),
+            ],
     workPermissions: {
       allowedJobTypes:
         personKey === "carter"
-          ? ["inspect_object", "deliver_goods"]
+          ? [
+              "inspect_object",
+              "deliver_goods",
+              ...residentJobs,
+              ...(generalLabor
+                ? [
+                    "survey_construction",
+                    "assist_project",
+                    "haul_stock",
+                    "build_specialist_facility",
+                    "build_lumber_yard",
+                    "build_farmstead",
+                    "build_house",
+                    "build_communal_kitchen",
+                    "build_field_camp",
+                    "gather_wild_food",
+                    "grow_grain",
+                    "grow_vegetables",
+                    "bury_resident",
+                    "exhume_resident",
+                    "cremate_resident",
+                  ]
+                : []),
+              ...(sawHelper ? ["saw_lumber"] : []),
+              ...lifeJobTypes(),
+            ]
           : guard
             ? [
                 "inspect_object",
                 "patrol_route",
                 "investigate_crime",
                 "respond_danger",
+                "survey_construction",
+                "assist_project",
+                "haul_stock",
+                "deliver_goods",
+                ...(foundingFarmhand
+                  ? ["grow_grain", "grow_vegetables"]
+                  : []),
+                "bury_resident",
+                "exhume_resident",
+                "cremate_resident",
+                "issue_defense_equipment",
+                "militia_training",
+                ...lifeJobTypes(),
               ]
-            : ["inspect_object", ...residentJobs],
+            : [
+                "inspect_object",
+                ...residentJobs,
+                ...(residentCapabilities.includes("build")
+                  ? ["assist_project", "supervise_project"]
+                  : []),
+                ...(generalLabor
+                  ? [
+                      "survey_construction",
+                      "assist_project",
+                      "haul_stock",
+                      "deliver_goods",
+                      "gather_wild_food",
+                      "grow_grain",
+                      "grow_vegetables",
+                      "bury_resident",
+                      "exhume_resident",
+                      "cremate_resident",
+                    ]
+                  : []),
+                ...(sawHelper ? ["saw_lumber"] : []),
+                ...(projectBuilder
+                  ? [
+                      "assist_project",
+                      "supervise_project",
+                      "build_specialist_facility",
+                      "build_lumber_yard",
+                      "build_farmstead",
+                      "build_house",
+                      "build_communal_kitchen",
+                      "build_field_camp",
+                    ]
+                  : []),
+                ...(architect ? ["survey_architecture"] : []),
+                ...(administrator ? ["govern_village"] : []),
+                ...(forester
+                  ? [
+                      "fell_tree",
+                      "remote_fell_tree",
+                      "clear_building_site",
+                      "clear_field_tree",
+                    ]
+                  : []),
+                ...(hunter ? ["hunt_game", "remote_hunt_game"] : []),
+                ...(foundingSmith
+                  ? ["craft_weapon", "craft_hunting_bow"]
+                  : []),
+                ...(hauler ? ["deliver_goods"] : []),
+                ...(healer ? ["tend_wounded"] : []),
+                ...lifeJobTypes(),
+              ],
     },
-    workPriorities: Object.fromEntries(
-      residentWork ? [[residentWork.jobType, residentWork.priority]] : [],
-    ),
-    skills: { observation },
+    workPriorities: Object.fromEntries([
+      ...residentWork.map((template) => [template.jobType, template.priority]),
+      ...(hunter
+        ? [
+            ["hunt_game", 112],
+            ["remote_hunt_game", 108],
+          ]
+        : []),
+      ...(foundingSmith ? [["craft_hunting_bow", 122]] : []),
+      ...(healer ? [["tend_wounded", 80]] : []),
+    ]),
+    skills: {
+      observation,
+      ...(generalLabor ? { construction: 1 } : {}),
+      ...(generalLabor ? { foraging: 1 } : {}),
+      ...(foundingFarmhand ? { farming: 1 } : {}),
+      ...tradeSkills,
+      ...(personKey === "herder" ? { construction: 3, forestry: 2 } : {}),
+      ...(personKey === "innkeeper" && founding ? { forestry: 1 } : {}),
+      ...(sawHelper ? { carpentry: 1 } : {}),
+      ...(hauler ? { logistics: personKey === "carter" ? 4 : 3 } : {}),
+      ...(generalLabor && !hauler ? { logistics: 1 } : {}),
+    },
+    skillPractice: {},
     workState: "available",
     lastJobType: null,
     risk: 0,
   };
+  profile.skillPriorities = villageSkillPriorities(personKey, profile.skills);
+  if (leadBuilder) profile.skillPriorities.construction = 1;
+  profile.workPermissions.allowedJobTypes = [
+    ...new Set([
+      ...profile.workPermissions.allowedJobTypes,
+      "mourn_resident",
+      ...(profile.capabilityTags.includes("build")
+        ? ["build_dirt_access_road"]
+        : []),
+      ...(profile.capabilityTags.includes("general_labor")
+        ? [
+            "dispose_animal_carcass",
+            "militia_training",
+            "return_defense_equipment",
+          ]
+        : []),
+      ...(profile.capabilityTags.includes("butcher")
+        ? ["dress_animal_carcass"]
+        : []),
+    ]),
+  ];
+  profile.capabilityTags = [...new Set(profile.capabilityTags)];
+  return profile;
 }
 
-function createVillageNpcStates(runId) {
-  return VILLAGE_PEOPLE.map((person) => {
+const FOUNDER_KEYS = new Set([
+  "reeve",
+  "woodcutter",
+  "farmer",
+  "herder",
+  "fisher",
+  "porter",
+  "carter",
+  "herbalist",
+  "watchman",
+  "innkeeper",
+]);
+
+const FOUNDER_POSITIONS = [
+  [-18, 16],
+  [-16, 16],
+  [-14, 16],
+  [-12, 16],
+  [-10, 16],
+  [-18, 20],
+  [-16, 20],
+  [-14, 20],
+  [-12, 20],
+  [-10, 20],
+];
+
+// function-length-exempt: template -- persisted NPC-state construction
+function createVillageNpcStates(runId, scenario = "established") {
+  const people = VILLAGE_PEOPLE.filter(
+    (person) =>
+      person.key !== "merchant" &&
+      (scenario !== "founding" || FOUNDER_KEYS.has(person.key)),
+  );
+  return people.map((person, index) => {
     const [objective, currentAction] = VILLAGE_OBJECTIVES[person.key] ?? [
-      "daily_life",
-      `Working as ${person.role}`,
-    ];
+        "daily_life",
+        `Working as ${person.role}`,
+      ],
+      [x, y] =
+        scenario === "founding"
+          ? FOUNDER_POSITIONS[index]
+          : [person.x, person.y];
     return {
       id: namedUuid(runId, `townsperson:${person.key}`),
+      name: person.name,
       personKey: person.key,
-      position: { x: person.x, y: person.y },
+      position: { x, y },
       objective,
       currentAction,
       actionReason: "personal_routine",
       routeIndex: 0,
-      ...villageWorkerProfile(person.key),
+      carriedItem: null,
+      defenseEquipment: null,
+      ...villageWorkerProfile(person.key, scenario === "founding"),
+      life: createLifeState(
+        namedUuid(runId, `townsperson:${person.key}`),
+        "autonomous",
+      ),
     };
   });
 }
 
-function villageBuildingAt(x, y) {
-  return VILLAGE_BUILDINGS.find(
-    (site) =>
-      x >= site.x && x < site.x + site.w && y >= site.y && y < site.y + site.h,
-  );
+function retireRemovedFoundingPermissions(npc, profile, scenario) {
+  if (scenario !== "founding" || profile.capabilityTags.includes("saw")) return;
+  npc.capabilityTags = npc.capabilityTags.filter((tag) => tag !== "saw");
+  npc.workPermissions.allowedJobTypes =
+    npc.workPermissions.allowedJobTypes.filter((type) => type !== "saw_lumber");
 }
 
-function villageShopAt(position) {
-  const building = villageBuildingAt(position.x, position.y);
+function villageBuildings(state) {
+  return state.village.buildings ?? VILLAGE_BUILDINGS;
+}
+
+const VILLAGE_BUILDING_POSITION_CACHE = new WeakMap();
+
+function villageBuildingAt(state, x, y) {
+  const buildings = villageBuildings(state),
+    cached = VILLAGE_BUILDING_POSITION_CACHE.get(state);
+  if (cached?.source === buildings && cached.length === buildings.length)
+    return cached.positions.get(`${x},${y}`);
+  const positions = new Map();
+  for (const building of buildings)
+    for (let py = building.y; py < building.y + building.h; py += 1)
+      for (let px = building.x; px < building.x + building.w; px += 1)
+        positions.set(`${px},${py}`, building);
+  VILLAGE_BUILDING_POSITION_CACHE.set(state, {
+    source: buildings,
+    length: buildings.length,
+    positions,
+  });
+  return positions.get(`${x},${y}`);
+}
+
+function villageShopAt(state, position) {
+  const building = villageBuildingAt(state, position.x, position.y);
   return building &&
     position.x > building.x &&
     position.x < building.x + building.w - 1 &&
@@ -3889,7 +5054,7 @@ function proprietorInsideShop(state, shop) {
     proprietor = state.village.npcStates.find(
       (npc) => npc.personKey === proprietorKey,
     ),
-    building = VILLAGE_BUILDINGS.find(
+    building = villageBuildings(state).find(
       (candidate) => candidate.shopKey === shop.id,
     );
   return Boolean(
@@ -3910,23 +5075,184 @@ function villageShopStatus(state, shop) {
   return { staffed, stocked, open: staffed && stocked };
 }
 
-function villageSignAt(x, y) {
+function villageSignAt(state, x, y) {
+  if (state.village.scenario === "founding") return null;
   return VILLAGE_SIGNS.find((sign) => sign.x === x && sign.y === y);
 }
 
-function villageFurnitureAt(x, y) {
-  return VILLAGE_FURNITURE.find((item) => item.x === x && item.y === y);
+function furnitureFootprint(furniture) {
+  if (Number.isInteger(furniture.width) && Number.isInteger(furniture.height))
+    return { width: furniture.width, height: furniture.height };
+  const variant = furnitureVisualVariant(furniture);
+  if (variant === "bed")
+    return furniture.name.toLowerCase().includes("double")
+      ? { width: 2, height: 2 }
+      : { width: 1, height: 2 };
+  if (
+    ["table", "shelves"].includes(variant) &&
+    !["Common table", "Butcher table"].includes(furniture.name)
+  )
+    return { width: 2, height: 1 };
+  return { width: 1, height: 1 };
+}
+
+const STATIC_FURNITURE_INDEXES = new Map();
+const VILLAGE_FURNITURE_POSITION_CACHE = new WeakMap();
+
+function staticFurnitureIndex(founding) {
+  const cacheKey = founding ? "founding" : "established";
+  if (STATIC_FURNITURE_INDEXES.has(cacheKey))
+    return STATIC_FURNITURE_INDEXES.get(cacheKey);
+  const index = new Map(),
+    furniture = founding
+      ? VILLAGE_FURNITURE.filter((item) => FOUNDING_FIXTURES.has(item.name))
+      : VILLAGE_FURNITURE;
+  for (const item of furniture) {
+    const footprint = furnitureFootprint(item),
+      normalized = { ...item, ...footprint };
+    for (let y = item.y; y < item.y + footprint.height; y += 1)
+      for (let x = item.x; x < item.x + footprint.width; x += 1)
+        index.set(`${x},${y}`, normalized);
+  }
+  STATIC_FURNITURE_INDEXES.set(cacheKey, index);
+  return index;
+}
+
+function villageFurnitureAt(state, x, y) {
+  const fixture = villageFixturePositions(state).get(`${x},${y}`);
+  if (fixture) return { ...fixture, ...furnitureFootprint(fixture) };
+  const staticFixture = staticFurnitureIndex(
+    state.village.scenario === "founding",
+  ).get(`${x},${y}`);
+  if (
+    villageRegionalSite(state).mode === "regional_v3" &&
+    staticFixture?.name === "River fishing jetty"
+  )
+    return null;
+  return staticFixture ?? null;
+}
+
+function villageFixturePositions(state) {
+  const fixtures = state.village.fixtures ?? [],
+    cached = VILLAGE_FURNITURE_POSITION_CACHE.get(state);
+  if (cached?.source === fixtures && cached.length === fixtures.length)
+    return cached.positions;
+  const positions = new Map();
+  for (const fixture of fixtures)
+    for (let y = fixture.y; y < fixture.y + fixture.height; y += 1)
+      for (let x = fixture.x; x < fixture.x + fixture.width; x += 1)
+        positions.set(`${x},${y}`, fixture);
+  VILLAGE_FURNITURE_POSITION_CACHE.set(state, {
+    source: fixtures,
+    length: fixtures.length,
+    positions,
+  });
+  return positions;
 }
 
 function villagePersonAt(state, x, y) {
-  const activity = state.village.npcStates.find((entry) =>
-    same(entry.position, { x, y }),
-  );
+  const visitor = state.village.trade?.activeVisit?.merchant,
+    activity = [...state.village.npcStates, ...(visitor ? [visitor] : [])]
+      .filter((entry) => {
+        if (entry.life?.status !== "dead") return true;
+        return state.village.civic?.residentCorpses?.some(
+          (corpse) =>
+            corpse.residentId === entry.id &&
+            corpse.status === "exposed" &&
+            same(corpse.position, { x, y }),
+        );
+      })
+      .filter((entry) => same(entry.position, { x, y }))
+      .sort(
+        (left, right) =>
+          Number(Boolean(right.carriedItem)) -
+            Number(Boolean(left.carriedItem)) ||
+          left.id.localeCompare(right.id),
+      )[0];
   if (!activity) return null;
   const person = VILLAGE_PEOPLE.find(
-    (candidate) => candidate.key === activity.personKey,
+      (candidate) => candidate.key === activity.personKey,
+    ),
+    corpse = state.village.civic?.residentCorpses?.find(
+      (candidate) => candidate.residentId === activity.id,
+    );
+  return { ...person, ...activity, ...(corpse ? { corpse } : {}), x, y };
+}
+
+function villageGraveAt(state, x, y) {
+  return state.village.civic?.cemetery?.graves?.find((grave) =>
+    same(grave.position, { x, y }),
   );
-  return { ...person, ...activity, x, y };
+}
+
+function villageMusterPointAt(state, x, y) {
+  const point =
+    state.village.development?.masterPlan?.defenseStrategy?.musterPoint;
+  return point && same(point.position, { x, y }) ? point : null;
+}
+
+function villageAnimalDisposalAt(state, x, y) {
+  const site = state.village.civic?.animalDisposal;
+  return site && same(site.position, { x, y }) ? site : null;
+}
+
+function villageCremationPyreAt(state, x, y) {
+  const pyre = state.village.civic?.cremationPyre;
+  return pyre && same(pyre.position, { x, y }) ? pyre : null;
+}
+
+function villageAnimalAt(state, x, y) {
+  return state.village.animals
+    .filter((animal) => !["gone", "carried"].includes(animal.carcassState))
+    .sort(
+      (left, right) =>
+        Number(left.status === "dead") - Number(right.status === "dead"),
+    )
+    .find((animal) => animal.position.x === x && animal.position.y === y);
+}
+
+function villageFenceAt(state, x, y) {
+  for (const pasture of state.village.pastures ?? []) {
+    const horizontal =
+        x >= pasture.x &&
+        x < pasture.x + pasture.w &&
+        (y === pasture.y || y === pasture.y + pasture.h - 1),
+      vertical =
+        y >= pasture.y &&
+        y < pasture.y + pasture.h &&
+        (x === pasture.x || x === pasture.x + pasture.w - 1),
+      gate = pasture.gate.x === x && pasture.gate.y === y;
+    if ((horizontal || vertical) && !gate)
+      return {
+        pasture,
+        orientation: vertical ? "vertical" : "horizontal",
+      };
+  }
+  return null;
+}
+
+function villagePastureGateAt(state, x, y) {
+  const pasture = (state.village.pastures ?? []).find(
+    (candidate) => candidate.gate.x === x && candidate.gate.y === y,
+  );
+  return pasture ? { pasture, gate: pasture.gate } : null;
+}
+
+function pastureObject(state, terrain, position) {
+  const pasture = terrain.pasture,
+    kind = terrain.pastureGate ? "pasture_gate" : "pasture_fence",
+    forage = Math.round((pasture.forageUnits ?? 0) * 100) / 100,
+    capacity = pasture.forageCapacity ?? 0;
+  return villageObject(state, kind, pasture.id, position, {
+    name: terrain.featureName,
+    description: `${pasture.name} holds ${forage} of ${capacity} forage units in ${pasture.forageSeason ?? "unknown"}.`,
+    pastureId: pasture.id,
+    forageUnits: forage,
+    forageCapacity: capacity,
+    forageSeason: pasture.forageSeason ?? null,
+    allowedSpecies: [...(pasture.allowedSpecies ?? [])],
+    affordanceKeys: ["examine"],
+  });
 }
 
 function villagePartitionAt(building, x, y) {
@@ -3943,25 +5269,104 @@ function villagePartitionAt(building, x, y) {
   });
 }
 
+// function-length-exempt: template -- tree projection
 function villageTree(state, x, y) {
   const seed = [...state.seed].reduce(
       (sum, character) => sum + character.charCodeAt(0),
       0,
     ),
     noise = Math.abs((x * 73856093) ^ (y * 19349663) ^ seed) % 101,
-    nearBuilding = VILLAGE_BUILDINGS.some(
+    regional = regionalTerrainPosition(state, x, y),
+    generationMode = villageRegionalSite(state).mode,
+    regionalCover = regionalGround(
+      state.seed,
+      regional.x,
+      regional.y,
+      generationMode,
+    ),
+    treeThreshold =
+      generationMode === "regional_v3"
+        ? regionalCover === "woodland"
+          ? 38
+          : regionalCover === "grass"
+            ? 11
+            : 0
+        : 14,
+    plannedHousing =
+      state.village.scenario === "founding" &&
+      FOUNDER_HOUSE_PLOTS.some(
+        (plot) =>
+          x >= plot.x - 1 &&
+          x <= plot.x + HOUSE_ARCHETYPES.family_house.width &&
+          y >= plot.y - 1 &&
+          y <= plot.y + HOUSE_ARCHETYPES.family_house.height,
+      ),
+    plannedPasture =
+      state.village.scenario === "founding" &&
+      x >= FARMSTEAD_PASTURE.x - 1 &&
+      x <= FARMSTEAD_PASTURE.x + FARMSTEAD_PASTURE.w &&
+      y >= FARMSTEAD_PASTURE.y - 1 &&
+      y <= FARMSTEAD_PASTURE.y + FARMSTEAD_PASTURE.h,
+    plannedFacility =
+      state.village.scenario === "founding" &&
+      Object.values(FOUNDER_FACILITY_PLANS).some(
+        (site) =>
+          x >= site.x - 1 &&
+          x <= site.x + site.w &&
+          y >= site.y - 1 &&
+          y <= site.y + site.h,
+      ),
+    foundingClearing =
+      state.village.scenario === "founding" &&
+      x >= -24 &&
+      x <= -6 &&
+      y >= 13 &&
+      y <= 22,
+    nearBuilding = villageBuildings(state).some(
       (site) =>
         x >= site.x - 2 &&
         x <= site.x + site.w + 1 &&
         y >= site.y - 2 &&
         y <= site.y + site.h + 1,
     );
-  return !nearBuilding && noise < 14;
+  return (
+    !plannedHousing &&
+    !plannedPasture &&
+    !plannedFacility &&
+    !foundingClearing &&
+    !nearBuilding &&
+    noise < treeThreshold
+  );
 }
 
-function villagePathAt(x, y) {
-  if (villagePrincipalRoadAt(x, y)) return "road_stone";
-  const onApproach = VILLAGE_BUILDINGS.some(({ door }) => {
+const VILLAGE_TREE_VARIANTS = Object.freeze([
+  { key: "pine", name: "Pine", glyph: "▲", wood: "softwood" },
+  { key: "elm", name: "Elm", glyph: "♣", wood: "hardwood" },
+  { key: "maple", name: "Maple", glyph: "♦", wood: "hardwood" },
+  { key: "oak", name: "Oak", glyph: "♠", wood: "hardwood" },
+  { key: "birch", name: "Birch", glyph: "ψ", wood: "hardwood" },
+]);
+
+function villageTreeVariant(state, x, y) {
+  const seed = [...state.seed].reduce(
+      (sum, character) => sum + character.charCodeAt(0),
+      0,
+    ),
+    index = Math.abs((x * 83492791) ^ (y * 297657976) ^ seed) % 5;
+  return VILLAGE_TREE_VARIANTS[index];
+}
+
+function villagePathAt(state, x, y) {
+  if (villageFoundingRoadAt(state, x, y)) {
+    const establishedCore =
+      state.village.scenario !== "founding" &&
+      x >= -20 &&
+      x <= 60 &&
+      y >= -5 &&
+      y <= 40;
+    return establishedCore ? "road_stone" : "road_dirt";
+  }
+  const onApproach = villageBuildings(state).some(({ door }) => {
     const verticalDistance = Math.abs(door.y - 11),
       horizontalDistance = Math.abs(door.x - 19);
     if (verticalDistance <= horizontalDistance)
@@ -3975,60 +5380,579 @@ function villagePathAt(x, y) {
   return onApproach ? "road_dirt" : null;
 }
 
-function villageTile(state, x, y, includePeople = true) {
-  const modification = state.village.modifications.find(
-      (entry) => entry.x === x && entry.y === y,
-    ),
-    material = state.village.looseMaterials.find(
-      (entry) => entry.x === x && entry.y === y,
+function villageFoundingRoadAt(state, x, y) {
+  const mode = villageRegionalSite(state).mode;
+  if (mode !== "regional_v3") return villagePrincipalRoadAt(x, y);
+  const global = regionalTerrainPosition(state, x, y);
+  return regionalTrailAt(state.seed, global.x, global.y, mode);
+}
+
+function villageRiverAt(x, y) {
+  const east = (x - 4) / 5,
+    south = (y - 18) / 4;
+  return east * east + south * south <= 1;
+}
+
+function villageRegionalSite(state) {
+  return (
+    state.village.development?.masterPlan?.regionalContext?.site ?? {
+      origin: { x: 0, y: 0 },
+      hub: { x: 19, y: 11 },
+    }
+  );
+}
+
+function globalVillagePosition(state, position) {
+  const origin = villageRegionalSite(state).origin;
+  return { x: position.x + origin.x, y: position.y + origin.y };
+}
+
+function localVillagePosition(state, position) {
+  const origin = villageRegionalSite(state).origin;
+  return { x: position.x - origin.x, y: position.y - origin.y };
+}
+
+function regionalTerrainPosition(state, x, y) {
+  return globalVillagePosition(state, { x, y });
+}
+
+function regionalRockEdgeMask(state, x, y) {
+  const site = villageRegionalSite(state);
+  if (site.mode !== "regional_v3") return 0;
+  const global = regionalTerrainPosition(state, x, y),
+    exposed = (dx, dy) => {
+      const neighbor = { x: x + dx, y: y + dy };
+      return (
+        state.village.modifications.some(
+          (item) =>
+            item.kind === "quarried_rock" &&
+            item.x === neighbor.x &&
+            item.y === neighbor.y,
+        ) ||
+        regionalGround(state.seed, global.x + dx, global.y + dy, site.mode) !==
+          "rock"
+      );
+    };
+  return (
+    (exposed(0, -1) ? 1 : 0) |
+    (exposed(1, 0) ? 2 : 0) |
+    (exposed(0, 1) ? 4 : 0) |
+    (exposed(-1, 0) ? 8 : 0)
+  );
+}
+
+function regionalBridgeAt(state, x, y) {
+  const global = regionalTerrainPosition(state, x, y);
+  const mode = villageRegionalSite(state).mode;
+  if (mode === "regional_v3")
+    return (
+      regionalHydrology(state.seed, global.x, global.y, mode).water &&
+      regionalTrailAt(state.seed, global.x, global.y, mode)
     );
+  return regionalRiverAt(global.x, global.y) && (y === 11 || y === 12);
+}
+
+const FURNITURE_VISUAL_VARIANTS = [
+  ["meal_place", /meal place/],
+  ["prayer_stone", /prayer stone/],
+  ["cooking_pot", /stew pot/],
+  ["hitching_rail", /hitching rail/],
+  ["milking_rail", /milking rail/],
+  ["construction_site", /yard site/],
+  ["grain_plot", /grain field marker/],
+  ["kitchen_garden", /kitchen garden marker/],
+  ["storage_shed", /seed shed|tool cache|food cache|staging pallet|ore bin|net rack|fish storage/],
+  ["table", /sawbench|netting bench|fish cleaning table/],
+  ["chair", /chair|stool|bench/],
+  ["counter", /counter|inn bar/],
+  ["table", /worktable|\btable\b/],
+  ["forge", /forge/],
+  ["shelves", /shelves/],
+  ["rack", /rack/],
+  ["bedroll", /bedroll/],
+  ["bed", /bed/],
+  ["altar", /altar/],
+  ["stall", /stall/],
+  ["cart", /cart/],
+  ["jetty", /jetty/],
+  ["trestles", /trestles/],
+];
+
+function furnitureVisualVariant(furniture) {
+  const name = furniture.name.toLowerCase();
+  return FURNITURE_VISUAL_VARIANTS.find(([, pattern]) =>
+    pattern.test(name),
+  )?.[0];
+}
+
+const ACTIVE_CONSTRUCTION_CACHE = new WeakMap();
+const VILLAGE_CONSTRUCTION_POSITION_CACHE = new WeakMap();
+const VILLAGE_PRIMITIVE_CACHE = new WeakMap();
+const UNITY_STORAGE_POSITION_CACHE = new WeakMap();
+
+function activeConstructionJobs(state) {
+  const cached = ACTIVE_CONSTRUCTION_CACHE.get(state);
+  if (
+    cached?.tick === state.tick &&
+    cached.jobCount === state.village.jobs.length
+  )
+    return cached.jobs;
+  const jobs = state.village.jobs.filter(
+    (job) =>
+      job.plan?.construction &&
+      ["available", "reserved", "active", "blocked", "suspended"].includes(
+        job.status,
+      ),
+  );
+  ACTIVE_CONSTRUCTION_CACHE.set(state, {
+    tick: state.tick,
+    jobCount: state.village.jobs.length,
+    jobs,
+  });
+  return jobs;
+}
+
+function addScoutedHousingPositions(state, plannedPositions, jobSiteKeys) {
+  const sites = state.village.development?.constructionSites ?? [],
+    completedKeys = new Set(
+      state.village.buildings
+        .filter((building) => building.status === "complete")
+        .map((building) => building.key),
+    );
+  for (const site of sites.filter(
+    (candidate) =>
+      candidate.housingSurveyStatus === "scouted" &&
+      !jobSiteKeys.has(candidate.key) &&
+      !completedKeys.has(candidate.key),
+  )) {
+    const elements = constructionElements(site).map((element) => ({
+        ...element,
+        status: "planned",
+        materialDelivered: false,
+        materialDeliveredQuantity: 0,
+        laborCompleted: 0,
+      })),
+      work = { elements },
+      job = { id: namedUuid(state.id, `housing-survey:${site.key}`) };
+    for (const element of elements) {
+      const positionKey = `${element.position.x},${element.position.y}`;
+      if (!plannedPositions.has(positionKey))
+        plannedPositions.set(positionKey, { job, site, work, element });
+    }
+  }
+}
+
+// function-length-exempt: template -- construction projection
+function villageConstructionAt(state, x, y, includePlanned = false) {
+  let cached = VILLAGE_CONSTRUCTION_POSITION_CACHE.get(state);
+  if (cached?.tick !== state.tick) {
+    const plannedPositions = new Map(),
+      activePositions = new Map(),
+      jobs = activeConstructionJobs(state),
+      jobSiteKeys = new Set(
+        state.village.jobs
+          .filter((job) => job.plan?.construction)
+          .map((job) => job.plan.construction.key),
+      );
+    for (const job of jobs) {
+      const site = job.plan?.construction,
+        work = job.plan?.constructionWork;
+      if (!site || !work) continue;
+      for (const element of work.elements) {
+        if (element.status === "complete") continue;
+        const positionKey = `${element.position.x},${element.position.y}`,
+          entry = { job, site, work, element };
+        if (!plannedPositions.has(positionKey))
+          plannedPositions.set(positionKey, entry);
+        if (element.status !== "planned" && !activePositions.has(positionKey))
+          activePositions.set(positionKey, entry);
+      }
+    }
+    addScoutedHousingPositions(state, plannedPositions, jobSiteKeys);
+    cached = { tick: state.tick, plannedPositions, activePositions };
+    VILLAGE_CONSTRUCTION_POSITION_CACHE.set(state, cached);
+  }
+  const entry = (
+    includePlanned ? cached.plannedPositions : cached.activePositions
+  ).get(`${x},${y}`);
+  if (entry) {
+    const { job, site, work, element } = entry,
+      enclosure = site.enclosures?.find(
+        (candidate) => candidate.key === element.pastureKey,
+      );
+    return {
+      ...site,
+      jobId: job.id,
+      elementId: element.id,
+      elementKey: element.key,
+      elementKind: element.kind,
+      material: element.material,
+      materialEntityIds: [...(element.deliveredMaterialIds ?? [])],
+      materialDeliveredQuantity: element.materialDeliveredQuantity,
+      materialRequired: element.materialRequired,
+      laborCompleted: element.laborCompleted,
+      laborRequired: element.laborRequired,
+      fenceOrientation:
+        enclosure &&
+        (element.position.x === enclosure.x ||
+          element.position.x === enclosure.x + enclosure.w - 1)
+          ? "vertical"
+          : "horizontal",
+      stage:
+        element.status === "planned" && element.materialDelivered
+          ? "material_delivered"
+          : element.status,
+      connectionMask: connectionMaskAt(
+        work.elements,
+        element,
+        (candidate) => candidate.kind === element.kind,
+      ),
+      builtSegments: work.elements.filter(
+        (candidate) => candidate.status === "complete",
+      ).length,
+      totalSegments: work.elements.length,
+    };
+  }
+  return null;
+}
+
+function connectionMaskAt(items, item, matches) {
+  const x = item.position.x,
+    y = item.position.y,
+    occupied = (targetX, targetY) =>
+      items.some(
+        (candidate) =>
+          candidate !== item &&
+          matches(candidate) &&
+          candidate.position.x === targetX &&
+          candidate.position.y === targetY,
+      );
+  return (
+    (occupied(x, y - 1) ? 1 : 0) |
+    (occupied(x + 1, y) ? 2 : 0) |
+    (occupied(x, y + 1) ? 4 : 0) |
+    (occupied(x - 1, y) ? 8 : 0)
+  );
+}
+
+function villagePrimitiveIndex(state) {
+  const primitives = state.village.constructionPrimitives ?? [],
+    cached = VILLAGE_PRIMITIVE_CACHE.get(state);
+  if (cached?.source === primitives && cached.length === primitives.length)
+    return cached;
+  const positions = new Map(),
+    surfaces = new Map();
+  for (const primitive of primitives)
+    for (
+      let py = primitive.position.y;
+      py < primitive.position.y + (primitive.height ?? 1);
+      py += 1
+    )
+      for (
+        let px = primitive.position.x;
+        px < primitive.position.x + (primitive.width ?? 1);
+        px += 1
+      ) {
+        positions.set(`${px},${py}`, primitive);
+        indexVillageSurface(surfaces, primitive, px, py);
+      }
+  const index = {
+    source: primitives,
+    length: primitives.length,
+    positions,
+    surfaces,
+  };
+  VILLAGE_PRIMITIVE_CACHE.set(state, index);
+  return index;
+}
+
+function indexVillageSurface(surfaces, primitive, x, y) {
+  if (!["floor", "roof"].includes(primitive.kind)) return;
+  if ((primitive.condition ?? 1) <= 0) return;
+  const position = `${x},${y}`,
+    entry = surfaces.get(position) ?? { floor: null, roof: null };
+  entry[primitive.kind] ??= primitive;
+  surfaces.set(position, entry);
+}
+
+function villagePrimitiveAt(state, x, y) {
+  return villagePrimitiveIndex(state).positions.get(`${x},${y}`);
+}
+
+function villageSurfaceAt(state, x, y) {
+  return (
+    villagePrimitiveIndex(state).surfaces.get(`${x},${y}`) ?? {
+      floor: null,
+      roof: null,
+    }
+  );
+}
+
+// function-length-exempt: template -- terrain projection
+function primitiveVillageTile(state, primitive) {
+  const connectionMask = connectionMaskAt(
+    state.village.constructionPrimitives ?? [],
+    primitive,
+    (candidate) =>
+      candidate.kind === primitive.kind &&
+      candidate.material === primitive.material &&
+      candidate.projectId === primitive.projectId,
+  );
+  if (primitive.kind === "wall")
+    return {
+      tile: "village_building",
+      glyph: "#",
+      primitive,
+      connectionMask,
+      visualVariant: primitive.material,
+      featureName: `Finished ${primitive.material} wall`,
+    };
+  if (primitive.kind === "fence")
+    return {
+      tile: "village_fence",
+      glyph: " ",
+      primitive,
+      connectionMask,
+      visualVariant: primitive.material,
+      featureName: `Finished ${primitive.material} fence`,
+    };
+  if (primitive.kind === "gate")
+    return {
+      tile: "village_gate_closed",
+      glyph: " ",
+      primitive,
+      visualVariant: primitive.material,
+      featureName: `Finished ${primitive.material} gate`,
+    };
+  return null;
+}
+
+const VILLAGE_LOOSE_POSITION_CACHE = new WeakMap();
+
+function villagePersonProjection(state, person) {
+  const specialist = [
+    "smith",
+    "herbalist",
+    "armorer",
+    "innkeeper",
+    "hostler",
+  ].includes(person.key);
+  return {
+    ...person,
+    category: person.corpse
+      ? "deceased"
+      : specialist
+        ? "shopkeeper"
+        : person.key === "reeve"
+          ? "official"
+          : ["watchman", "delver"].includes(person.key)
+            ? "guard"
+            : "civilian",
+    id: namedUuid(state.id, `townsperson:${person.key}`),
+    objective: person.objective,
+    currentAction: person.currentAction,
+    actionReason: person.actionReason,
+  };
+}
+
+function villageLoosePositionIndex(state) {
+  const modificationsSource = state.village.modifications,
+    materialsSource = state.village.looseMaterials,
+    cached = VILLAGE_LOOSE_POSITION_CACHE.get(state);
+  if (
+    cached?.modificationsSource === modificationsSource &&
+    cached.modificationCount === modificationsSource.length &&
+    cached.materialsSource === materialsSource &&
+    cached.materialCount === materialsSource.length
+  )
+    return cached;
+  const modifications = new Map(
+      modificationsSource.map((entry) => [`${entry.x},${entry.y}`, entry]),
+    ),
+    materials = new Map(
+      materialsSource.map((entry) => [`${entry.x},${entry.y}`, entry]),
+    ),
+    index = {
+      modificationsSource,
+      modificationCount: modificationsSource.length,
+      materialsSource,
+      materialCount: materialsSource.length,
+      modifications,
+      materials,
+    };
+  VILLAGE_LOOSE_POSITION_CACHE.set(state, index);
+  return index;
+}
+
+// function-length-exempt: template -- layered tile projection
+function villageTile(
+  state,
+  x,
+  y,
+  includePeople = true,
+  includeConstruction = true,
+  includePlannedConstruction = false,
+) {
+  const position = `${x},${y}`,
+    modification = villageLoosePositionIndex(state).modifications.get(position),
+    material = villageLoosePositionIndex(state).materials.get(position),
+    occupiedByParty = [
+      state.village.heroPosition,
+      ...state.village.companionPositions,
+    ].some((entry) => same(entry, { x, y })),
+    person = occupiedByParty ? null : villagePersonAt(state, x, y);
   if (modification) {
     const changed = {
-      dug_ground: { tile: "village_pit", glyph: "○" },
-      tree_stump: { tile: "outdoor_stump", glyph: "♧" },
+      dug_ground: { tile: "village_pit", glyph: "○", visualVariant: "pit" },
+      tree_stump: {
+        tile: "outdoor_stump",
+        glyph: "♧",
+        visualVariant: "stump",
+      },
+      cleared_ground: {
+        tile: "outdoor_grass",
+        glyph: ",",
+        visualVariant: "cleared",
+      },
+      built_dirt_road: {
+        tile: "road_dirt",
+        glyph: "·",
+        visualVariant: "packed_dirt",
+      },
       breached_wall: { tile: "village_rubble", glyph: ":" },
+      quarried_rock: {
+        tile: "village_mine_floor",
+        glyph: ".",
+        visualVariant: "excavated_mountain",
+      },
     }[modification.kind];
-    return { ...changed, modification, material, featureName: changed.tile };
+    return {
+      ...changed,
+      modification,
+      material,
+      featureName: changed.tile,
+      ...(includePeople && person
+        ? {
+            glyph: person.glyph,
+            person: villagePersonProjection(state, person),
+          }
+        : {}),
+    };
   }
   if (material)
     return {
       tile: "village_material",
-      glyph: "*",
+      glyph: includePeople && person ? person.glyph : "*",
       material,
+      ...(includePeople && person
+        ? { person: villagePersonProjection(state, person) }
+        : {}),
+      visualVariant: material.kind,
       featureName: material.name,
     };
-  const building = villageBuildingAt(x, y),
-    furniture = villageFurnitureAt(x, y),
-    occupiedByParty = [
-      state.village.heroPosition,
-      ...state.village.companionPositions,
-    ].some((position) => same(position, { x, y })),
-    person = occupiedByParty ? null : villagePersonAt(state, x, y);
+  const construction = includeConstruction
+      ? villageConstructionAt(state, x, y, includePlannedConstruction)
+      : null,
+    primitive = villagePrimitiveAt(state, x, y),
+    completedDoor = state.village.doors.find((door) => same(door, { x, y })),
+    building = villageBuildingAt(state, x, y),
+    furniture = villageFurnitureAt(state, x, y),
+    animal = occupiedByParty ? null : villageAnimalAt(state, x, y),
+    grave = villageGraveAt(state, x, y),
+    animalDisposal = villageAnimalDisposalAt(state, x, y),
+    cremationPyre = villageCremationPyreAt(state, x, y),
+    musterPoint = villageMusterPointAt(state, x, y);
   if (includePeople && person)
     return {
-      tile: "village_person",
-      glyph: person.glyph,
-      person: {
-        ...person,
-        category: [
-          "smith",
-          "herbalist",
-          "armorer",
-          "innkeeper",
-          "hostler",
-        ].includes(person.key)
-          ? "shopkeeper"
-          : ["watchman", "delver"].includes(person.key)
-            ? "guard"
-            : "civilian",
-        id: namedUuid(state.id, `townsperson:${person.key}`),
-        objective: person.objective,
-        currentAction: person.currentAction,
-        actionReason: person.actionReason,
-      },
+      tile: person.corpse ? "village_corpse" : "village_person",
+      glyph: person.corpse ? "†" : person.glyph,
+      person: villagePersonProjection(state, person),
+    };
+  if (includePeople && animal)
+    return {
+      tile: "village_animal",
+      glyph: " ",
+      animal,
+      visualVariant: `${animal.species}_${animal.facing}`,
+      featureName: animal.name,
+    };
+  if (grave)
+    return {
+      tile: "village_grave",
+      glyph:
+        grave.status === "occupied" ? "†" : grave.status === "dug" ? "□" : "·",
+      grave,
+      visualVariant: `grave_${grave.status}`,
+      featureName: grave.name,
+    };
+  if (animalDisposal)
+    return {
+      tile: "village_pit",
+      glyph: "○",
+      animalDisposal,
+      visualVariant: "animal_disposal_pit",
+      featureName: animalDisposal.name,
+    };
+  if (cremationPyre)
+    return {
+      tile: "village_pit",
+      glyph: "♨",
+      cremationPyre,
+      visualVariant: "cremation_pyre",
+      featureName: cremationPyre.name,
+    };
+  if (musterPoint)
+    return {
+      tile: "village_muster_point",
+      glyph: "⚑",
+      musterPoint,
+      visualVariant: "muster_point",
+      featureName: musterPoint.name,
     };
   if (furniture)
-    return { tile: "village_furniture", glyph: furniture.glyph, furniture };
+    return {
+      tile: "village_furniture",
+      glyph: x === furniture.x && y === furniture.y ? furniture.glyph : " ",
+      furniture,
+      visualVariant:
+        x === furniture.x && y === furniture.y
+          ? furnitureVisualVariant(furniture)
+          : null,
+    };
+  if (construction)
+    return {
+      tile: "village_construction",
+      glyph: ["door", "gate"].includes(construction.elementKind)
+        ? " "
+        : construction.elementKind === "fixture"
+          ? "F"
+          : "▥",
+      visualVariant:
+        construction.elementKind === "door"
+          ? construction.door.material
+          : ["fence", "gate"].includes(construction.elementKind)
+            ? `${construction.material}_${construction.fenceOrientation}`
+            : construction.elementKind === "fixture"
+              ? construction.stage === "complete"
+                ? construction.fixtureVariant
+                : "construction_site"
+              : construction.wallMaterial,
+      construction,
+      featureName: `${construction.name} ${construction.elementKind} under construction`,
+    };
+  const primitiveTile = primitive
+    ? primitiveVillageTile(state, primitive)
+    : null;
+  if (primitiveTile) return primitiveTile;
+  if (completedDoor)
+    return {
+      tile: `village_${completedDoor.entityType === "gate" ? "gate" : "door"}_${completedDoor.state}`,
+      building,
+      door: completedDoor,
+      doorId: completedDoor.id,
+      visualVariant: completedDoor.material,
+      glyph: completedDoor.state === "open" ? "'" : "+",
+    };
   if (building) {
     const door = state.village.doors.find((candidate) =>
         same(candidate, { x, y }),
@@ -4043,27 +5967,141 @@ function villageTile(state, x, y, includePeople = true) {
         tile: `village_door_${door.state}`,
         building,
         doorId: door.id,
+        visualVariant: door.material,
         glyph: door.state === "open" ? "'" : "+",
       };
     if (!boundary && !villagePartitionAt(building, x, y))
       return {
-        tile: "village_floor",
+        tile: building.primitiveBacked ? "outdoor_grass" : "village_floor",
         building,
-        glyph:
-          x === building.x + 1 && y === building.y + 1 ? building.glyph : "·",
+        glyph: building.primitiveBacked
+          ? ","
+          : x === building.x + 1 && y === building.y + 1
+            ? building.glyph
+            : "·",
       };
+    if (building.primitiveBacked)
+      return { tile: "outdoor_grass", glyph: ",", building };
     return {
       tile: "village_building",
       building,
+      visualVariant: building.wallMaterial,
       glyph: "#",
     };
   }
-  const sign = villageSignAt(x, y),
-    path = villagePathAt(x, y);
-  if (sign) return { tile: "village_sign", glyph: "!", sign };
+  const pastureGate = villagePastureGateAt(state, x, y);
+  if (pastureGate)
+    return {
+      tile: `village_gate_${pastureGate.gate.state}`,
+      glyph: " ",
+      pasture: pastureGate.pasture,
+      pastureGate: pastureGate.gate,
+      gateId: pastureGate.gate.id,
+      visualVariant: pastureGate.gate.material,
+      featureName: `${pastureGate.pasture.name} gate`,
+    };
+  const fence = villageFenceAt(state, x, y);
+  if (fence)
+    return {
+      tile: "village_fence",
+      glyph: " ",
+      pasture: fence.pasture,
+      visualVariant: `${fence.pasture.fenceMaterial}_${fence.orientation}`,
+      featureName: `${fence.pasture.name} fence`,
+    };
+  const sign = villageSignAt(state, x, y),
+    path = villagePathAt(state, x, y);
+  if (sign)
+    return {
+      tile: "village_sign",
+      glyph: "!",
+      sign,
+      visualVariant: "posted",
+    };
+  if (regionalBridgeAt(state, x, y))
+    return {
+      tile: "road_bridge_wood",
+      glyph: "=",
+      visualVariant: "timber",
+      featureName: "Timber bridge over the Stonebridge River",
+    };
+  const regional = regionalTerrainPosition(state, x, y),
+    generationMode = villageRegionalSite(state).mode,
+    hydrology = regionalHydrology(
+      state.seed,
+      regional.x,
+      regional.y,
+      generationMode,
+    );
+  if (hydrology.water)
+    return {
+      tile: "outdoor_water",
+      glyph: " ",
+      visualVariant: "river",
+      featureName: "Stonebridge River",
+    };
   if (path) return { tile: path, glyph: path === "road_stone" ? "=" : ":" };
-  if (villageTree(state, x, y))
-    return { tile: "outdoor_tree", glyph: "♣", featureName: "Tree" };
+  if (generationMode !== "regional_v3" && villageRiverAt(x, y))
+    return {
+      tile: "outdoor_water",
+      glyph: " ",
+      visualVariant: "river_pool",
+      featureName: "Stonebridge oxbow pool",
+    };
+  const generatedGround = regionalGround(
+    state.seed,
+    regional.x,
+    regional.y,
+    generationMode,
+  );
+  if (
+    generatedGround === "rock" ||
+    (generationMode !== "regional_v3" &&
+      villageHighlandAt(regional.x, regional.y))
+  )
+    return {
+      tile: "outdoor_rock",
+      glyph: " ",
+      visualVariant: villageQuarryFaceAt(regional.x, regional.y)
+        ? "limestone_outcrop"
+        : "ridge",
+      featureName: villageQuarryFaceAt(regional.x, regional.y)
+        ? "Surveyable limestone quarry face"
+        : "Rocky western ridge",
+    };
+  if (
+    state.village.scenario === "founding" &&
+    x >= -18 &&
+    x <= -10 &&
+    y >= 15 &&
+    y <= 21
+  )
+    return { tile: "outdoor_grass", glyph: "," };
+  const cropPlot = cropPlotAt(state, x, y);
+  if (cropPlot)
+    return {
+      tile: "outdoor_grass",
+      glyph: ",",
+      cropPlot,
+      featureName: `${cropPlot.cropKind} field`,
+    };
+  const foragePatch = foragePatchAt(state, x, y);
+  if (foragePatch)
+    return {
+      tile: "outdoor_grass",
+      glyph: ";",
+      foragePatch,
+      featureName: foragePatch.name,
+    };
+  if (villageTree(state, x, y)) {
+    const tree = villageTreeVariant(state, x, y);
+    return {
+      tile: "outdoor_tree",
+      glyph: tree.glyph,
+      visualVariant: tree.key,
+      featureName: `${tree.name} tree`,
+    };
+  }
   return { tile: "outdoor_grass", glyph: "," };
 }
 
@@ -4082,53 +6120,95 @@ function villageObject(state, kind, keyValue, position, values) {
   };
 }
 
+// function-length-exempt: template -- fixture projection
 function fixtureObject(state, terrain, position) {
   const fixture = terrain.furniture,
+    building = state.village.buildings.find(
+      (candidate) => candidate.id === fixture.buildingId,
+    ),
+    anchor = { x: fixture.x, y: fixture.y },
     lowerName = fixture.name.toLowerCase(),
-    fixtureKind = lowerName.includes("forge")
-      ? "forge"
-      : lowerName.includes("counter")
-        ? "counter"
-        : lowerName.includes("cart")
-          ? "cart"
-          : "fixture",
+    fixtureKind = ["table", "kitchen"].includes(fixture.role)
+      ? "meal"
+      : lowerName.includes("bed")
+        ? "bed"
+        : lowerName.includes("stew") || lowerName.includes("meal")
+          ? "meal"
+          : lowerName.includes("chair") || lowerName.includes("bench")
+            ? "seat"
+            : lowerName.includes("altar") || lowerName.includes("prayer")
+              ? "worship"
+              : lowerName.includes("forge")
+                ? "forge"
+                : lowerName.includes("counter")
+                  ? "counter"
+                  : lowerName.includes("cart")
+                    ? "cart"
+                    : "fixture",
     useLabels = {
       forge: "Work forge",
       counter: "Review counter",
       cart: "Inspect cargo",
+      bed: "Rest",
+      meal: "Eat meal",
+      seat: "Sit",
+      worship: "Worship",
       fixture: `Use ${fixture.name}`,
     },
     stockpiles = state.village.stockpiles.filter(
       (stockpile) =>
-        stockpile.position.x === position.x &&
-        stockpile.position.y === position.y,
+        stockpile.position.x === anchor.x && stockpile.position.y === anchor.y,
     ),
     stockDetail = stockpiles.length
       ? ` Stock: ${stockpiles.map((stockpile) => `${stockpile.quantity} ${stockpile.name.toLowerCase()}`).join(", ")}.`
       : "";
-  return villageObject(
-    state,
-    fixtureKind,
-    `${position.x},${position.y}`,
-    position,
-    {
+  return {
+    ...villageObject(state, fixtureKind, `${anchor.x},${anchor.y}`, anchor, {
       name: fixture.name,
-      description: fixture.description + stockDetail,
+      description:
+        fixture.description +
+        (building ? ` Structure: ${building.name}.` : "") +
+        stockDetail,
+      footprint: { width: fixture.width, height: fixture.height },
       stockpiles: stockpiles.map((stockpile) => ({ ...stockpile })),
       affordanceKeys:
         fixtureKind === "cart"
           ? ["examine", "use", "request_stocktake"]
           : ["examine", "use"],
       actionLabels: { use: useLabels[fixtureKind] },
-    },
-  );
+    }),
+    ...(fixture.id ? { id: fixture.id } : {}),
+    ...(fixture.definitionId ? { definitionId: fixture.definitionId } : {}),
+  };
+}
+
+function residentCorpseObject(person, position) {
+  return {
+    ...person.corpse,
+    objectKind: "resident_corpse",
+    position,
+    description: `${person.name} died from ${person.corpse.cause.replaceAll("_", " ")}. The body is ${person.corpse.condition} and awaits burial.`,
+    affordanceKeys: ["examine"],
+  };
 }
 
 function personObject(state, terrain, position) {
   const person = terrain.person;
+  if (person.corpse) return residentCorpseObject(person, position);
   const priorities = Object.entries(person.workPriorities ?? {})
-    .map(([jobType, priority]) => `${jobType.replaceAll("_", " ")} ${priority}`)
-    .join(", ");
+      .map(
+        ([jobType, priority]) => `${jobType.replaceAll("_", " ")} ${priority}`,
+      )
+      .join(", "),
+    permissions = (person.workPermissions?.allowedJobTypes ?? [])
+      .map((jobType) => jobType.replaceAll("_", " "))
+      .join(", "),
+    capabilities = (person.capabilityTags ?? []).join(", "),
+    needs = person.life
+      ? Object.entries(person.life.needs)
+          .map(([need, value]) => `${need} ${Math.round(value)}`)
+          .join(", ")
+      : "";
   return {
     id: person.id,
     definitionId: person.definitionId,
@@ -4136,9 +6216,81 @@ function personObject(state, terrain, position) {
     objectKind: "resident",
     position,
     name: person.name,
-    description: `${person.name} is a ${person.role} of Stonebridge. Objective: ${person.objective.replaceAll("_", " ")}. Currently: ${person.currentAction}.${priorities ? ` Work priorities: ${priorities}.` : ""}`,
+    description: `${person.name} is a ${person.role} of Stonebridge. Objective: ${person.objective.replaceAll("_", " ")}. Currently: ${person.currentAction}. Housing: ${person.housingStatus}.${person.life ? ` Schedule: ${person.life.scheduleBlock.replaceAll("_", " ")}.` : ""}${needs ? ` Needs: ${needs}.` : ""}${permissions ? ` Permitted work: ${permissions}.` : ""}${capabilities ? ` Capabilities: ${capabilities}.` : ""}${priorities ? ` Work priorities: ${priorities}.` : ""}`,
     personKey: person.key,
     affordanceKeys: ["examine", "talk"],
+  };
+}
+
+function graveObject(terrain) {
+  const grave = terrain.grave;
+  return {
+    ...grave,
+    objectKind: "grave",
+    position: { ...grave.position },
+    description:
+      grave.status === "occupied"
+        ? `A marked grave containing resident corpse ${grave.occupantId}.`
+        : `A ${grave.status} grave in the founders' cemetery.`,
+    affordanceKeys: ["examine"],
+  };
+}
+
+function musterPointObject(terrain) {
+  return {
+    ...terrain.musterPoint,
+    objectKind: "muster_point",
+    position: { ...terrain.musterPoint.position },
+    description:
+      "The town watch assembles here before responding to an immediate threat.",
+    affordanceKeys: ["examine"],
+  };
+}
+
+function animalDisposalObject(terrain) {
+  const site = terrain.animalDisposal;
+  return {
+    ...site,
+    objectKind: "animal_disposal",
+    position: { ...site.position },
+    description: `${site.disposedCarcassIds.length} unsafe animal carcasses have been disposed here, away from food and homes.`,
+    affordanceKeys: ["examine"],
+  };
+}
+
+function cremationPyreObject(terrain) {
+  const pyre = terrain.cremationPyre;
+  return {
+    ...pyre,
+    objectKind: "cremation_pyre",
+    position: { ...pyre.position },
+    description: `${pyre.crematedCorpseIds.length} residents have been cremated here using ${pyre.consumedFuelUnits} lumber units.`,
+    affordanceKeys: ["examine"],
+  };
+}
+
+function animalObject(terrain) {
+  const animal = terrain.animal;
+  if (animal.status === "dead")
+    return {
+      ...animal,
+      objectKind: "animal_carcass",
+      position: { ...animal.position },
+      footprint: { width: animal.width, height: animal.height },
+      description: `${animal.name} is a ${animal.carcassState} ${animal.species.replaceAll("_", " ")} carcass, dead from ${animal.deathCause?.replaceAll("_", " ") ?? "unknown causes"}.`,
+      affordanceKeys: ["examine"],
+    };
+  const lineage =
+    animal.generation > 0
+      ? ` Generation ${animal.generation}; parents ${animal.motherId} and ${animal.fatherId}.`
+      : " Founding generation.";
+  return {
+    ...animal,
+    objectKind: "animal",
+    position: { ...animal.position },
+    footprint: { width: animal.width, height: animal.height },
+    description: `${animal.name} is a ${animal.sex} ${animal.ageStage} ${animal.species}, ${animal.status}, with ${animal.health} health.${lineage}`,
+    affordanceKeys: ["examine"],
   };
 }
 
@@ -4153,6 +6305,7 @@ function materialObject(terrain, position) {
   };
 }
 
+// function-length-exempt: template -- inspectable building projection
 function buildingObject(state, terrain, position) {
   const door = state.village.doors.find((candidate) =>
     same(candidate, position),
@@ -4164,7 +6317,8 @@ function buildingObject(state, terrain, position) {
       objectKind: "door",
       position,
       name: `${terrain.building.name} door`,
-      description: `The ${terrain.building.name} door is ${door.state}.`,
+      material: door.material,
+      description: `The ${terrain.building.name} ${door.material} door is ${door.state}.`,
       affordanceKeys: ["examine", "open"],
     };
   const isWall = terrain.tile === "village_building";
@@ -4175,21 +6329,113 @@ function buildingObject(state, terrain, position) {
     position,
     {
       name: isWall ? `${terrain.building.name} wall` : terrain.building.name,
+      material: terrain.building.wallMaterial,
       description: isWall
-        ? `Solid timber-and-stone construction protects ${terrain.building.name}.`
+        ? `A solid ${terrain.building.wallMaterial} wall protects ${terrain.building.name}.`
         : `A usable interior room inside ${terrain.building.name}.`,
       affordanceKeys: isWall ? ["examine", "breach"] : ["examine"],
     },
   );
 }
 
-export function villageWorldObjectAt(state, x, y) {
+function constructionObject(state, terrain, position) {
+  const site = terrain.construction;
+  return {
+    ...villageObject(
+      state,
+      "construction",
+      `${site.jobId}:${position.x},${position.y}`,
+      position,
+      {
+        name: `${site.name} wall frame`,
+        material: site.wallMaterial,
+        description: `${site.materialDeliveredQuantity}/${site.materialRequired} material delivered; ${site.builtSegments} of ${site.totalSegments} project elements complete.`,
+        affordanceKeys: ["examine"],
+      },
+    ),
+    id: site.elementId,
+    definitionId: definitionId("construction-element", site.elementKind),
+    materialEntityIds: [...site.materialEntityIds],
+  };
+}
+
+function primitiveObject(state, terrain) {
+  const primitive = terrain.primitive,
+    building = state.village.buildings.find(
+      (candidate) => candidate.key === primitive.projectKey,
+    ),
+    structureName = building?.name ?? null;
+  return {
+    ...primitive,
+    objectKind: primitive.kind,
+    position: { ...primitive.position },
+    name: structureName
+      ? `${structureName} — ${primitive.kind}`
+      : `${primitive.material} ${primitive.kind}`,
+    description: structureName
+      ? `This completed ${primitive.material} ${primitive.kind} belongs to ${structureName}.`
+      : `A completed ${primitive.material} ${primitive.kind} built as one persistent construction element.`,
+    affordanceKeys: ["examine"],
+  };
+}
+
+function completedDoorObject(state, terrain, position) {
+  const door = terrain.door,
+    kind = door.entityType === "gate" ? "gate" : "door",
+    building = state.village.buildings.find(
+      (candidate) => candidate.key === door.buildingKey,
+    );
+  return {
+    ...door,
+    objectKind: kind,
+    position,
+    name: building ? `${building.name} — ${kind}` : `${door.material} ${kind}`,
+    description: building
+      ? `The ${door.material} ${kind} of ${building.name} is ${door.state}.`
+      : `The ${door.material} ${kind} is ${door.state}.`,
+    affordanceKeys: ["examine", "open"],
+  };
+}
+
+function riverObject(state, terrain, position) {
+  const global = globalVillagePosition(state, position),
+    sites =
+      state.village.development.masterPlan.regionalContext.geologyKnowledge
+        .placerSites ?? [],
+    exhausted = sites.some((site) => same(site, global));
+  return villageObject(
+    state,
+    "river",
+    `${position.x},${position.y}`,
+    position,
+    {
+      name: terrain.featureName ?? "River water",
+      description: exhausted
+        ? "This small gravel bar has already been panned and is depleted."
+        : "Flowing water carries gravel that can be panned once for a small, uncertain mineral concentrate.",
+      placerExhausted: exhausted,
+      affordanceKeys: exhausted ? ["examine"] : ["examine", "pan"],
+    },
+  );
+}
+
+// function-length-exempt: template -- inspectable world-object projection
+export function villageWorldObjectAt(state, x, y, includePeople = true) {
   const position = { x, y },
-    terrain = villageTile(state, x, y);
+    terrain = villageTile(state, x, y, includePeople);
   if (terrain.person) return personObject(state, terrain, position);
+  if (terrain.animal) return animalObject(terrain);
+  if (terrain.grave) return graveObject(terrain);
+  if (terrain.animalDisposal) return animalDisposalObject(terrain);
+  if (terrain.cremationPyre) return cremationPyreObject(terrain);
+  if (terrain.musterPoint) return musterPointObject(terrain);
   if (terrain.material) return materialObject(terrain, position);
   if (terrain.furniture) return fixtureObject(state, terrain, position);
+  if (terrain.construction) return constructionObject(state, terrain, position);
+  if (terrain.primitive) return primitiveObject(state, terrain);
+  if (terrain.door) return completedDoorObject(state, terrain, position);
   if (terrain.building) return buildingObject(state, terrain, position);
+  if (terrain.pasture) return pastureObject(state, terrain, position);
   if (terrain.sign)
     return villageObject(state, "sign", `${x},${y}`, position, {
       name: "Posted sign",
@@ -4197,18 +6443,123 @@ export function villageWorldObjectAt(state, x, y) {
       text: terrain.sign.text,
       affordanceKeys: ["read"],
     });
-  if (terrain.tile === "outdoor_tree")
+  if (terrain.foragePatch)
+    return {
+      ...terrain.foragePatch,
+      objectKind: "forage",
+      position,
+      description:
+        terrain.foragePatch.stage === "ripe"
+          ? `${terrain.foragePatch.name} offers a small amount of emergency food.`
+          : `${terrain.foragePatch.name} has been picked and is slowly regrowing.`,
+      affordanceKeys: ["examine"],
+    };
+  if (terrain.tile === "outdoor_tree") {
+    const tree = villageTreeVariant(state, x, y);
     return villageObject(state, "tree", `${x},${y}`, position, {
-      name: "Old tree",
-      description: "An old shade tree marks the settled edge of Stonebridge.",
+      name: `${tree.name} tree`,
+      description: `A mature ${tree.name.toLowerCase()} grows at Stonebridge's settled edge.`,
+      species: tree.key,
+      woodClass: tree.wood,
+      materialKind: `${tree.key}_timber`,
       affordanceKeys: ["examine", "harvest"],
     });
+  }
+  if (terrain.tile === "outdoor_rock")
+    return villageRockObject(state, terrain, position);
+  if (terrain.tile === "village_mine_floor")
+    return villageObject(state, "mine_chamber", `${x},${y}`, position, {
+      name: "Excavated mountain chamber",
+      description:
+        "A walkable chamber cut from solid rock remains beneath the natural mountain roof.",
+      mountainRoof: true,
+      affordanceKeys: ["examine"],
+    });
+  if (terrain.tile === "outdoor_water")
+    return riverObject(state, terrain, position);
   const diggable = ["outdoor_grass", "road_dirt"].includes(terrain.tile);
   return villageObject(state, "terrain", `${x},${y}`, position, {
     name: terrain.featureName ?? terrain.tile.replaceAll("_", " "),
     description: villageExamination(state, position).detail,
     affordanceKeys: diggable ? ["examine", "dig"] : ["examine"],
   });
+}
+
+function geologyRecord(state, position) {
+  const global = globalVillagePosition(state, position);
+  return (
+    state.village.development.masterPlan.regionalContext.geologyKnowledge.revealedDeposits.find(
+      (record) => record.x === global.x && record.y === global.y,
+    ) ?? null
+  );
+}
+
+function geologyLabel(kind) {
+  return (
+    {
+      building_stone: "Building-stone outcrop",
+      iron_ore: "Iron-bearing vein",
+      copper_ore: "Copper-bearing vein",
+      tin_ore: "Tin-bearing vein",
+    }[kind] ?? "Rock deposit"
+  );
+}
+
+function hiddenMountainObject(state, position) {
+  return villageObject(
+    state,
+    "mountain_mass",
+    `${position.x},${position.y}`,
+    position,
+    {
+      name: "Solid mountain",
+      description:
+        "Unbroken mountain rock. Its interior is hidden and cannot be worked until an adjacent face is excavated.",
+      geologyKnown: false,
+      affordanceKeys: ["examine"],
+    },
+  );
+}
+
+function unknownRockFace(state, position) {
+  return villageObject(
+    state,
+    "rock_face",
+    `${position.x},${position.y}`,
+    position,
+    {
+      name: "Unprospected rock face",
+      description:
+        "Only the ridge surface is known. Its internal material has not been surveyed.",
+      geologyKnown: false,
+      affordanceKeys: ["examine", "prospect"],
+    },
+  );
+}
+
+function villageRockObject(state, terrain, position) {
+  const record = geologyRecord(state, position),
+    legacy = villageRegionalSite(state).mode !== "regional_v3",
+    exposed = legacy || regionalRockEdgeMask(state, position.x, position.y) > 0;
+  if (!exposed) return hiddenMountainObject(state, position);
+  if (!record && !legacy) return unknownRockFace(state, position);
+  const kind = record?.depositKind ?? "building_stone";
+  return villageObject(
+    state,
+    "stone_deposit",
+    `${position.x},${position.y}`,
+    position,
+    {
+      name: legacy ? terrain.featureName : geologyLabel(kind),
+      description: legacy
+        ? "An exposed quarry face can yield finite building stone."
+        : `${geologyLabel(kind)} was revealed by a persisted prospecting survey.`,
+      depositKind: kind,
+      estimatedYield: record?.remainingUnits ?? 3,
+      geologyKnown: true,
+      affordanceKeys: ["examine", "quarry"],
+    },
+  );
 }
 
 function villageActorForInteraction(state, actorId) {
@@ -4276,13 +6627,114 @@ function openVillageObject(state, object, events) {
   });
 }
 
+// function-length-exempt: template -- manipulation event projection
+function manipulationEvent(actor, object, action, tool, material) {
+  return {
+    type: "world_manipulated",
+    action,
+    actorId: actor.id,
+    objectId: object.id,
+    toolId: tool.id,
+    toolName: tool.name,
+    materialId: material.id,
+    materialName: material.name,
+    quantity: material.quantity,
+    position: { ...object.position },
+  };
+}
+
+function prospectVillageRock(state, actor, object, events) {
+  const global = globalVillagePosition(state, object.position),
+    mode = villageRegionalSite(state).mode,
+    depositKind = regionalGeology(state.seed, global.x, global.y, mode);
+  check(depositKind, "GEOLOGY_MISSING", "This cell has no prospectable rock.");
+  const knowledge =
+    state.village.development.masterPlan.regionalContext.geologyKnowledge;
+  knowledge.revealedDeposits.push({
+    id: namedUuid(state.id, `geology:${global.x},${global.y}`),
+    x: global.x,
+    y: global.y,
+    depositKind,
+    remainingUnits: 3,
+    revealedAtTick: state.tick,
+    revealedByActorId: actor.id,
+  });
+  knowledge.status = "partially_surveyed";
+  events.push({
+    type: "geology_prospected",
+    actorId: actor.id,
+    position: { ...object.position },
+    depositKind,
+    estimatedYield: 3,
+  });
+}
+
+function actorVillagePosition(state, actor) {
+  if (actor.id === state.hero.id) return state.village.heroPosition;
+  const companion = state.companions.findIndex((item) => item.id === actor.id);
+  if (companion >= 0) return state.village.companionPositions[companion];
+  return state.village.npcStates.find((item) => item.id === actor.id)?.position;
+}
+
+function panVillageRiver(state, actor, object, events) {
+  const knowledge =
+      state.village.development.masterPlan.regionalContext.geologyKnowledge,
+    global = globalVillagePosition(state, object.position);
+  knowledge.placerSites ??= [];
+  check(
+    !knowledge.placerSites.some((site) => same(site, global)),
+    "PLACER_DEPLETED",
+    "This small gravel bar has already been worked.",
+  );
+  const mineralKind = regionalPlacerMineral(
+    state.seed,
+    global.x,
+    global.y,
+    villageRegionalSite(state).mode,
+  );
+  knowledge.placerSites.push({
+    ...global,
+    mineralKind,
+    pannedAtTick: state.tick,
+  });
+  const position = actorVillagePosition(state, actor),
+    material = mineralKind
+      ? createLooseMaterial(state, mineralKind, position, 1)
+      : null;
+  events.push({
+    type: mineralKind ? "placer_mineral_recovered" : "placer_pan_empty",
+    actorId: actor.id,
+    position: { ...object.position },
+    mineralKind,
+    materialId: material?.id ?? null,
+    quantity: material?.quantity ?? 0,
+  });
+}
+
+function quarryMaterial(object) {
+  return (
+    {
+      building_stone: "stone",
+      iron_ore: "iron_ore",
+      copper_ore: "copper_ore",
+      tin_ore: "tin_ore",
+    }[object.depositKind] ?? "stone"
+  );
+}
+
 function manipulateVillageObject(state, actor, object, action, events) {
   const result = {
       dig: ["dug_ground", "earth", 1],
       harvest: ["tree_stump", "timber", 2],
       breach: ["breached_wall", "stone", 2],
+      quarry: ["quarried_rock", quarryMaterial(object), 3],
     }[action],
-    toolTags = { dig: "dig", harvest: "cut", breach: "breach" },
+    toolTags = {
+      dig: "dig",
+      harvest: "cut",
+      breach: "breach",
+      quarry: "breach",
+    },
     tool = interactionTool(actor, toolTags[action]),
     terrain = villageTile(state, object.position.x, object.position.y);
   addVillageModification(
@@ -4298,19 +6750,38 @@ function manipulateVillageObject(state, actor, object, action, events) {
     object.position,
     result[2],
   );
+  const geology =
+    action === "quarry" ? geologyRecord(state, object.position) : null;
+  if (geology) geology.remainingUnits = 0;
+  events.push(manipulationEvent(actor, object, action, tool, material));
+  if (action === "breach") alertTownGuard(state, object.position, events);
+}
+
+function requestVillageStocktake(state, object, events) {
+  const { job, created } = createJob(state, {
+    jobType: "inspect_object",
+    name: `Stocktake ${object.name}`,
+    targetId: object.id,
+    targetPosition: object.position,
+    requiredCapabilities: ["inspect"],
+    reason: "player_request",
+    progressUnit: "inspection",
+  });
   events.push({
-    type: "world_manipulated",
-    action,
-    actorId: actor.id,
+    type: created ? "job_posted" : "job_already_posted",
+    jobId: job.id,
     objectId: object.id,
-    toolId: tool.id,
-    toolName: tool.name,
-    materialId: material.id,
-    materialName: material.name,
-    quantity: material.quantity,
+    jobName: job.name,
     position: { ...object.position },
   });
-  if (action === "breach") alertTownGuard(state, object.position, events);
+}
+
+function collectVillageMaterial(state, actor, object, events) {
+  const material = state.village.looseMaterials.find(
+    (candidate) => candidate.id === object.id,
+  );
+  check(material, "MATERIAL_MISSING", "There is nothing to collect.");
+  return collectMaterial(state, actor, material, events);
 }
 
 function applyVillageAffordance(state, actor, object, affordance, events) {
@@ -4319,14 +6790,13 @@ function applyVillageAffordance(state, actor, object, affordance, events) {
   if (affordance.key === "talk") return talkToVillageResident(object, events);
   if (affordance.key === "open")
     return openVillageObject(state, object, events);
-  if (affordance.key === "collect") {
-    const material = state.village.looseMaterials.find(
-      (candidate) => candidate.id === object.id,
-    );
-    check(material, "MATERIAL_MISSING", "There is nothing to collect.");
-    return collectMaterial(state, actor, material, events);
-  }
-  if (["dig", "harvest", "breach"].includes(affordance.key))
+  if (affordance.key === "prospect")
+    return prospectVillageRock(state, actor, object, events);
+  if (affordance.key === "pan")
+    return panVillageRiver(state, actor, object, events);
+  if (affordance.key === "collect")
+    return collectVillageMaterial(state, actor, object, events);
+  if (["dig", "harvest", "breach", "quarry"].includes(affordance.key))
     return manipulateVillageObject(
       state,
       actor,
@@ -4334,25 +6804,8 @@ function applyVillageAffordance(state, actor, object, affordance, events) {
       affordance.key,
       events,
     );
-  if (affordance.key === "request_stocktake") {
-    const { job, created } = createJob(state, {
-      jobType: "inspect_object",
-      name: `Stocktake ${object.name}`,
-      targetId: object.id,
-      targetPosition: object.position,
-      requiredCapabilities: ["inspect"],
-      reason: "player_request",
-      progressUnit: "inspection",
-    });
-    events.push({
-      type: created ? "job_posted" : "job_already_posted",
-      jobId: job.id,
-      objectId: object.id,
-      jobName: job.name,
-      position: { ...object.position },
-    });
-    return;
-  }
+  if (affordance.key === "request_stocktake")
+    return requestVillageStocktake(state, object, events);
   events.push({
     type: "object_used",
     actorId: actor.id,
@@ -4391,9 +6844,10 @@ function localPartyCells(
   area,
   tileAt,
   origin = { x: 0, y: 0 },
+  includeParty = true,
 ) {
   const companions = new Map(
-      area.companionPositions.map((position, index) => [
+      (includeParty ? area.companionPositions : []).map((position, index) => [
         key(position),
         state.companions[index],
       ]),
@@ -4409,13 +6863,18 @@ function localPartyCells(
           ...(typeof terrain === "string" ? { tile: terrain } : terrain),
         },
         companion = companions.get(key(cell));
-      if (companion) cell.partyMember = localPartyMember(companion);
+      if (companion) {
+        const work = state.village?.companionStates?.find(
+          (candidate) => candidate.actorId === companion.id,
+        );
+        cell.partyMember = localPartyMember(companion, work);
+      }
       cells.push(cell);
     }
   return cells;
 }
 
-function localPartyMember(companion) {
+function localPartyMember(companion, work = null) {
   return {
     id: companion.id,
     name: companion.name,
@@ -4423,6 +6882,16 @@ function localPartyMember(companion) {
     glyph: companion.glyph,
     hp: companion.hp,
     maxHp: companion.maxHp,
+    ...(work
+      ? {
+          objective: work.objective,
+          currentAction: work.currentAction,
+          actionReason: work.actionReason,
+          workPriorities: work.workPriorities,
+          workPermissions: work.workPermissions,
+          capabilityTags: work.capabilityTags,
+        }
+      : {}),
   };
 }
 
@@ -4444,6 +6913,7 @@ function villageObjectCell(state, cell) {
   };
 }
 
+// function-length-exempt: template -- client village projection
 function villageView(state) {
   const origin = villageViewportOrigin(state),
     cells = localPartyCells(
@@ -4452,24 +6922,57 @@ function villageView(state) {
       state.village,
       villageTile,
       origin,
+      state.village.adventurersPresent !== false,
     ).map((cell) => villageObjectCell(state, cell)),
-    entityIndex = createEntityIndex(cells.map((cell) => cell.object)),
+    objects = [
+      ...new Map(cells.map((cell) => [cell.object.id, cell.object])).values(),
+    ],
+    entityIndex = createEntityIndex(objects),
     buildingShopKey =
-      villageShopAt(state.village.heroPosition)?.shopKey ?? null,
+      villageShopAt(state, state.village.heroPosition)?.shopKey ?? null,
     currentShop = VILLAGE.shops.find((shop) => shop.id === buildingShopKey),
     currentShopKey =
       currentShop && villageShopStatus(state, currentShop).open
         ? currentShop.id
         : null,
-    jobActors = state.village.npcStates.map((npc) => ({
-      ...npc,
-      name: VILLAGE_PEOPLE.find((person) => person.key === npc.personKey).name,
-    }));
+    jobActors = [
+      ...state.village.npcStates.map((npc) => ({
+        ...npc,
+        name: VILLAGE_PEOPLE.find((person) => person.key === npc.personKey)
+          .name,
+      })),
+      ...state.village.companionStates,
+    ];
   return {
     name: VILLAGE.name,
     description: VILLAGE.description,
+    scenario: state.village.scenario,
+    buildings: structuredClone(villageBuildings(state)),
+    residences: structuredClone(state.village.residences ?? []),
+    pastures: structuredClone(state.village.pastures ?? []),
     visits: state.villageVisits,
+    clock: { ...state.village.clock },
+    development: structuredClone(state.village.development),
+    skillWorkQueues: structuredClone(state.village.skillWorkQueues ?? {}),
+    residents: state.village.npcStates.map((resident) => ({
+      id: resident.id,
+      name: resident.name,
+      personKey: resident.personKey,
+      workState: resident.workState,
+      currentAction: resident.currentAction,
+      actionReason: resident.actionReason,
+      skills: { ...(resident.skills ?? {}) },
+      skillPriorities: { ...(resident.skillPriorities ?? {}) },
+    })),
+    trade: villageTradeView(state),
+    playerCharacterStates: structuredClone(state.village.playerCharacterStates),
     partyMovement: state.village.partyMovement,
+    regrouping: state.village.regrouping,
+    spendingPolicy: { ...state.village.spendingPolicy },
+    companionStates: state.village.companionStates.map((worker) => ({
+      ...worker,
+      position: { ...worker.position },
+    })),
     heroPosition: { ...state.village.heroPosition },
     entityCount: entityIndex.size,
     stockpiles: state.village.stockpiles.map((stockpile) => ({
@@ -4677,52 +7180,150 @@ function worldView(state) {
   };
 }
 
+// function-length-exempt: template -- Unity actor protocol projection
 function unityCellActor(state, cell) {
-  if (same(state.village.heroPosition, cell))
+  if (
+    state.village.adventurersPresent !== false &&
+    same(state.village.heroPosition, cell)
+  ) {
+    const life = state.village.playerCharacterStates.find(
+      (candidate) => candidate.actorId === state.hero.id,
+    );
     return {
       glyph: "侠",
       entityId: state.hero.id,
       entityKind: "party",
       entityName: state.hero.name,
+      entityObjective: life?.recommendation
+        ? `Suggested: ${NEED_JOB_TYPES[life.recommendation.need]}`
+        : "Player directed",
+      entityReason: "player_control",
+      ...unityLifeFields(life),
     };
+  }
   if (cell.partyMember)
     return {
       glyph: cell.partyMember.glyph,
       entityId: cell.partyMember.id,
       entityKind: "party",
       entityName: cell.partyMember.name,
+      entityObjective: cell.partyMember.objective,
+      entityAction: cell.partyMember.currentAction,
+      entityReason: cell.partyMember.actionReason,
+      entityWork: Object.entries(cell.partyMember.workPriorities ?? {})
+        .map(
+          ([jobType, priority]) =>
+            `${jobType.replaceAll("_", " ")} ${priority}`,
+        )
+        .join(", "),
+      entityPermissions: (
+        cell.partyMember.workPermissions?.allowedJobTypes ?? []
+      )
+        .map((jobType) => jobType.replaceAll("_", " "))
+        .join(", "),
+      entityCapabilities: (cell.partyMember.capabilityTags ?? []).join(", "),
+      ...unityLifeFields(cell.partyMember.life),
     };
   if (cell.person)
     return {
       glyph: cell.glyph,
-      entityId: cell.person.id,
+      entityId: cell.person.corpse?.id ?? cell.person.id,
       entityKind: cell.person.category,
-      entityName: cell.person.name,
-      entityObjective: cell.person.objective,
-      entityAction: cell.person.currentAction,
-      entityReason: cell.person.actionReason,
+      entityName: cell.person.corpse?.name ?? cell.person.name,
+      entityObjective: cell.person.corpse
+        ? "awaiting burial"
+        : cell.person.objective,
+      entityAction: cell.person.corpse
+        ? "Lying where death occurred"
+        : cell.person.currentAction,
+      entityReason: cell.person.corpse
+        ? "resident_death"
+        : cell.person.actionReason,
+      entityWorking: cell.person.workState === "working",
+      ...(cell.person.carriedItem
+        ? {
+            entityCarrying: cell.person.carriedItem.name,
+            entityCarryingKind: cell.person.carriedItem.itemKind,
+          }
+        : {}),
       entityWork: Object.entries(cell.person.workPriorities ?? {})
         .map(
           ([jobType, priority]) =>
             `${jobType.replaceAll("_", " ")} ${priority}`,
         )
         .join(", "),
+      entityPermissions: (cell.person.workPermissions?.allowedJobTypes ?? [])
+        .map((jobType) => jobType.replaceAll("_", " "))
+        .join(", "),
+      entityCapabilities: [
+        ...(cell.person.capabilityTags ?? []),
+        ...Object.entries(cell.person.skills ?? {}).map(
+          ([skill, rank]) => `${skill} ${rank}`,
+        ),
+        ...(cell.person.defenseEquipment
+          ? [`equipped ${cell.person.defenseEquipment.itemKind}`]
+          : []),
+      ].join(", "),
+      ...unityLifeFields(cell.person.life),
+    };
+  if (cell.animal)
+    return {
+      glyph: " ",
+      entityId: cell.animal.id,
+      entityKind: "animal",
+      entityName: cell.animal.name,
+      entityObjective: cell.animal.status,
+      entityAction: cell.animal.activity,
+      entityReason: `animal_${cell.animal.species}`,
+      entityAgeStage: cell.animal.ageStage,
+      entitySex: cell.animal.sex,
+      entityGeneration: cell.animal.generation ?? 0,
     };
   return null;
 }
 
+function unityLifeFields(life) {
+  if (!life) return {};
+  const latest = life.memories.at(-1);
+  return {
+    entityNeeds: [
+      ...(life.statusTags ?? []),
+      ...Object.entries(life.needs).map(
+        ([need, value]) => `${need} ${Math.round(value)}`,
+      ),
+    ].join(", "),
+    entitySchedule: life.scheduleBlock,
+    entityMemory: latest?.description ?? null,
+  };
+}
+
 function unityObjectKind(cell) {
-  if (cell.person) return "resident";
+  if (cell.person) return cell.person.corpse ? "resident_corpse" : "resident";
+  if (cell.animal)
+    return cell.animal.status === "dead" ? "animal_carcass" : "animal";
   if (cell.material) return "material";
+  if (cell.grave) return "grave";
+  if (cell.animalDisposal) return "animal_disposal";
+  if (cell.cremationPyre) return "cremation_pyre";
+  if (cell.musterPoint) return "muster_point";
   if (cell.furniture) return "fixture";
+  if (cell.primitive) return cell.primitive.kind;
+  if (cell.door) return cell.door.entityType;
+  if (cell.gateId) return "gate";
   if (cell.doorId) return "door";
+  if (cell.construction) return `construction_${cell.construction.elementKind}`;
   if (cell.building) return cell.tile === "village_building" ? "wall" : "room";
   if (cell.sign) return "sign";
+  if (cell.foragePatch) return "forage";
   if (cell.tile === "outdoor_tree") return "tree";
+  if (cell.tile === "outdoor_rock") return "stone_deposit";
+  if (cell.tile === "village_mine_floor") return "mine_chamber";
+  if (cell.tile === "village_fence") return "fence";
   return "terrain";
 }
 
 function unityVillageInteraction(state, cell) {
+  if (state.village.adventurersPresent === false) return {};
   if (gridDistance("square", state.village.heroPosition, cell) > 1) return {};
   const object = villageWorldObjectAt(state, cell.x, cell.y),
     actions = villageObjectAffordances(state, state.hero.id, object)
@@ -4731,57 +7332,896 @@ function unityVillageInteraction(state, cell) {
   return actions.length ? { objectId: object.id, actions } : {};
 }
 
+function unityVillageInspection(state, cell) {
+  if (
+    !cell.sign &&
+    !cell.building &&
+    !cell.furniture &&
+    !cell.material &&
+    !cell.person &&
+    !cell.animal &&
+    !cell.grave &&
+    !cell.animalDisposal &&
+    !cell.cremationPyre &&
+    !cell.musterPoint &&
+    !cell.construction &&
+    !cell.primitive &&
+    !cell.door &&
+    !cell.pasture &&
+    !cell.modification &&
+    cell.tile !== "outdoor_rock" &&
+    !cell.tile.startsWith("road_bridge_")
+  )
+    return {};
+  if (cell.building) return {};
+  if (cell.construction)
+    return {
+      objectName: `${cell.construction.name} ${cell.construction.elementKind}`,
+      objectDescription: `Construction stage: ${cell.construction.stage.replaceAll("_", " ")}. ${cell.construction.materialDeliveredQuantity}/${cell.construction.materialRequired} material delivered; ${cell.construction.builtSegments}/${cell.construction.totalSegments} elements complete.`,
+    };
+  const object = villageWorldObjectAt(state, cell.x, cell.y);
+  return {
+    objectId: object.id,
+    objectName: object.name,
+    objectDescription: object.description,
+  };
+}
+
+const UNITY_BODY_BUILDS = ["slim", "average", "broad", "heavy"],
+  UNITY_SKIN_TONES = ["light", "warm", "tan", "deep"],
+  UNITY_HAIR_STYLES = ["short", "crop", "waves", "braid", "bald"],
+  UNITY_HAIR_COLORS = ["black", "brown", "auburn", "blond", "gray"],
+  UNITY_PARTY_OUTFITS = ["blue", "green", "rust", "ochre"];
+
+function unityAppearance(state, id, kind) {
+  const pick = (values, salt) => {
+    const score = [...`${id}:${salt}`].reduce(
+      (total, character) => (total * 33 + character.charCodeAt(0)) >>> 0,
+      5381,
+    );
+    return values[score % values.length];
+  };
+  return {
+    entityBodyBuild: pick(UNITY_BODY_BUILDS, "body"),
+    entitySkinTone: pick(UNITY_SKIN_TONES, "skin"),
+    entityHairStyle: pick(UNITY_HAIR_STYLES, "hair-style"),
+    entityHairColor: pick(UNITY_HAIR_COLORS, "hair-color"),
+    entityOutfit:
+      kind === "party"
+        ? UNITY_PARTY_OUTFITS[
+            [
+              state.hero.id,
+              ...state.companions.map((actor) => actor.id),
+            ].indexOf(id) % UNITY_PARTY_OUTFITS.length
+          ]
+        : kind,
+  };
+}
+
+function unityGroundTile(state, cell) {
+  if (cell.furniture?.role === "fishing_jetty" && cell.furniture.waterCell)
+    return "outdoor_water";
+  const occupied =
+      cell.tile === "village_person" ||
+      cell.tile === "village_animal" ||
+      cell.person ||
+      cell.animal,
+    underlying = occupied
+      ? villageTile(state, cell.x, cell.y, false, true, true)
+      : cell,
+    tile = underlying?.tile ?? "outdoor_grass";
+  return tile === "outdoor_tree" ||
+    tile === "village_person" ||
+    tile === "village_animal"
+    ? "outdoor_grass"
+    : tile;
+}
+
+function unityActorAssetKey(actor, appearance) {
+  if (actor.entityKind === "animal") return unityAnimalAssetKey(actor);
+  if (actor.entityKind === "party")
+    return `actor_party_${appearance.entityOutfit}`;
+  if (
+    ["civilian", "guard", "official", "shopkeeper"].includes(actor.entityKind)
+  )
+    return `actor_${actor.entityKind}`;
+  return "pawn_base_overhead_v2";
+}
+
+function unityAnimalAssetKey(actor) {
+  const species = actor.entityReason?.replace("animal_", "");
+  if (["cow", "pig", "sheep", "dog", "chicken"].includes(species)) {
+    const stage =
+      actor.entityAgeStage === "adult"
+        ? (actor.entitySex ?? "female")
+        : "juvenile";
+    return `actor_${species}_${stage}_v3`;
+  }
+  if (species === "deer") return "actor_deer_v2";
+  return `actor_${species}_v1`;
+}
+
+function residentAtSleepingPlace(state, actor) {
+  const resident = state.village.npcStates.find(
+    (candidate) => candidate.id === actor.entityId,
+  );
+  if (!resident) return true;
+  const fixture = state.village.fixtures.find(
+    (candidate) => candidate.id === resident.sleepingLocation?.fixtureId,
+  );
+  if (!fixture) return false;
+  return same(resident.position, {
+    x: fixture.x + (fixture.width ?? 1) - 1,
+    y: fixture.y + (fixture.height ?? 1) - 1,
+  });
+}
+
+function unityEntityPose(state, actor) {
+  const action = actor.entityAction?.toLowerCase() ?? "";
+  if (actor.entityObjective === "dead" || actor.entityKind === "deceased")
+    return "dead";
+  if (action.includes("sleep") && residentAtSleepingPlace(state, actor))
+    return "sleeping";
+  if (
+    actor.entityKind === "animal" &&
+    (action.includes("graz") || action.includes("forage"))
+  )
+    return "grazing";
+  if (action.includes("waiting") || action.includes("reporting"))
+    return "waiting";
+  if (actor.entityCarryingKind) return "carrying";
+  if (actor.entityWorking) return "working";
+  return "idle";
+}
+
+function unitySleepingFootprint(state, actor) {
+  if (unityEntityPose(state, actor) !== "sleeping") return null;
+  const resident = state.village.npcStates.find(
+      (candidate) => candidate.id === actor.entityId,
+    ),
+    fixture = state.village.fixtures.find(
+      (candidate) => candidate.id === resident?.sleepingLocation?.fixtureId,
+    );
+  return fixture
+    ? { width: fixture.width ?? 1, height: fixture.height ?? 1 }
+    : null;
+}
+
+function unityFieldDesignation(state, cell) {
+  const plan = state.village.development?.masterPlan,
+    boundary = plan?.fieldBoundaries?.find(
+      (item) =>
+        cell.x >= item.x &&
+        cell.x < item.x + item.w &&
+        cell.y >= item.y &&
+        cell.y < item.y + item.h,
+    );
+  if (!boundary) return null;
+  const survey = plan.fieldClearingSurveys?.find(
+    (item) => item.boundaryKey === boundary.key,
+  );
+  let edgeMask = 0;
+  if (cell.y === boundary.y) edgeMask |= 1;
+  if (cell.x === boundary.x + boundary.w - 1) edgeMask |= 2;
+  if (cell.y === boundary.y + boundary.h - 1) edgeMask |= 4;
+  if (cell.x === boundary.x) edgeMask |= 8;
+  return { boundary, survey, edgeMask };
+}
+
+function unityStorageCell(state, cell) {
+  const position = `${cell.x},${cell.y}`,
+    storage = unityStoragePositions(state).has(position)
+      ? storageCellAt(state, cell.x, cell.y)
+      : null;
+  if (!storage) return { storage: null, stockpiles: [], quantities: [] };
+  const visible = [
+      ...storage.allocations.filter((entry) => entry.kind === "stored"),
+      ...storage.overflow,
+    ],
+    stockpileIds = [...new Set(visible.map((entry) => entry.stockpileId))],
+    stockpiles = stockpileIds
+      .map((id) =>
+        state.village.stockpiles.find((candidate) => candidate.id === id),
+      )
+      .filter(Boolean);
+  return {
+    storage,
+    stockpiles,
+    quantities: stockpileIds.map((id) =>
+      visible
+        .filter((entry) => entry.stockpileId === id)
+        .reduce((total, entry) => total + entry.quantity, 0),
+    ),
+  };
+}
+
+function unityStoragePositions(state) {
+  const storage = state.village.storage ?? reconcileVillageStorage(state),
+    cached = UNITY_STORAGE_POSITION_CACHE.get(state);
+  if (cached?.tick === state.tick && cached.storage === storage)
+    return cached.positions;
+  const positions = new Set();
+  for (const zone of storage.zones)
+    for (const cell of zone.cells) positions.add(`${cell.x},${cell.y}`);
+  for (const pile of storage.loosePiles ?? [])
+    positions.add(`${pile.x},${pile.y}`);
+  UNITY_STORAGE_POSITION_CACHE.set(state, {
+    tick: state.tick,
+    storage,
+    positions,
+  });
+  return positions;
+}
+
+// function-length-exempt: template -- Unity cell protocol projection
 function unityCell(state, cell) {
   const actor = unityCellActor(state, cell),
-    interaction = unityVillageInteraction(state, cell);
+    appearance = actor
+      ? unityAppearance(state, actor.entityId, actor.entityKind)
+      : null,
+    sleepingFootprint = actor ? unitySleepingFootprint(state, actor) : null,
+    fieldDesignation = unityFieldDesignation(state, cell),
+    interaction = unityVillageInteraction(state, cell),
+    inspection = unityVillageInspection(state, cell),
+    objectKind = unityObjectKind(cell),
+    storageProjection = unityStorageCell(state, cell),
+    storageCell = storageProjection.storage,
+    storageZone = storageCell
+      ? state.village.storage?.zones.find(
+          (candidate) => candidate.id === storageCell.zoneId,
+        )
+      : null,
+    stockpiles = storageProjection.stockpiles,
+    stockpile = stockpiles[0],
+    groundTile = unityGroundTile(state, cell),
+    rockEdgeMask =
+      groundTile === "outdoor_rock"
+        ? regionalRockEdgeMask(state, cell.x, cell.y)
+        : null,
+    visibleObjectKind =
+      objectKind === "stone_deposit" && rockEdgeMask === 0
+        ? "mountain_mass"
+        : objectKind,
+    cropPlot = cropPlotAt(state, cell.x, cell.y),
+    cropCellGrowth = cropPlot
+      ? cropCellGrowthAt(cropPlot, cell.x, cell.y)
+      : null,
+    foragePatch = foragePatchAt(state, cell.x, cell.y),
+    surface = villageSurfaceAt(state, cell.x, cell.y),
+    animalTether = cell.animal?.tetherPosition
+      ? globalVillagePosition(state, cell.animal.tetherPosition)
+      : null,
+    visual = villageVisualDescriptor({
+      ...cell,
+      ...(!cell.person && !cell.partyMember && actor
+        ? {
+            partyMember: {
+              workState: actor.entityWorking ? "working" : "available",
+              currentAction: actor.entityAction,
+              carriedItem: actor.entityCarryingKind
+                ? { itemKind: actor.entityCarryingKind }
+                : null,
+            },
+          }
+        : {}),
+      stockpile,
+      cropPlot,
+      foragePatch,
+    }),
+    visualFields =
+      cell.construction ||
+      cell.primitive ||
+      cell.door ||
+      cell.material ||
+      cell.animal ||
+      cell.furniture ||
+      cell.sign ||
+      actor ||
+      stockpile ||
+      cropPlot ||
+      foragePatch ||
+      [
+        "outdoor_tree",
+        "outdoor_stump",
+        "village_pit",
+        "village_rubble",
+      ].includes(cell.tile)
+        ? visual
+        : {},
+    variant =
+      (cell.tile === "village_building" && cell.visualVariant === "timber") ||
+      (cell.doorId && cell.visualVariant === "wood")
+        ? null
+        : cell.visualVariant;
   return {
     x: cell.x,
     y: cell.y,
     tile: cell.tile,
+    ...(groundTile !== cell.tile ? { groundTile } : {}),
     glyph: unityGlyph(cell, actor),
-    objectKind: unityObjectKind(cell),
+    ...(variant ? { variant } : {}),
+    ...(rockEdgeMask != null ? { terrainEdgeMask: rockEdgeMask } : {}),
+    ...(cell.modification?.kind === "quarried_rock"
+      ? { mountainRoof: true }
+      : {}),
+    ...(visibleObjectKind && visibleObjectKind !== "terrain"
+      ? { objectKind: visibleObjectKind }
+      : {}),
+    ...visualFields,
+    ...(cell.construction
+      ? {
+          constructionStage: cell.construction.stage,
+          constructionMaterialDelivered:
+            cell.construction.materialDeliveredQuantity,
+          constructionMaterialRequired: cell.construction.materialRequired,
+          constructionLaborCompleted: cell.construction.laborCompleted,
+          constructionLaborRequired: cell.construction.laborRequired,
+        }
+      : {}),
+    ...((cell.furniture || cell.construction?.elementKind === "fixture") &&
+    cell.visualVariant
+      ? {
+          objectWidth: cell.furniture?.width ?? cell.construction.width,
+          objectHeight: cell.furniture?.height ?? cell.construction.height,
+        }
+      : {}),
+    ...(cell.animal
+      ? {
+          objectWidth: cell.animal.width,
+          objectHeight: cell.animal.height,
+          ...(animalTether
+            ? {
+                animalTetherX: animalTether.x,
+                animalTetherY: animalTether.y,
+              }
+            : {}),
+        }
+      : {}),
+    ...(storageCell
+      ? {
+          storageCell: true,
+          storageZoneId: storageCell.zoneId,
+          storageCellId: storageCell.cellId,
+          storageAllowedItemKinds: storageZone?.allowedItemKinds ?? [],
+          ...(storageCell.loosePile ? { storageLoosePile: true } : {}),
+          storageAllowance: storageCell.allowance,
+          ...(storageCell.tier !== "ground"
+            ? { storageTier: storageCell.tier }
+            : {}),
+          ...(!["outdoor", "fixture"].includes(storageCell.protection)
+            ? { storageProtection: storageCell.protection }
+            : {}),
+          ...(storageCell.stackSlots > 1
+            ? { storageStackSlots: storageCell.stackSlots }
+            : {}),
+          ...(storageCell.stacksUsed > 0
+            ? { storageStacksUsed: storageCell.stacksUsed }
+            : {}),
+          ...(storageCell.used > 0 ? { storageUsed: storageCell.used } : {}),
+          ...(storageCell.reserved > 0
+            ? { storageReserved: storageCell.reserved }
+            : {}),
+          ...(storageCell.overflow.length > 0
+            ? {
+                storageOverflow: storageCell.overflow.reduce(
+                  (total, entry) => total + entry.quantity,
+                  0,
+                ),
+              }
+            : {}),
+          ...(stockpile
+            ? {
+                stockpileId: stockpile.id,
+                stockItemKind: stockpile.itemKind,
+                stockQuantity: storageProjection.quantities[0] ?? 0,
+                stockCapacity: storageCell.allowance,
+                stockpileIds: stockpiles.map((entry) => entry.id),
+                stockItemKinds: stockpiles.map((entry) => entry.itemKind),
+                stockQuantities: storageProjection.quantities,
+                stockCapacities: stockpiles.map(() => storageCell.allowance),
+              }
+            : {}),
+        }
+      : {}),
+    ...(cropPlot
+      ? {
+          cropPlotId: cropPlot.id,
+          cropKind: cropPlot.cropKind,
+          cropStage: cropCellGrowth?.stage ?? cropPlot.stage,
+          ...(cropPlot.cycle > 0 ? { cropCycle: cropPlot.cycle } : {}),
+          ...((cropCellGrowth?.progress ?? cropPlot.growthProgress) > 0
+            ? {
+                cropGrowthProgress:
+                  cropCellGrowth?.progress ?? cropPlot.growthProgress,
+              }
+            : {}),
+          ...(cropPlot.growthRate > 0
+            ? { cropGrowthRate: cropPlot.growthRate }
+            : {}),
+          ...(cropPlot.plantedAtTick != null
+            ? { cropExpectedMaturityDay: cropPlot.expectedMaturityDay }
+            : {}),
+          cropFertility: cropPlot.fertility,
+          cropMoisture: cropPlot.moisture,
+          cropDamage: cropPlot.cropDamage,
+          ...(cropPlot.cropDisease
+            ? { cropDisease: cropPlot.cropDisease }
+            : {}),
+          ...(cropPlot.lastYield > 0
+            ? {
+                cropLastYield: cropPlot.lastYield,
+                cropLastFarmerSkill: cropPlot.lastFarmerSkill ?? 0,
+              }
+            : {}),
+          ...(cropPlot.sowingAllowed === false
+            ? { cropSowingPaused: true }
+            : {}),
+          ...(cropPlot.cutOrdered === true ? { cropCutOrdered: true } : {}),
+          ...(cropPlot.harvestDestinationCellId
+            ? {
+                cropDestinationCellId: cropPlot.harvestDestinationCellId,
+                cropDestinationX: cropPlot.harvestDestinationPosition?.x,
+                cropDestinationY: cropPlot.harvestDestinationPosition?.y,
+              }
+            : {}),
+        }
+      : {}),
+    ...(fieldDesignation
+      ? {
+          fieldDesignationId: fieldDesignation.survey?.id,
+          fieldDesignationKey: fieldDesignation.boundary.key,
+          fieldDesignationCropKind: fieldDesignation.boundary.cropKind,
+          fieldDesignationStatus: fieldDesignation.survey?.status ?? "planned",
+          fieldDesignationEdgeMask: fieldDesignation.edgeMask,
+          fieldDesignationTree:
+            fieldDesignation.survey?.treeCells?.some(
+              (tree) => tree.x === cell.x && tree.y === cell.y,
+            ) ?? false,
+        }
+      : {}),
+    ...(foragePatch
+      ? {
+          foragePatchId: foragePatch.id,
+          forageKind: foragePatch.key,
+          forageName: foragePatch.name,
+          forageStage: foragePatch.stage,
+          forageYield: foragePatch.yield,
+          forageRegrowAtTick: foragePatch.regrowAtTick,
+        }
+      : {}),
+    ...(cell.pasture
+      ? {
+          pastureId: cell.pasture.id,
+          pastureForageUnits: cell.pasture.forageUnits,
+          pastureForageCapacity: cell.pasture.forageCapacity,
+          pastureForageSeason: cell.pasture.forageSeason,
+        }
+      : {}),
+    ...(surface.floor
+      ? {
+          floorPrimitiveId: surface.floor.id,
+          floorMaterial: surface.floor.material,
+          floorCondition: surface.floor.condition,
+          floorMaxCondition: surface.floor.maxCondition,
+        }
+      : {}),
+    ...(surface.roof
+      ? {
+          roofPrimitiveId: surface.roof.id,
+          roofMaterial: surface.roof.material,
+          roofCondition: surface.roof.condition,
+          roofMaxCondition: surface.roof.maxCondition,
+        }
+      : {}),
+    ...inspection,
     ...interaction,
     ...(actor
       ? {
           entityId: actor.entityId,
           entityKind: actor.entityKind,
           entityName: actor.entityName,
+          ...appearance,
+          visualAssetKey: unityActorAssetKey(actor, appearance),
+          visualMaterial:
+            actor.entityKind === "party"
+              ? `party_${appearance.entityOutfit}`
+              : actor.entityKind,
           ...(actor.entityObjective
             ? { entityObjective: actor.entityObjective }
             : {}),
           ...(actor.entityAction ? { entityAction: actor.entityAction } : {}),
           ...(actor.entityReason ? { entityReason: actor.entityReason } : {}),
+          ...(actor.entityKind === "animal"
+            ? {
+                entityAgeStage: actor.entityAgeStage,
+                entitySex: actor.entitySex,
+                entityGeneration: actor.entityGeneration,
+              }
+            : {}),
+          entityPose: unityEntityPose(state, actor),
+          ...(sleepingFootprint
+            ? {
+                entitySleepWidth: sleepingFootprint.width,
+                entitySleepHeight: sleepingFootprint.height,
+              }
+            : {}),
+          entityWorking: actor.entityWorking === true,
+          ...(actor.entityCarrying
+            ? { entityCarrying: actor.entityCarrying }
+            : {}),
+          ...(actor.entityCarryingKind
+            ? { entityCarryingKind: actor.entityCarryingKind }
+            : {}),
           ...(actor.entityWork ? { entityWork: actor.entityWork } : {}),
+          ...(actor.entityPermissions
+            ? { entityPermissions: actor.entityPermissions }
+            : {}),
+          ...(actor.entityCapabilities
+            ? { entityCapabilities: actor.entityCapabilities }
+            : {}),
+          ...(actor.entityNeeds ? { entityNeeds: actor.entityNeeds } : {}),
+          ...(actor.entitySchedule
+            ? { entitySchedule: actor.entitySchedule }
+            : {}),
+          ...(actor.entityMemory ? { entityMemory: actor.entityMemory } : {}),
         }
       : {}),
   };
 }
 
+// function-length-exempt: template -- declarative wall glyph table
+function villageWallGlyph(cell, cellsByPosition) {
+  const joins = (x, y) => {
+      const neighbor = cellsByPosition.get(`${x},${y}`);
+      return (
+        neighbor?.tile === "village_building" || neighbor?.objectKind === "door"
+      );
+    },
+    mask =
+      (joins(cell.x, cell.y - 1) ? 8 : 0) |
+      (joins(cell.x + 1, cell.y) ? 4 : 0) |
+      (joins(cell.x, cell.y + 1) ? 2 : 0) |
+      (joins(cell.x - 1, cell.y) ? 1 : 0);
+  return (
+    {
+      1: "─",
+      2: "│",
+      3: "┐",
+      4: "─",
+      5: "─",
+      6: "┌",
+      7: "┬",
+      8: "│",
+      9: "┘",
+      10: "│",
+      11: "┤",
+      12: "└",
+      13: "┴",
+      14: "├",
+      15: "┼",
+    }[mask] ?? "▪"
+  );
+}
+
+function polishVillageGlyphs(cells) {
+  const byPosition = new Map(
+    cells.map((cell) => [`${cell.x},${cell.y}`, cell]),
+  );
+  return cells.map((cell) => {
+    if (cell.tile === "village_building")
+      return { ...cell, glyph: villageWallGlyph(cell, byPosition) };
+    if (cell.tile === "village_door_open") return { ...cell, glyph: "╱" };
+    if (cell.tile === "village_door_locked") return { ...cell, glyph: "◆" };
+    if (cell.tile === "village_door_closed") return { ...cell, glyph: "▣" };
+    if (cell.objectKind === "sign") return { ...cell, glyph: "⚑" };
+    return cell;
+  });
+}
+
 function unityGlyph(cell, actor) {
   if (actor) return actor.glyph;
-  if (["outdoor_grass", "road_stone", "road_dirt"].includes(cell.tile))
+  if (
+    [
+      "outdoor_grass",
+      "road_stone",
+      "road_dirt",
+      "road_bridge_wood",
+      "road_bridge_stone",
+      "outdoor_rock",
+    ].includes(cell.tile)
+  )
     return " ";
   if (cell.tile === "village_floor" && cell.glyph === "·") return " ";
   return cell.glyph ?? " ";
 }
 
-function unityVillageMap(state) {
-  const origin = {
-      x:
-        state.village.heroPosition.x -
-        Math.floor(UNITY_VILLAGE_VIEWPORT.width / 2),
-      y:
-        state.village.heroPosition.y -
-        Math.floor(UNITY_VILLAGE_VIEWPORT.height / 2),
+function unityVillageLandmarks(state) {
+  const origin = villageRegionalSite(state).origin;
+  const buildings = villageBuildings(state).map((building) => ({
+    x: building.x + origin.x,
+    y: building.y + origin.y,
+    width: building.w,
+    height: building.h,
+    name: building.name,
+    status: building.status,
+    complete: building.status === "complete",
+    description:
+      building.status === "complete"
+        ? `${building.name}, a working part of Stonebridge.`
+        : `${building.name}, an unfinished ${building.status} structure.`,
+  }));
+  return [...buildings, ...unityQuarryLandmarks(state)];
+}
+
+function unityQuarryLandmarks(state) {
+  const regional = state.village.development.masterPlan.regionalContext,
+    source = regional.surveyedSources.find(
+      (candidate) => candidate.kind === "geology_survey",
+    );
+  if (!source) return [];
+  const operating = state.village.modifications.some(
+    (item) => item.kind === "quarried_rock",
+  );
+  return [{
+    x: source.position.x - 2,
+    y: source.position.y - 2,
+    width: 5,
+    height: 5,
+    name: operating ? "Stonebridge quarry face" : "Planned quarry works",
+    status: operating ? "operating" : "planned",
+    complete: operating,
+    description: operating
+      ? "Miners cut designated cells into the ridge and stage finite stone here."
+      : "The architect reserved this exposed ridge for quarry access and stone staging.",
+  }];
+}
+
+function villageChunkDeltaProjection(simulated) {
+  const delta = simulated?.checkpoint?.delta,
+    tier = simulated?.tier ?? "cold";
+  if (!delta) return { detailLevel: "overview", deltaRevision: null };
+  const projection = {
+    detailLevel: { active: "full", warm: "summary", cold: "overview" }[tier],
+    deltaRevision: delta.revision,
+    deltaCounts: {
+      terrain: delta.terrainChangeIds.length,
+      structures: delta.structureIds.length,
+      resources: delta.resourceIds.length,
+      ownership: delta.ownershipIds.length,
     },
-    cells = localPartyCells(
+  };
+  if (tier === "active") projection.delta = delta;
+  return projection;
+}
+
+function villageChunkIdentity(state, chunkX, chunkY) {
+  const simulated = regionalChunkState(state, chunkX, chunkY);
+  return {
+    id:
+      simulated?.id ?? namedUuid(state.id, `village-chunk:${chunkX},${chunkY}`),
+    chunkX,
+    chunkY,
+    tier: simulated?.tier ?? "cold",
+    lastCheckpointTick: simulated?.lastCheckpointTick ?? null,
+    nextCheckpointTick: simulated?.nextCheckpointTick ?? null,
+    entityCount: simulated?.checkpoint?.entityIds.length ?? 0,
+    stockUnits: simulated?.checkpoint?.stockUnits ?? 0,
+    scheduledJobCount: simulated?.checkpoint?.scheduledJobIds.length ?? 0,
+    ...villageChunkDeltaProjection(simulated),
+  };
+}
+
+function transportVillageChunk(chunk, knownRevisions) {
+  if (!chunk.delta || knownRevisions?.[chunk.id] !== chunk.deltaRevision)
+    return chunk;
+  const transported = { ...chunk, unchanged: true };
+  delete transported.delta;
+  return transported;
+}
+
+function villageProjectionCells(state, viewport, origin) {
+  const viewTile = (current, x, y) =>
+    villageTile(current, x, y, true, true, true);
+  return polishVillageGlyphs(
+    localPartyCells(
       state,
-      UNITY_VILLAGE_VIEWPORT,
+      viewport,
       state.village,
-      villageTile,
+      viewTile,
       origin,
-    ).map((cell) => unityCell(state, cell));
-  return { ...UNITY_VILLAGE_VIEWPORT, origin, cells };
+      state.village.adventurersPresent !== false,
+    ).map((cell) => unityCell(state, cell)),
+  ).map((cell) => translateUnityVillageCell(state, cell));
+}
+
+function villageChunkBounds(chunk) {
+  const size = VILLAGE_REGION.chunkSize;
+  return {
+    left: chunk.chunkX * size,
+    top: chunk.chunkY * size,
+    right: (chunk.chunkX + 1) * size,
+    bottom: (chunk.chunkY + 1) * size,
+  };
+}
+
+function localRecordBounds(state, record) {
+  const area = record.area ?? record,
+    position = record.position ?? { x: area.x, y: area.y };
+  if (position.x == null || position.y == null) return null;
+  const global = globalVillagePosition(state, position);
+  return {
+    left: global.x,
+    top: global.y,
+    right: global.x + (area.width ?? area.w ?? 1),
+    bottom: global.y + (area.height ?? area.h ?? 1),
+  };
+}
+
+function boundsIntersect(left, right) {
+  return (
+    left.left < right.right &&
+    left.right > right.left &&
+    left.top < right.bottom &&
+    left.bottom > right.top
+  );
+}
+
+function localRecordTouchesChunk(state, record, chunkBounds) {
+  const bounds = localRecordBounds(state, record);
+  return bounds ? boundsIntersect(bounds, chunkBounds) : false;
+}
+
+function cellChunkSpatialRecords(state, chunkBounds) {
+  const plan = state.village.development.masterPlan,
+    groups = [
+      state.village.modifications,
+      state.village.constructionPrimitives,
+      state.village.fixtures,
+      state.village.buildings,
+      state.village.stockpiles,
+      state.village.cropPlots ?? [],
+      state.village.pastures ?? [],
+      state.village.foragePatches ?? [],
+      state.village.development.constructionSites ?? [],
+      plan.districts,
+      plan.fieldBoundaries,
+    ];
+  return groups
+    .flat()
+    .filter((record) => localRecordTouchesChunk(state, record, chunkBounds));
+}
+
+function cellChunkEntities(state, chunkBounds) {
+  return [...state.village.npcStates, ...(state.village.animals ?? [])].filter(
+    (entity) => {
+      const point = globalVillagePosition(state, entity.position);
+      return boundsIntersect(
+        {
+          left: point.x,
+          top: point.y,
+          right: point.x + 1,
+          bottom: point.y + 1,
+        },
+        chunkBounds,
+      );
+    },
+  );
+}
+
+function cellChunkStorage(state, chunkBounds) {
+  return (state.village.storage?.zones ?? []).filter((zone) =>
+    zone.cells.some((cell) =>
+      localRecordTouchesChunk(state, cell, chunkBounds),
+    ),
+  );
+}
+
+function villageCellChunkRevision(state, chunk) {
+  const bounds = villageChunkBounds(chunk),
+    records = cellChunkSpatialRecords(state, bounds),
+    entities = cellChunkEntities(state, bounds),
+    growing = records.some(
+      (record) => record.cropKind && record.stage === "growing",
+    ),
+    contents = {
+      deltaRevision: chunk.deltaRevision,
+      records,
+      entities,
+      storage: cellChunkStorage(state, bounds),
+      surveys: state.village.development.masterPlan.fieldClearingSurveys,
+      growthTick: growing ? state.tick : null,
+    };
+  return namedUuid(
+    state.id,
+    `village-cell-chunk:${chunk.chunkX},${chunk.chunkY}:${JSON.stringify(contents)}`,
+  );
+}
+
+function villageChunkCellProjection(state, chunk, cellRevision) {
+  const size = VILLAGE_REGION.chunkSize,
+    globalOrigin = { x: chunk.chunkX * size, y: chunk.chunkY * size },
+    origin = localVillagePosition(state, globalOrigin),
+    cells = villageProjectionCells(
+      state,
+      { width: size, height: size },
+      origin,
+    );
+  return { cells, cellRevision };
+}
+
+function transportVillageCells(state, chunk, knownRevisions) {
+  const cellRevision = villageCellChunkRevision(state, chunk),
+    unchanged = knownRevisions?.[chunk.id] === cellRevision;
+  return unchanged
+    ? { ...chunk, cellRevision, cellsUnchanged: true }
+    : {
+        ...chunk,
+        ...villageChunkCellProjection(state, chunk, cellRevision),
+        cellsUnchanged: false,
+      };
+}
+
+function visibleVillageChunks(state, origin, options = {}) {
+  const size = VILLAGE_REGION.chunkSize,
+    minX = Math.floor(origin.x / size),
+    minY = Math.floor(origin.y / size),
+    maxX = Math.floor((origin.x + UNITY_VILLAGE_VIEWPORT.width - 1) / size),
+    maxY = Math.floor((origin.y + UNITY_VILLAGE_VIEWPORT.height - 1) / size),
+    chunks = [];
+  for (let y = minY; y <= maxY; y += 1)
+    for (let x = minX; x <= maxX; x += 1)
+      chunks.push(
+        transportVillageChunk(
+          villageChunkIdentity(state, x, y),
+          options.knownChunkRevisions,
+        ),
+      );
+  if (!options.cellChunkProtocol) return chunks;
+  return chunks.map((chunk) =>
+    transportVillageCells(state, chunk, options.knownCellChunkRevisions),
+  );
+}
+
+function translateUnityVillageCell(state, cell) {
+  const position = globalVillagePosition(state, cell);
+  return { ...cell, x: position.x, y: position.y };
+}
+
+function unityVillageRegion(state) {
+  const site = villageRegionalSite(state);
+  return {
+    ...VILLAGE_REGION,
+    generationMode: site.mode,
+    sites: state.village.development.masterPlan.regionalContext.surveyedSources,
+    ...regionalSurveyGeometry(state.seed, site.mode),
+  };
+}
+
+function unityVillageMap(state, center, options = {}) {
+  const defaultCenter = globalVillagePosition(
+    state,
+    state.village.heroPosition,
+  );
+  center = clampVillageViewportCenter(
+    center ?? defaultCenter,
+    UNITY_VILLAGE_VIEWPORT,
+  );
+  const globalOrigin = {
+      x: center.x - Math.floor(UNITY_VILLAGE_VIEWPORT.width / 2),
+      y: center.y - Math.floor(UNITY_VILLAGE_VIEWPORT.height / 2),
+    },
+    origin = localVillagePosition(state, globalOrigin),
+    cells = options.cellChunkProtocol
+      ? []
+      : villageProjectionCells(state, UNITY_VILLAGE_VIEWPORT, origin);
+  return {
+    ...UNITY_VILLAGE_VIEWPORT,
+    origin: globalOrigin,
+    cells,
+    landmarks: unityVillageLandmarks(state),
+    region: unityVillageRegion(state),
+    chunks: visibleVillageChunks(state, globalOrigin, options),
+  };
 }
 
 function dungeonGlyph(state, cell) {
@@ -4800,6 +8240,7 @@ function dungeonGlyph(state, cell) {
   return " ";
 }
 
+// function-length-exempt: template -- Unity dungeon protocol projection
 function unityDungeonCell(state, position, currentVisible) {
   const cell = cellView(state, position, currentVisible) ?? {
       ...position,
@@ -4897,6 +8338,7 @@ function unityCombatActivity(event) {
   return null;
 }
 
+// function-length-exempt: template -- Unity activity protocol projection
 function unityExplorationActivity(event) {
   if (event.type === "treasure_collected")
     return { text: `Collected ${event.valueCp} CP.`, tone: "treasure" };
@@ -4938,7 +8380,23 @@ function unityExplorationActivity(event) {
   return null;
 }
 
+// function-length-exempt: template -- Unity activity protocol projection
 function unityWorkActivity(event) {
+  if (event.type === "remote_travel_incident")
+    return {
+      text: `${event.actorName} encounters ${event.kind.replaceAll("_", " ")} and stops to recover.`,
+      tone: "danger",
+    };
+  if (event.type === "remote_travel_recovered")
+    return {
+      text: `${event.actorName} recovers and resumes ${event.jobName.toLowerCase()}.`,
+      tone: "discovery",
+    };
+  if (event.type === "regional_field_camp_visited")
+    return {
+      text: `${event.actorName} reaches the regional field camp.`,
+      tone: "discovery",
+    };
   if (event.type === "job_suspended")
     return {
       text: `${event.actorName}'s ${event.jobName.toLowerCase()} is interrupted.`,
@@ -4982,7 +8440,7 @@ function unityWorkActivity(event) {
     };
   if (event.type === "job_blocked")
     return {
-      text: `Work blocked: ${event.reason?.replaceAll("_", " ") ?? "unknown reason"}.`,
+      text: `${event.jobName ?? "Work"} waits: ${event.reason?.replaceAll("_", " ") ?? "unknown reason"}.`,
       tone: "danger",
     };
   if (event.type === "job_completed")
@@ -5010,7 +8468,13 @@ function unityActivity(recentEvents) {
 }
 
 function unityActivityLog(recentEvents) {
-  return recentEvents.map(unityActivityEntry).filter(Boolean).slice(-5);
+  const entries = recentEvents.map(unityActivityEntry).filter(Boolean),
+    unique = entries.filter(
+      (entry, index) =>
+        entries.findLastIndex((candidate) => candidate.text === entry.text) ===
+        index,
+    );
+  return unique.slice(-5);
 }
 
 function adjacentClosedDoor(state, level) {
@@ -5091,6 +8555,7 @@ function unityDungeonIntents(state, level) {
   return [
     "move",
     "command",
+    "configure_party_member",
     "wait",
     "search",
     "examine",
@@ -5141,6 +8606,121 @@ function unityPartyOrder(state) {
   };
 }
 
+function equippedName(actor, slot) {
+  const itemId = actor.equipment?.[slot];
+  return actor.inventory?.find((item) => item.id === itemId)?.name ?? "None";
+}
+
+function partyMemberLife(state, actor) {
+  if (actor.id === state.hero.id)
+    return state.village.playerCharacterStates.find(
+      (life) => life.actorId === actor.id,
+    );
+  return companionWorker(state, actor.id)?.life ?? null;
+}
+
+// function-length-exempt: template -- client activity projection
+function partyMemberActivities(state, actor, worker) {
+  if (actor.id === state.hero.id)
+    return [
+      {
+        jobType: "lead_party",
+        name: "Lead the party",
+        priority: actor.management.workPriority,
+        skillNames: ["Leadership"],
+        available: true,
+        requirement: null,
+      },
+    ];
+  return Object.entries(worker?.workPriorities ?? {}).map(
+    ([jobType, priority]) => {
+      const template = companionTemplate(jobType),
+        skillNames = (
+          template?.skills ?? [jobType === "heal_party" ? "medicine" : null]
+        )
+          .filter(Boolean)
+          .map(
+            (skillKey) =>
+              CHARACTER_SKILLS.find((skill) => skill.key === skillKey)?.name,
+          )
+          .filter(Boolean);
+      return {
+        jobType,
+        name:
+          template?.name ??
+          (jobType === "heal_party" ? "Care for wounded companions" : jobType),
+        priority,
+        skillNames,
+        available:
+          jobType === "heal_party" ||
+          companionActivityAvailable(state, jobType),
+        requirement: template?.facility ?? null,
+      };
+    },
+  );
+}
+
+// function-length-exempt: template -- client management projection
+function partyMemberManagementView(state, actor) {
+  const worker = companionWorker(state, actor.id),
+    activeJob = state.village.jobs.find(
+      (job) =>
+        job.assignedActorId === actor.id &&
+        ["reserved", "active", "blocked", "suspended"].includes(job.status),
+    ),
+    life = partyMemberLife(state, actor),
+    activities = partyMemberActivities(state, actor, worker),
+    highestActivity = [...activities]
+      .filter((activity) => activity.available)
+      .sort(
+        (left, right) =>
+          right.priority - left.priority ||
+          left.jobType.localeCompare(right.jobType),
+      )[0];
+  return {
+    id: actor.id,
+    name: actor.name,
+    className: actor.class,
+    level: actor.level,
+    combatRole: actor.management.combatRole,
+    jobFocus: highestActivity?.jobType ?? actor.management.jobFocus,
+    workPriority: highestActivity?.priority ?? actor.management.workPriority,
+    hp: actor.hp,
+    maxHp: actor.maxHp,
+    ac: actor.ac,
+    attackBonus: actor.attackBonus,
+    damage: actor.damage,
+    attackRange: actor.attackRange,
+    abilities: Object.entries(actor.abilities).map(([key, score]) => ({
+      key,
+      score,
+      modifier: Math.floor((score - 10) / 2),
+    })),
+    skills: characterSkillView(actor),
+    jobOptions:
+      actor.id === state.hero.id
+        ? ["lead_party"]
+        : [...(worker?.workPermissions.allowedJobTypes ?? [])],
+    workPriorities: Object.entries(worker?.workPriorities ?? {}).map(
+      ([jobType, priority]) => ({ jobType, priority }),
+    ),
+    activities,
+    currentJob: activeJob?.name ?? null,
+    currentJobStatus: activeJob?.status ?? null,
+    needs: life
+      ? Object.entries(life.needs).map(([key, value]) => ({
+          key,
+          value: Math.round(value),
+        }))
+      : [],
+    equipment: {
+      weapon: equippedName(actor, "weapon"),
+      armor: equippedName(actor, "armor"),
+      offhand: equippedName(actor, "offhand"),
+    },
+  };
+}
+
 function unityTargets(state) {
   const visible = visibility(state);
   return aliveEnemies(state)
@@ -5155,9 +8735,27 @@ function unityTargets(state) {
     }));
 }
 
+function villageObservationCenter(state) {
+  const residents = state.village.npcStates.filter(
+    (resident) => resident.life?.status !== "dead",
+  );
+  if (!residents.length) return { x: 0, y: 0 };
+  const global = residents.map((resident) =>
+      globalVillagePosition(state, resident.position),
+    ),
+    total = global.reduce(
+      (sum, position) => ({ x: sum.x + position.x, y: sum.y + position.y }),
+      { x: 0, y: 0 },
+    );
+  return {
+    x: Math.round(total.x / global.length),
+    y: Math.round(total.y / global.length),
+  };
+}
+
 function unityVillageShop(state) {
   if (state.location !== "village") return null;
-  const shopKey = villageShopAt(state.village.heroPosition)?.shopKey,
+  const shopKey = villageShopAt(state, state.village.heroPosition)?.shopKey,
     shop = VILLAGE.shops.find((candidate) => candidate.id === shopKey);
   if (!shop) return null;
   const status = villageShopStatus(state, shop);
@@ -5175,33 +8773,68 @@ function unityVillageShop(state) {
   };
 }
 
-export function rogueUnityView(state, recentEvents = []) {
-  const jobActors = state.village.npcStates.map((npc) => ({
-      ...npc,
-      name: VILLAGE_PEOPLE.find((person) => person.key === npc.personKey).name,
-    })),
+export function rogueUnityView(state, recentEvents = [], options = {}) {
+  const jobActors = [
+      ...state.village.npcStates.map((npc) => ({
+        ...npc,
+        name: VILLAGE_PEOPLE.find((person) => person.key === npc.personKey)
+          .name,
+      })),
+      ...state.village.companionStates,
+    ],
     dungeon = state.location === "dungeon",
-    map = dungeon ? unityDungeonMap(state) : unityVillageMap(state),
+    map = dungeon
+      ? unityDungeonMap(state)
+      : unityVillageMap(state, options.villageCenter, options),
     level = active(state),
     jobs = dungeon
       ? level.jobs.map((job) => jobView(job, level.reservations, level.enemies))
       : state.village.jobs.map((job) =>
           jobView(job, state.village.reservations, jobActors),
         ),
-    shop = unityVillageShop(state);
+    shop = unityVillageShop(state),
+    adventurersPresent = dungeon || state.village.adventurersPresent !== false,
+    villageHeroPosition = globalVillagePosition(
+      state,
+      state.village.heroPosition,
+    );
   return {
     protocolVersion: 1,
+    visualRegistryVersion: VILLAGE_VISUAL_REGISTRY_VERSION,
     runId: state.id,
     revision: state.revision,
     tick: state.tick,
     status: state.status,
     location: state.location,
+    villageScenario: dungeon ? null : state.village.scenario,
+    adventurersPresent,
     title: dungeon ? level.theme.title : VILLAGE.name,
+    townClock: dungeon
+      ? null
+      : `DAY ${state.village.clock.day} · ${String(state.village.clock.hour).padStart(2, "0")}:${String(state.village.clock.minute).padStart(2, "0")} · ${state.village.clock.phase} · ${state.village.clock.block.replaceAll("_", " ")}`,
+    daylightPhase: dungeon ? null : state.village.clock.phase,
+    daylightLevel: dungeon ? 0 : daylightLevel(state.village.clock),
     activity: unityActivity(recentEvents),
     activityLog: unityActivityLog(recentEvents),
     legalIntents: dungeon
       ? unityDungeonIntents(state, level)
-      : ["local_move", ...(shop?.open ? ["shop_buy"] : [])],
+      : [
+          ...(adventurersPresent
+            ? [
+                "local_move",
+                "configure_party_member",
+                "set_party_movement",
+                "set_spending_policy",
+              ]
+            : []),
+          "wait",
+          "decide_village_proposal",
+          "revise_village_proposal",
+          "decide_architect_plan",
+          "set_village_commission_status",
+          "set_cemetery_policy",
+          ...(adventurersPresent && shop?.open ? ["shop_buy"] : []),
+        ],
     message: dungeon ? level.theme.atmosphere : VILLAGE.description,
     hero: {
       id: state.hero.id,
@@ -5209,21 +8842,39 @@ export function rogueUnityView(state, recentEvents = []) {
       hp: state.hero.hp,
       maxHp: state.hero.maxHp,
       goldCp: state.hero.goldCp,
-      x: dungeon ? state.hero.x : state.village.heroPosition.x,
-      y: dungeon ? state.hero.y : state.village.heroPosition.y,
+      x: dungeon ? state.hero.x : villageHeroPosition.x,
+      y: dungeon ? state.hero.y : villageHeroPosition.y,
     },
+    observationCenter: dungeon ? null : villageObservationCenter(state),
     map,
     jobs,
     inventory: dungeon ? unityInventory(state) : [],
     inventories: dungeon ? unityPartyInventories(state) : [],
     targets: dungeon ? unityTargets(state) : [],
     partyOrder: dungeon ? unityPartyOrder(state) : null,
+    partyMembers: adventurersPresent
+      ? partyActors(state).map((actor) =>
+          partyMemberManagementView(state, actor),
+        )
+      : [],
+    combatRoles: [...COMBAT_ROLES],
+    simulation: rogueSimulationStatus(state),
+    partyMovement:
+      dungeon || !adventurersPresent ? null : state.village.partyMovement,
+    regrouping: dungeon ? false : state.village.regrouping,
+    spendingPolicy: dungeon ? null : { ...state.village.spendingPolicy },
+    villageDevelopment: dungeon
+      ? null
+      : structuredClone(state.village.development),
+    villageTrade: dungeon ? null : villageTradeView(state, true),
+    villageMeaning: dungeon ? null : villageMeaningView(state),
     classPower: dungeon ? structuredClone(state.hero.classPower) : null,
     shop,
     events: recentEvents.slice(-12),
   };
 }
 
+// function-length-exempt: template -- complete client view projection
 export function rogueRunView(state, recentEvents = []) {
   const level = active(state),
     currentVisible = visibility(state),
@@ -5338,6 +8989,7 @@ export function rogueRunView(state, recentEvents = []) {
                 "local_talk",
                 "local_manipulate",
                 "world_interact",
+                "configure_party_member",
                 "set_party_movement",
                 "open_world",
                 ...(village.currentShopKey ? ["shop_buy"] : []),
@@ -5347,6 +8999,7 @@ export function rogueRunView(state, recentEvents = []) {
             : state.location === "exterior"
               ? [
                   "local_move",
+                  "configure_party_member",
                   "enter_dungeon",
                   ...(!state.exterior.danger ? ["open_world"] : []),
                 ]
@@ -5354,11 +9007,13 @@ export function rogueRunView(state, recentEvents = []) {
                 ? [
                     "world_move",
                     "world_travel",
+                    "configure_party_member",
                     ...(state.world.position ? ["enter_location"] : []),
                   ]
                 : [
                     "move",
                     "command",
+                    "configure_party_member",
                     "open",
                     "wait",
                     "search",
@@ -5407,6 +9062,7 @@ export function serializeRogueState(state) {
   };
 }
 
+// function-length-exempt: template -- legacy group-state migration
 function migrateGroup(group, value, actorIds, side, fallbackName) {
   const legacyId = group?.id ?? `${side}-group`,
     id = isUuid(legacyId)
@@ -5531,6 +9187,25 @@ function migrateCompanionIdentities(value, actorId) {
   }
 }
 
+function migratePartyDevelopment(value) {
+  for (const actor of partyActors(value)) {
+    actor.abilities ??= defaultAbilities(actor.class);
+    actor.proficiencyBonus ??= 2;
+    const development = createCharacterDevelopment(actor);
+    actor.development ??= development;
+    actor.development.skills ??= {};
+    for (const [skillKey, skill] of Object.entries(development.skills)) {
+      actor.development.skills[skillKey] ??= skill;
+      actor.development.skills[skillKey].rank ??= skill.rank;
+      actor.development.skills[skillKey].practice ??= 0;
+    }
+    actor.management ??= createPartyManagement(actor);
+    actor.management.combatRole ??= actor.role ?? "frontline";
+    actor.management.jobFocus ??= createPartyManagement(actor).jobFocus;
+    actor.management.workPriority ??= 70;
+  }
+}
+
 function migrateRooms(level, objectId) {
   const roomIds = new Map();
   for (const room of level.rooms) {
@@ -5646,6 +9321,7 @@ function migratePartyItems(value, objectIds, objectId) {
   }
 }
 
+// function-length-exempt: template -- legacy party-state migration
 function migratePartyGroup(value, actorIds) {
   const actors = partyActors(value);
   value.partyGroup ??= {
@@ -5711,17 +9387,19 @@ function assignEnemyGroups(level, value, actorIds) {
       );
 }
 
+// function-length-exempt: template -- declarative legacy-save identity mapping
 function migrateIdentity(value) {
   const migration = identityMigration(value);
   migrateHeroIdentity(value, migration.actorId);
   migrateCompanionIdentities(value, migration.actorId);
+  migratePartyDevelopment(value);
   for (const level of value.levels) migrateLevelIdentity(level, migration);
   migratePartyItems(value, migration.objectIds, migration.objectId);
   migratePartyGroup(value, migration.actorIds);
   for (const level of value.levels) {
     assignEnemyGroups(level, value, migration.actorIds);
   }
-  value.schemaVersion = 16;
+  value.schemaVersion = 22;
   value.location ??= "dungeon";
   value.villageVisits ??= 0;
   value.world ??= {
@@ -5737,22 +9415,137 @@ function migrateIdentity(value) {
     EXTERIOR.companionPositions,
   );
   value.village ??= {};
+  value.village.scenario ??= "established";
+  value.village.adventurersPresent = false;
+  value.village.buildings ??=
+    value.village.scenario === "founding"
+      ? []
+      : structuredClone(VILLAGE_BUILDINGS);
+  value.village.residences ??= [];
+  value.village.fixtures ??= [];
+  value.village.pastures ??= [];
+  value.village.facilities ??= [];
+  ensureVillageDevelopment(value);
   value.village.heroPosition ??= { ...VILLAGE.heroPosition };
   value.village.companionPositions ??= structuredClone(
     VILLAGE.companionPositions,
   );
   value.village.viewportOrigin ??= { ...VILLAGE.viewportOrigin };
   value.village.partyMovement ??= "follow";
+  value.village.clock ??= createTownClock();
+  value.village.clock.minute ??= 0;
+  value.village.clock.second ??= 0;
+  value.village.clock.block = scheduleBlock(value.village.clock.hour);
+  value.village.clock.phase = daylightPhase(
+    value.village.clock.hour,
+    value.village.clock.minute,
+  );
+  value.village.playerCharacterStates ??= [
+    createLifeState(value.hero.id, "player_directed"),
+  ];
+  if (
+    !value.village.playerCharacterStates.some(
+      (life) => life.actorId === value.hero.id,
+    )
+  )
+    value.village.playerCharacterStates.push(
+      createLifeState(value.hero.id, "player_directed"),
+    );
+  value.village.regrouping ??= false;
+  value.village.spendingPolicy ??= {
+    mode: "approval_required",
+    autonomousLimitCp: 0,
+    spentCp: 0,
+  };
+  value.village.companionStates ??= value.companions.map((actor, index) =>
+    createCompanionWorkState(
+      actor,
+      value.village.companionPositions[index] ?? value.village.heroPosition,
+    ),
+  );
+  for (const actor of value.companions) {
+    let townState = value.village.companionStates.find(
+      (candidate) => candidate.actorId === actor.id,
+    );
+    if (!townState) {
+      const index = value.companions.indexOf(actor);
+      townState = createCompanionWorkState(
+        actor,
+        value.village.companionPositions[index] ?? value.village.heroPosition,
+      );
+      value.village.companionStates.push(townState);
+    }
+    const profile = companionWorkProfile(actor);
+    townState.id = actor.id;
+    townState.actorId = actor.id;
+    townState.actorKind = "companion";
+    townState.name = actor.name;
+    townState.capabilityTags ??= profile.capabilityTags;
+    townState.workPermissions ??= profile.workPermissions;
+    townState.workPriorities = {
+      ...profile.workPriorities,
+      ...(townState.workPriorities ?? {}),
+    };
+    delete townState.workPriorities.train;
+    townState.workPermissions.allowedJobTypes = [
+      ...new Set([
+        ...townState.workPermissions.allowedJobTypes,
+        ...profile.workPermissions.allowedJobTypes,
+      ]),
+    ].filter((jobType) => jobType !== "train");
+    if (
+      !townState.workPermissions.allowedJobTypes.includes(
+        actor.management.jobFocus,
+      )
+    ) {
+      actor.management.jobFocus = Object.entries(townState.workPriorities)
+        .filter(([, priority]) => priority > 0)
+        .sort((left, right) => right[1] - left[1])[0]?.[0];
+      actor.management.workPriority =
+        townState.workPriorities[actor.management.jobFocus] ?? 0;
+    }
+    townState.workState ??= "available";
+    townState.lastJobType ??= null;
+    townState.completedJobTypes ??= [];
+    townState.objective ??= "follow_leader";
+    townState.currentAction ??= "Following the party leader";
+    townState.actionReason ??= "party_order";
+    townState.discoveries ??= [];
+    townState.life ??= createLifeState(actor.id, "player_directed");
+  }
   value.village.modifications ??= [];
   value.village.looseMaterials ??= [];
+  value.village.constructionPrimitives ??= [];
+  value.village.constructionMaterials ??= [];
   value.village.wantedLevel ??= 0;
   value.village.incidents ??= [];
   value.village.jobs ??= [];
   value.village.reservations ??= [];
-  for (const job of value.village.jobs) job.scope ??= "village";
-  const stockpileDefaults = createVillageStockpiles(value.id);
+  for (const job of value.village.jobs) {
+    job.scope ??= "village";
+    job.retryCount ??= 0;
+    job.nextRetryAtTick ??= null;
+    for (const input of job.production?.inputs ?? []) {
+      const source = value.village.stockpiles?.find(
+        (stockpile) => stockpile.id === input.stockpileId,
+      );
+      if (!source) continue;
+      input.itemKind ??= source.itemKind;
+      input.name ??= source.name;
+      input.position ??= { ...source.position };
+      input.requiresPickup ??=
+        value.village.scenario === "founding" &&
+        source.itemKind !== "labor_credit";
+      input.carriedQuantity ??= 0;
+    }
+  }
+  const stockpileDefaults =
+    value.village.scenario === "founding"
+      ? createFoundingStockpiles(value.id)
+      : createVillageStockpiles(value.id);
+  const loadedStockpiles = value.village.stockpiles ?? [];
   value.village.stockpiles = stockpileDefaults.map((fallback) => {
-    const existing = value.village.stockpiles?.find(
+    const existing = loadedStockpiles.find(
       (stockpile) =>
         stockpile.key === fallback.key ||
         (stockpile.itemKind === fallback.itemKind &&
@@ -5760,14 +9553,43 @@ function migrateIdentity(value) {
           stockpile.position.x === fallback.position.x &&
           stockpile.position.y === fallback.position.y),
     );
-    return existing ? { ...fallback, ...existing } : fallback;
+    return existing
+      ? {
+          ...fallback,
+          ...existing,
+          capacity: Math.max(fallback.capacity, existing.capacity ?? 0),
+          ...(fallback.key === "river_catch"
+            ? { position: { ...fallback.position } }
+            : {}),
+          containerId: fallback.containerId,
+        }
+      : fallback;
   });
-  value.village.npcStates ??= createVillageNpcStates(value.id);
+  const defaultKeys = new Set(stockpileDefaults.map((item) => item.key));
+  value.village.stockpiles.push(
+    ...loadedStockpiles.filter((item) => !defaultKeys.has(item.key)),
+  );
+  ensureVillageAnimals(value);
+  const npcDefaults = createVillageNpcStates(value.id, value.village.scenario);
+  value.village.npcStates ??= [];
+  for (const fallback of npcDefaults)
+    if (
+      !value.village.npcStates.some(
+        (candidate) => candidate.personKey === fallback.personKey,
+      )
+    )
+      value.village.npcStates.push(fallback);
   for (const npc of value.village.npcStates) {
     npc.id ??= namedUuid(value.id, `townsperson:${npc.personKey}`);
+    npc.name ??= npcDefaults.find(
+      (candidate) => candidate.personKey === npc.personKey,
+    )?.name;
     npc.actionReason ??= "personal_routine";
     npc.routeIndex ??= 0;
-    const profile = villageWorkerProfile(npc.personKey);
+    const profile = villageWorkerProfile(
+      npc.personKey,
+      value.village.scenario === "founding",
+    );
     npc.capabilityTags ??= profile.capabilityTags;
     npc.workPermissions ??= profile.workPermissions;
     npc.workPriorities ??= profile.workPriorities;
@@ -5780,15 +9602,28 @@ function migrateIdentity(value) {
         ...profile.workPermissions.allowedJobTypes,
       ]),
     ];
-    npc.skills ??= profile.skills;
+    retireRemovedFoundingPermissions(npc, profile, value.village.scenario);
+    npc.skills = { ...profile.skills, ...(npc.skills ?? {}) };
+    npc.skillPriorities = {
+      ...profile.skillPriorities,
+      ...(npc.skillPriorities ?? {}),
+    };
+    npc.skillPractice ??= {};
     npc.workState ??= profile.workState;
     npc.lastJobType ??= profile.lastJobType;
     npc.risk ??= profile.risk;
+    npc.carriedItem ??= null;
+    npc.defenseEquipment ??= null;
+    npc.life ??= createLifeState(npc.id, "autonomous");
   }
+  ensureVillageHouseholds(value);
+  ensureVillageDemography(value);
+  syncResidentHousing(value);
+  ensureFoundingSleepingPlaces(value);
   for (const toolKind of ["hand_axe", "field_shovel"])
     if (!value.hero.inventory.some((item) => item.kind === toolKind))
       value.hero.inventory.push(equipmentItem(newInstanceId(), toolKind));
-  value.village.doors ??= VILLAGE_BUILDINGS.map((building) => ({
+  value.village.doors ??= value.village.buildings.map((building) => ({
     id: migratedInstanceId(value.id, "village-door", building.key),
     entityType: "door",
     buildingKey: building.key,
@@ -5799,18 +9634,46 @@ function migrateIdentity(value) {
     if (door.shopKey == null && door.shopId != null) door.shopKey = door.shopId;
     delete door.shopId;
   }
-  value.village.doors = VILLAGE_BUILDINGS.map((building) => {
-    const door = value.village.doors.find(
-      (candidate) =>
-        candidate.buildingKey === building.key ||
-        (building.shopKey && candidate.shopKey === building.shopKey),
-    ) ?? {
-      id: migratedInstanceId(value.id, "village-door", building.key),
-      entityType: "door",
-      state: "closed",
-    };
-    return { ...door, buildingKey: building.key, ...building.door };
-  });
+  const existingVillageDoors = [...value.village.doors],
+    buildingDoors = value.village.buildings.map((building) => {
+      const door = value.village.doors.find(
+        (candidate) =>
+          candidate.buildingKey === building.key ||
+          (building.shopKey && candidate.shopKey === building.shopKey),
+      ) ?? {
+        id: migratedInstanceId(value.id, "village-door", building.key),
+        entityType: "door",
+        state: "closed",
+      };
+      return { ...door, buildingKey: building.key, ...building.door };
+    }),
+    normalizedById = new Map(buildingDoors.map((door) => [door.id, door])),
+    existingDoorIds = new Set(existingVillageDoors.map((door) => door.id)),
+    normalizedExisting = existingVillageDoors.map(
+      (door) => normalizedById.get(door.id) ?? door,
+    ),
+    missingBuildingDoors = buildingDoors.filter(
+      (door) => !existingDoorIds.has(door.id),
+    );
+  value.village.doors = [...normalizedExisting, ...missingBuildingDoors];
+  syncFoundingFacilityStructures(value);
+  upgradeMissingConstructionRoofs(value);
+  upgradeMissingHouseExits(value);
+  const needsArchitectureMigration =
+    value.village.rooms == null ||
+    value.village.constructionHistory == null ||
+    value.village.architectureDirty == null;
+  value.village.rooms ??= [];
+  value.village.constructionHistory ??= [];
+  if (needsArchitectureMigration) {
+    value.village.architectureDirty = true;
+  }
+  if (value.village.architectureDirty) deriveVillageArchitecture(value);
+  syncResidentHousing(value);
+  ensureVillageFoodSystem(value);
+  ensureVillageTradeSystem(value);
+  reconcileVillageStorage(value);
+  ensureRegionalSimulation(value);
   value.partyTactics ??= {
     facing: "north",
     phase: "travel",
