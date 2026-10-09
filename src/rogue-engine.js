@@ -5511,7 +5511,7 @@ function activeConstructionJobs(state) {
   return jobs;
 }
 
-function addScoutedHousingPositions(state, plannedPositions, jobSiteKeys) {
+function addScoutedPlanPositions(state, plannedPositions, jobSiteKeys) {
   const sites = state.village.development?.constructionSites ?? [],
     completedKeys = new Set(
       state.village.buildings
@@ -5520,7 +5520,8 @@ function addScoutedHousingPositions(state, plannedPositions, jobSiteKeys) {
     );
   for (const site of sites.filter(
     (candidate) =>
-      candidate.housingSurveyStatus === "scouted" &&
+      (candidate.housingSurveyStatus === "scouted" ||
+        candidate.masterPlanDesignation) &&
       !jobSiteKeys.has(candidate.key) &&
       !completedKeys.has(candidate.key),
   )) {
@@ -5567,7 +5568,7 @@ function villageConstructionAt(state, x, y, includePlanned = false) {
           activePositions.set(positionKey, entry);
       }
     }
-    addScoutedHousingPositions(state, plannedPositions, jobSiteKeys);
+    addScoutedPlanPositions(state, plannedPositions, jobSiteKeys);
     cached = { tick: state.tick, plannedPositions, activePositions };
     VILLAGE_CONSTRUCTION_POSITION_CACHE.set(state, cached);
   }

@@ -326,18 +326,23 @@ export const SPECIALIST_FACILITY_PLANS = Object.freeze(
 );
 
 const FOUNDER_HOUSE_PLOTS = Object.freeze([
-  Object.freeze({ householdKey: "farmer", x: -34, y: 35, use: "farmhouse" }),
+  Object.freeze({
+    householdKey: "farmer",
+    x: -34,
+    y: 35,
+    use: "crop_farmhouse",
+  }),
   Object.freeze({
     householdKey: "brand",
     x: -22,
     y: 35,
-    use: "stockkeeper_cottage",
+    use: "livestock_farmhouse",
   }),
   Object.freeze({
     householdKey: "woodcutter",
     x: -50,
     y: 13,
-    use: "woodland_cottage",
+    use: "woodland_farmhouse",
   }),
   Object.freeze({
     householdKey: "fisher",
@@ -846,6 +851,14 @@ export function translateConstructionSite(
         ...translate(enclosure),
         ...(gates[0] ? { gate: gates[0] } : {}),
         ...(gates.length ? { gates } : {}),
+        ...(enclosure.barnAccess
+          ? { barnAccess: translate(enclosure.barnAccess) }
+          : {}),
+        ...(enclosure.naturalBarrierCells
+          ? {
+              naturalBarrierCells: enclosure.naturalBarrierCells.map(translate),
+            }
+          : {}),
       };
     };
   return {
@@ -863,6 +876,7 @@ export function translateConstructionSite(
       ? { floors: site.floors.map((floor) => translate(floor)) }
       : {}),
     ...(site.roofs ? { roofs: site.roofs.map((roof) => translate(roof)) } : {}),
+    ...(site.storageArea ? { storageArea: translate(site.storageArea) } : {}),
     ...(site.enclosures
       ? {
           enclosures: site.enclosures.map(translateEnclosure),

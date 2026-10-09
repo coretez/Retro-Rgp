@@ -96,11 +96,39 @@ test("R4 temporary farm stores never occupy a field or its clear apron", () => {
   );
 });
 
+test("R4 regional farm stores follow relocated fields without overlap", () => {
+  const run = newRogueRun({
+      ...input,
+      seed: "farmland-real-run-2026-10-09",
+      worldGeneration: "regional_v3",
+    }),
+    storage = reconcileVillageStorage(run),
+    fields = run.village.development.masterPlan.fieldBoundaries,
+    cells = storage.zones
+      .filter((zone) => zone.planKey === "farm-store")
+      .flatMap((zone) => zone.cells);
+  assert.ok(cells.length > 0);
+  assert.ok(
+    cells.every((cell) =>
+      fields.every((field) => {
+        const gap = field.clearance ?? 2;
+        return (
+          cell.x < field.x - gap ||
+          cell.x >= field.x + field.w + gap ||
+          cell.y < field.y - gap ||
+          cell.y >= field.y + field.h + gap
+        );
+      }),
+    ),
+  );
+});
+
 test("R4 storage filters reject disallowed goods into visible overflow", () => {
   const run = state(),
     meals = run.village.stockpiles.find((item) => item.key === "inn_meals"),
     storage = reconcileVillageStorage(run),
     zone = storage.zones.find((item) => item.containerId === meals.containerId);
+  meals.storedQuantity = meals.quantity;
   zone.allowedItemKinds = [];
   const updated = reconcileVillageStorage(run),
     overflow = updated.overflow.find((item) => item.stockpileId === meals.id),
@@ -165,6 +193,43 @@ test("R4 open production reserves physical output space", () => {
     },
   });
   assert.equal(storageAvailableFor(run, grain.id), before - 2);
+});
+
+test("R4 designated cells remain empty until a haul records delivery", () => {
+  const run = state(),
+    grain = run.village.stockpiles.find((item) => item.key === "farm_grain");
+  grain.quantity = 9;
+  delete grain.storedQuantity;
+  let storage = reconcileVillageStorage(run);
+  assert.equal(
+    storage.allocations.some((entry) => entry.stockpileId === grain.id),
+    false,
+  );
+  grain.storedQuantity = 4;
+  storage = reconcileVillageStorage(run);
+  assert.equal(
+    storage.allocations
+      .filter((entry) => entry.stockpileId === grain.id)
+      .reduce((total, entry) => total + entry.quantity, 0),
+    4,
+  );
+});
+
+test("R4 newly produced goods cannot reuse stale stored quantity", () => {
+  const run = state(),
+    grain = run.village.stockpiles.find((item) => item.key === "farm_grain");
+  grain.quantity = 5;
+  grain.storedQuantity = 5;
+  grain.storageQuantitySnapshot = 5;
+  reconcileVillageStorage(run);
+  grain.quantity = 0;
+  reconcileVillageStorage(run);
+  grain.quantity = 4;
+  const storage = reconcileVillageStorage(run);
+  assert.equal(
+    storage.allocations.some((entry) => entry.stockpileId === grain.id),
+    false,
+  );
 });
 
 test("R4 Unity exposes every physical storage cell and its allowance", () => {
@@ -280,10 +345,13 @@ test("R8.1 ground separates item stacks while a rack can share one cell", () => 
         itemKind: "stone",
         name: "Test stone",
         quantity: 1,
+        storedQuantity: 1,
         capacity: 2,
       });
   logs.quantity = 1;
+  logs.storedQuantity = 1;
   lumber.quantity = 1;
+  lumber.storedQuantity = 1;
   storage.zones
     .find((zone) => zone.containerId === logs.containerId)
     .allowedItemKinds.push("stone");
@@ -328,6 +396,7 @@ test("R8.1 item profiles expose volume, stack size, decay, and compatibility", (
     key: "ground_test_ore",
     itemKind: "iron_ore",
     quantity: 1,
+    storedQuantity: 1,
   });
   const overflow = reconcileVillageStorage(run).overflow.find(
     (entry) => entry.stockpileId === "f3e08965-67cf-51c2-b53a-8e44b28108e9",
@@ -339,6 +408,8 @@ test("R8.1 physical capacity is bounded by item volume and stack size", () => {
   const run = state(),
     stone = run.village.stockpiles.find((item) => item.key === "quarry_stone");
   stone.quantity = 12;
+  stone.storedQuantity = 12;
+  stone.storageQuantitySnapshot = 12;
   const storage = reconcileVillageStorage(run),
     zone = storage.zones.find((item) => item.containerId === stone.containerId),
     first = storage.allocations.find(
@@ -356,6 +427,7 @@ test("R8.1 hauling chooses space before travel and travel breaks ties", () => {
   const run = state(),
     grain = run.village.stockpiles.find((item) => item.key === "farm_grain");
   grain.quantity = 19;
+  grain.storedQuantity = 19;
   let storage = reconcileVillageStorage(run),
     zone = storage.zones.find((item) => item.containerId === grain.containerId),
     first = zone.cells[0],
@@ -363,6 +435,7 @@ test("R8.1 hauling chooses space before travel and travel breaks ties", () => {
   assert.notEqual(destination.cellId, first.id);
   assert.equal(destination.remainingCapacity, 20);
   grain.quantity = 0;
+  grain.storedQuantity = 0;
   storage = reconcileVillageStorage(run);
   zone = storage.zones.find((item) => item.containerId === grain.containerId);
   const last = zone.cells.at(-1);

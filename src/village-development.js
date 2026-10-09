@@ -2385,13 +2385,16 @@ function migratePlanDistricts(masterPlan, defaults) {
 }
 
 function mergeNamedPlanEntries(current = [], defaults = []) {
-  const defaultKeys = new Set(defaults.map((entry) => entry.key));
+  const identity = (entry) =>
+      entry.key ?? entry.householdKey ?? entry.facilityKey ?? entry.id,
+    defaultKeys = new Set(defaults.map(identity));
   return [
     ...defaults.map((fallback) => ({
       ...fallback,
-      ...(current.find((entry) => entry.key === fallback.key) ?? {}),
+      ...(current.find((entry) => identity(entry) === identity(fallback)) ??
+        {}),
     })),
-    ...current.filter((entry) => !defaultKeys.has(entry.key)),
+    ...current.filter((entry) => !defaultKeys.has(identity(entry))),
   ];
 }
 

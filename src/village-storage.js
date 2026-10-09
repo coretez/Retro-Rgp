@@ -1,6 +1,6 @@
 import { definitionId, namedUuid } from "./identity.js";
 
-export const STORAGE_SCHEMA_VERSION = 5;
+export const STORAGE_SCHEMA_VERSION = 6;
 export const DEFAULT_CELL_ALLOWANCE = 10;
 
 const ALL_STORAGE_TIERS = [
@@ -304,6 +304,62 @@ function groupsByContainer(stockpiles) {
   );
 }
 
+function areasOverlap(left, right) {
+  return !(
+    left.x + left.width <= right.x ||
+    right.x + right.width <= left.x ||
+    left.y + left.height <= right.y ||
+    right.y + right.height <= left.y
+  );
+}
+
+function expandedFieldArea(field) {
+  const gap = field.clearance ?? 2;
+  return {
+    x: field.x - gap,
+    y: field.y - gap,
+    width: field.w + gap * 2,
+    height: field.h + gap * 2,
+  };
+}
+
+function plannedFarmAreas(state, barn, fields) {
+  const sites = state.village.development?.constructionSites ?? [];
+  return [
+    ...fields,
+    { x: barn.x, y: barn.y, width: barn.w, height: barn.h },
+    ...(barn.enclosures ?? []).map((area) => ({
+      x: area.x,
+      y: area.y,
+      width: area.w,
+      height: area.h,
+    })),
+    ...sites
+      .filter((site) => site.key !== barn.key)
+      .map((site) => ({ x: site.x, y: site.y, width: site.w, height: site.h })),
+  ];
+}
+
+function temporaryFarmStoreArea(state, fallback) {
+  const plan = state.village.development?.masterPlan,
+    barn = state.village.development?.constructionSites?.find(
+      (site) => site.key === "farmstead",
+    ) ?? { x: -34, y: 25, w: 12, h: 8 },
+    fields = (plan?.fieldBoundaries ?? []).map(expandedFieldArea),
+    reserved = plannedFarmAreas(state, barn, fields),
+    candidates = [
+      { x: barn.x, y: barn.y - 4, width: 13, height: 2 },
+      { x: barn.x - 14, y: barn.y, width: 13, height: 2 },
+      { x: barn.x + barn.w + 2, y: barn.y, width: 13, height: 2 },
+      { x: barn.x, y: barn.y + barn.h + 2, width: 13, height: 2 },
+    ];
+  return (
+    candidates.find((area) =>
+      reserved.every((blocked) => !areasOverlap(area, blocked)),
+    ) ?? fallback
+  );
+}
+
 function storagePlan(state, stockpiles) {
   const keys = new Set(stockpiles.map((stockpile) => stockpile.key));
   if (stockpiles[0].containerKind === "field_pile")
@@ -331,7 +387,11 @@ function storagePlan(state, stockpiles) {
     allowContainerCell: true,
     stackSlots: storageStackCount(stockpiles, "capacity"),
   };
-  return plan.key === "farm-store" ? farmBarnStoragePlan(state, plan) : plan;
+  if (plan.key !== "farm-store") return plan;
+  return farmBarnStoragePlan(state, {
+    ...plan,
+    area: temporaryFarmStoreArea(state, plan.area),
+  });
 }
 
 function farmBarnStoragePlan(state, fallback) {
@@ -476,6 +536,13 @@ function reusableCells(current, fallback, occupied) {
     return false;
   if (currentCapacity < requiredCapacity) return false;
   if (current.planKey !== fallback.planKey) return false;
+  const fallbackPositions = new Set(
+    fallback.cells.map((cell) => `${cell.x},${cell.y}`),
+  );
+  if (
+    !current.cells.every((cell) => fallbackPositions.has(`${cell.x},${cell.y}`))
+  )
+    return false;
   return current.cells.every((cell) => !occupied.has(`${cell.x},${cell.y}`));
 }
 
@@ -614,19 +681,20 @@ function allocateZone(state, zone, stockpiles, reservations) {
   for (const stockpile of stockpiles.sort((a, b) =>
     a.key.localeCompare(b.key),
   )) {
-    const allowed = zone.allowedItemKinds.includes(stockpile.itemKind),
+    const storedQuantity = physicalStoredQuantity(stockpile, zone),
+      allowed = zone.allowedItemKinds.includes(stockpile.itemKind),
       compatible = zoneAcceptsStockpile(zone, stockpile),
       result =
         allowed && compatible
           ? allocateToCells(
               zone,
               stockpile,
-              stockpile.quantity,
+              storedQuantity,
               used,
               stacks,
               "stored",
             )
-          : { allocations: [], remaining: stockpile.quantity };
+          : { allocations: [], remaining: storedQuantity };
     allocations.push(...result.allocations);
     if (result.remaining > 0)
       overflow.push({
@@ -657,6 +725,25 @@ function allocateZone(state, zone, stockpiles, reservations) {
     );
   }
   return { allocations, overflow };
+}
+
+function physicalStoredQuantity(stockpile, zone) {
+  if (zone.planKey.startsWith("field-pile-")) return stockpile.quantity;
+  const atCell = zone.cells.some(
+    (cell) =>
+      cell.x === stockpile.position.x && cell.y === stockpile.position.y,
+  );
+  if (!Number.isFinite(stockpile.storedQuantity))
+    stockpile.storedQuantity = atCell ? stockpile.quantity : 0;
+  const previous = stockpile.storageQuantitySnapshot ?? stockpile.quantity;
+  if (stockpile.quantity < previous)
+    stockpile.storedQuantity -= previous - stockpile.quantity;
+  stockpile.storedQuantity = Math.max(
+    0,
+    Math.min(stockpile.quantity, stockpile.storedQuantity),
+  );
+  stockpile.storageQuantitySnapshot = stockpile.quantity;
+  return stockpile.storedQuantity;
 }
 
 function loosePilePosition(zone, index, occupied) {

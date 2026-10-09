@@ -294,7 +294,6 @@ test("R1 a house faces its connected path and retains an opposite escape", () =>
 
 test("R1 the architect scouts and names all three founding family homes", () => {
   const state = newRogueRun(architectureInput);
-  state.village.facilities.push("lumber_yard");
   applyRogueTurn(state, { kind: "wait" });
   const sites = state.village.development.constructionSites.filter(
       (site) => site.housingSurveyStatus === "scouted",
@@ -306,8 +305,8 @@ test("R1 the architect scouts and names all three founding family homes", () => 
     new Set(sites.map((site) => site.name)),
     new Set([
       "Weiss-Voss family farmhouse",
-      "Brand-Venn family cottage",
-      "Holt-Eder family cottage",
+      "Brand-Venn family farmhouse",
+      "Holt-Eder family farmhouse",
     ]),
   );
   assert.equal(new Set(sites.map((site) => site.plannedHouseholdId)).size, 3);
@@ -315,8 +314,40 @@ test("R1 the architect scouts and names all three founding family homes", () => 
   const view = rogueUnityView(state);
   assert.ok(
     view.map.cells.some((cell) =>
-      cell.objectName?.includes("Brand-Venn family cottage"),
+      cell.objectName?.includes("Brand-Venn family farmhouse"),
     ),
+  );
+  const farm = state.village.development.constructionSites.find(
+    (site) => site.key === "farmstead",
+  );
+  assert.equal(farm.masterPlanDesignation, "founding_farm_core");
+  assert.ok(
+    state.village.development.masterPlan.fieldBoundaries.every(
+      (field) =>
+        field.farmhouseSiteKey === "founder_house_farmer" &&
+        field.barnSiteKey === "farmstead",
+    ),
+  );
+});
+
+test("R1 regional terrain still receives all three opening farmhouses", () => {
+  const state = newRogueRun({
+    ...architectureInput,
+    seed: "farmland-physical-haul-proof-2026-10-09",
+    worldGeneration: "regional_v3",
+  });
+  applyRogueTurn(state, { kind: "wait" });
+  const homes = state.village.development.constructionSites.filter(
+    (site) => site.housingSurveyStatus === "scouted",
+  );
+  assert.equal(homes.length, 3);
+  assert.deepEqual(
+    new Set(homes.map((site) => site.key)),
+    new Set([
+      "founder_house_farmer",
+      "founder_house_brand",
+      "founder_house_woodcutter",
+    ]),
   );
 });
 
@@ -613,6 +644,20 @@ test("R1 relocating a farm barn keeps surveyed field boundaries fixed", () => {
     {
       x: selectedPasture.x - preferredPasture.x,
       y: selectedPasture.y - preferredPasture.y,
+    },
+    result.offset,
+  );
+  assert.deepEqual(
+    {
+      x: result.site.storageArea.x - preferred.storageArea.x,
+      y: result.site.storageArea.y - preferred.storageArea.y,
+    },
+    result.offset,
+  );
+  assert.deepEqual(
+    {
+      x: selectedPasture.barnAccess.x - preferredPasture.barnAccess.x,
+      y: selectedPasture.barnAccess.y - preferredPasture.barnAccess.y,
     },
     result.offset,
   );

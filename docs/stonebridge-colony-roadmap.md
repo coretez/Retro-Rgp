@@ -7191,3 +7191,65 @@ fishing, bow hunting, and bounded barn storage, but remains in progress pending
 the clean natural food-surplus proof. R5 remains under scheduler validation,
 R6 remains unproven in the current clean run, and R8 remains in progress behind
 the natural town-build, survival, visual, and later masonry-transition gates.
+
+## Repair checkpoint 174 / opening farm plan and physical storage truth
+
+The first visible `codex/farmland` run was stopped and saved on Day 1 at 09:06
+because its opening layout failed visual review. Regional terrain selection had
+moved both crop fields while leaving the temporary farm store at a hard-coded
+coordinate inside the grain field. Only active construction appeared planned,
+so the three family farmhouses and shared barn were not readable as one farm
+system. Storage reconciliation also painted assigned inventory into designated
+cells without requiring a villager to haul it there. The failed run remains the
+evidence for this checkpoint and is not counted as a successful proof.
+
+The opening planner now scouts the shared farmstead barn and all three named
+family farmhouses on the first simulation update, before the lumber workshop is
+operational. Brand-Venn and Holt-Eder are explicitly farmhouses rather than
+generic cottages. Both crop boundaries record their holding, farmhouse, and
+barn relationship. Planned structures render as plans without becoming active
+construction jobs, keeping the plan distinct from the mayor's survival build
+order. A migration identity defect that collapsed all ten reserved household
+lots onto the farmer lot is fixed by using each entry's appropriate stable key.
+
+Temporary farm storage is selected relative to the terrain-approved barn and
+rejects every crop clearance apron, building footprint, and pasture enclosure.
+For the failed seed it now occupies a two-cell staging position north of the
+barn rather than the grain field or livestock space. Designation no longer
+means possession: existing supplies remain at their physical cache/cart
+positions, designated cells begin empty, and only a completed delivery records
+stored quantity. Loading removes the corresponding stored quantity.
+
+QA passes all 61 focused architecture and storage tests, including
+the exact failed regional seed, empty-until-hauled storage, distinct future-lot
+identity, field ownership, and complete Day-1 farm planning. The strict audit
+covers 2,137 functions with 141 documented template exemptions and zero
+non-template functions over thirty lines; formatting and `git diff --check` are
+clean. Broader food and economy regressions passed; the expensive founding
+suite was separately observed and is reported below.
+
+The first replacement regional seed then exposed two further terrain-specific
+faults before acceptance. A mountain-and-river arrangement could exhaust the
+old 32-cell home search and omit the Holt-Eder farmhouse. Founding homes now
+have a bounded 64-cell search while ordinary projects retain the tighter
+search. Relocated barns also left their internal storage area, pasture access,
+and natural barrier cells at the authored coordinates. All barn sub-geometry
+now translates with the selected building while surveyed crop fields remain
+fixed. The exact failed seed proves all three homes and translated barn access.
+
+The final visible acceptance seed began with all three named farmhouses, the
+shared barn/pasture, and both fields visibly designated. At Day 1 06:33, seven
+founders were already farming, surveying construction, felling trees, or
+travelling to the real river jetty; three were in scheduled dawn free time.
+Starting meals, seed, and animal feed remained at their actual caches with zero
+quantity painted into the new farm-store cells. The relocated barn's storage
+and pasture doorway were both confirmed at their translated coordinates. The
+economy and food regressions passed before the expensive founding suite was
+interrupted after 39 additional passes and no assertion failure; that
+interrupted suite is not counted as a full green run.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 remains
+in progress until the corrected visible run proves physical hauling, field
+work, harvest, storage, and sustained food reserves. R5 remains under scheduler
+validation, R6 remains unproven in the clean run, and R8 remains in progress
+behind the same natural town-build and visual acceptance gates.

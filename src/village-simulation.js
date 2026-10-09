@@ -2217,6 +2217,20 @@ function stockpile(state, id) {
   return state.village.stockpiles.find((candidate) => candidate.id === id);
 }
 
+function withdrawStoredQuantity(stock, quantity) {
+  if (!Number.isFinite(stock?.storedQuantity)) return;
+  stock.storedQuantity = Math.max(0, stock.storedQuantity - quantity);
+  stock.storageQuantitySnapshot = stock.quantity;
+}
+
+function depositStoredQuantity(stock, quantity) {
+  stock.storedQuantity = Math.min(
+    stock.quantity,
+    (stock.storedQuantity ?? 0) + quantity,
+  );
+  stock.storageQuantitySnapshot = stock.quantity;
+}
+
 function loadDelivery(state, job, actor, events) {
   const source = stockpile(state, job.transfer.sourceStockpileId),
     quantity = job.transfer.quantity;
@@ -2230,6 +2244,7 @@ function loadDelivery(state, job, actor, events) {
       actorId: actor.id,
     });
   source.quantity -= quantity;
+  withdrawStoredQuantity(source, quantity);
   job.transfer.carriedQuantity = quantity;
   actor.carriedItem = {
     itemKind: job.transfer.itemKind,
@@ -2266,6 +2281,7 @@ function unloadDelivery(state, job, actor, events) {
       actorId: actor.id,
     });
   target.quantity += quantity;
+  depositStoredQuantity(target, quantity);
   job.transfer.carriedQuantity = 0;
   actor.carriedItem = null;
   events.push(
@@ -7426,6 +7442,7 @@ function searchConstructionSite(state, development, preferred, context) {
         : { ...preferred, enclosures: [] },
     result = findConstructionSite(template, context.terrainAt, {
       reservedSites: development.constructionSites,
+      maxRadius: preferred.key.startsWith("founder_house_") ? 64 : undefined,
       fixedEnclosurePurposes: preferred.key === "farmstead" ? ["field"] : [],
       candidateFilter: preferred.requiresTownAccess
         ? (site) => constructionSiteReachable(state, site, context)
@@ -8230,7 +8247,7 @@ function nextHousingHousehold(state) {
 }
 
 function householdHomeName(household, lot) {
-  return lot.use === "farmhouse"
+  return lot.use.endsWith("farmhouse")
     ? `${household.name} farmhouse`
     : `${household.name} cottage`;
 }
@@ -8261,7 +8278,7 @@ function founderHousingPreferred(state, household, lot, context) {
   return {
     key: `founder_house_${household.key}`,
     name: householdHomeName(household, lot),
-    districtKey: lot.use === "farmhouse" ? "farm_holding" : "residential",
+    districtKey: lot.use.endsWith("farmhouse") ? "farm_holding" : "residential",
     householdId: household.id,
     x: lot.x,
     y: lot.y,
@@ -8312,6 +8329,35 @@ function ensureFoundingHousingLayout(state, context, events) {
     site.plannedHouseholdId = household.id;
     recordHousingSurvey(state, household, lot, site);
   }
+}
+
+function linkFoundingFieldsToFarm(state, site) {
+  const plan = state.village.development.masterPlan;
+  for (const boundary of plan.fieldBoundaries)
+    Object.assign(boundary, {
+      holdingKey: "farmer",
+      farmhouseSiteKey: "founder_house_farmer",
+      barnSiteKey: site.key,
+    });
+}
+
+function ensureFoundingFarmPlan(state, context, events) {
+  if (state.village.scenario !== "founding") return;
+  const development = state.village.development;
+  let site = development.constructionSites.find(
+    (candidate) => candidate.key === "farmstead",
+  );
+  if (!site) {
+    const preferred = foundingFacilityPlan(
+      "farmstead",
+      development.masterPlan.fieldBoundaries,
+    );
+    site = selectConstructionSite(state, preferred, context, events);
+    if (!site) return;
+    site.masterPlanDesignation = "founding_farm_core";
+    site.planningStatus = "scouted";
+  }
+  linkFoundingFieldsToFarm(state, site);
 }
 
 function permanentHousingComplete(state) {
@@ -9568,7 +9614,8 @@ function postVillageDevelopmentJobs(state, context, events) {
         candidate.id === development.activeOrderId &&
         candidate.status === "active",
     );
-  if (hasYard) ensureFoundingHousingLayout(state, context, events);
+  ensureFoundingFarmPlan(state, context, events);
+  ensureFoundingHousingLayout(state, context, events);
   postEmergencyForagingJob(state, templates, context, events, order);
   postFoundingCampfireJob(state, templates.build_campfire, context, events);
   if (

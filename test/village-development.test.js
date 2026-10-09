@@ -186,6 +186,15 @@ test("R8.5 the master plan persists every required district and reservation", ()
     assert.ok(plan.spatialReservations[key].length, `missing ${key}`);
 });
 
+test("R8.5 every future household lot keeps its own stable identity", () => {
+  const state = newRogueRun({ ...input, scenario: "founding" });
+  applyRogueTurn(state, { kind: "wait" });
+  const lots =
+    state.village.development.masterPlan.spatialReservations.futureLots;
+  assert.equal(lots.length, 10);
+  assert.equal(new Set(lots.map((lot) => lot.householdKey)).size, 10);
+});
+
 test("R8.5 the architect names the extraction-to-town supply chain", () => {
   const state = newRogueRun({
       ...input,
