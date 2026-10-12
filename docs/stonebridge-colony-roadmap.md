@@ -7503,3 +7503,122 @@ first-day work throughput but remains under multi-day scheduler validation. R6
 remains unproven. R8 remains in progress behind completed permanent housing,
 farm infrastructure, quarry, specialist buildings, defense, and final visual
 acceptance.
+
+## Repair checkpoint 181 / roadside founding stores
+
+The armed-founder run was preserved before repair after inspection found that
+the nominal storage districts could relocate across future house lots and that
+starting goods were scattered among several independent camp and farm
+containers. This allowed yellow storage cells to appear inside planned
+buildings and made the arrival supplies read as arbitrary ground piles rather
+than two cart loads delivered by the founding families.
+
+Fresh founders now share exactly two finite cart-backed staging stores: a camp
+supply store for meals, fish, forage, bows, tools, netting, and housing material,
+and a farm supply store for seed, grain, vegetables, animal products, fodder,
+water, and farm construction material. Both stores search for actual dirt-road
+cells, reject water, mountain, tree, field, furniture, completed structure, and
+every reserved construction footprint, and place the physical starting goods
+at those cells. The carts provide basic covered preservation but remain bounded;
+once a completed granary or storehouse exists, the same logical zones migrate
+inside it with dry granary-grade protection. A completed farmstead continues to
+move farm goods into its own barn.
+
+Clean visible run `2ae9ded3-d851-40d0-91f3-ac76997c48c4`, seed
+`roadside-stores-harvest-proof-2026-10-12`, starts with one six-cell camp store
+and one seven-cell farm store. Every cell reports `road_dirt`, and every nonempty
+starting stockpile is attached to one of the two roadside cart positions rather
+than water or a building lot. The native client visually shows the supply areas
+beside the arrival road. Twenty-seven storage regressions pass, including the
+road-only, no-lot-overlap, bounded-capacity, physical-hauling, and protected
+building migration contracts. The food-spoilage regression confirms cart food
+receives covered rather than loose-pile preservation. The strict audit covers
+2,161 functions with 141 documented template exemptions and zero non-template
+functions over thirty lines; `git diff --check` is clean.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 has
+correct roadside supply placement and protected-storage progression plus prior
+visible fishing and hunting proof, but remains in progress until this clean run
+naturally demonstrates crop growth, harvest, field-pile hauling, bounded
+storage, cooking, and eating. R5 remains under multi-day scheduler validation.
+R6 remains unproven. R8 remains in progress behind the full natural founding
+town, quarry, specialist, defense, and visual acceptance gates.
+
+## Failure and repair checkpoint 182 / whole-map town reservations
+
+The roadside-storage run was paused and saved at tick 1,001 after the visible
+layout exposed a deeper architect failure. The vegetable field enclosure and
+its circulation apron crossed the farmstead barn. Inspection of the approved
+master plan also found future specialist buildings and household lots occupying
+the same cells. The architect had been validating terrain and already-started
+construction one project at a time; it did not treat unbuilt parts of the town
+plan as real spatial reservations. This invalidates the run as a town-layout
+acceptance proof even though its food workers were active.
+
+The master plan now reserves the complete footprint of every founding and
+specialist facility, all ten growth-capable household lots, the barn-connected
+pasture, four later animal yards, and both crop fields before construction
+selection begins. Terrain-aware field selection evaluates that entire ledger,
+including the field's two-cell circulation and sightline apron. Runtime site
+searches also include every unbuilt master-plan reservation, while allowing a
+project to occupy only its own approved lot and allowing the farmstead to own
+its explicitly connected pasture and fields. The authored lots and specialist
+sites were respaced to remove the overlaps already present in the blueprint.
+
+Focused proof creates a clean plan, scouts all three family homes, and verifies
+that the barn, pasture, fields, and homes do not overlap. A second contract
+compares every named master-plan reservation pair, allowing only the intentional
+barn-to-pasture shared edge. The regional-terrain case still finds all three
+homes rather than solving conflicts by silently dropping housing. All forty
+architecture regressions and all twenty-seven storage regressions pass. The
+strict audit covers 2,168 functions with 141 documented template exemptions and
+zero non-template functions over thirty lines; `git diff --check` is clean.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 has a
+repaired spatial foundation for farming and storage but still requires a new
+visible natural grow, harvest, haul, cook, and eat proof. R5 remains under
+multi-day scheduler and starvation-risk validation. R6 remains unproven. R8
+remains in progress behind the clean whole-town build, quarry, specialist,
+defense, and final visual acceptance gates.
+
+## Repair checkpoint 183 / reachable founding production and physical river catch
+
+Clean visible run `b0788025-5878-4905-bba4-1ab64dd596cb` was preserved at tick
+236 after it exposed two scheduler defects. Pre-yard sawing still targeted the
+legacy `(-23,18)` work cell; on the generated regional terrain both saw jobs
+failed with `no_path`, leaving five founders idle while housing lacked lumber.
+The founding campfire was also losing the innkeeper to lower-value forestry
+because it had not been marked as a critical founding supply job. Pre-yard
+sawing now uses two explicit reachable work positions beside the founding camp,
+and the campfire preempts ordinary work until the settlement has a cooking
+fire. Focused regressions prove both behaviors.
+
+The next visible run, `a203410e-2da2-4bdb-9823-7ab0820a3cb3`, proved the repair:
+all ten founders worked at the first checkpoint, including three field workers,
+the cook building the fire, a fisher, a hunter, a woodcutter, and the housing
+survey crew. By tick 214 the campfire was complete, 27 logs were physically
+available, both saw jobs were active at their reachable founding positions,
+the first fish had been caught, and no job was blocked. Inspection then found a
+separate provenance fault: the regional fisher worked at the real river jetty,
+but the caught-fish stockpile and hauling source still retained the legacy pond
+coordinate. Regional jetty installation now moves the finite catch container to
+the actual walkable bank, rebuilds its storage zone there before posting work,
+and makes subsequent hauling begin at that bank. The regional-river regression
+now asserts the water jetty, bank, catch position, and container identity.
+
+Final clean visible proof run `ac5f62af-bf6f-44f3-879f-42dd5d9c9962`, seed
+`whole-map-food-proof-2026-10-12-d`, is running at Observe 16x from a fresh
+regional world. The three focused scheduler/provenance regressions pass. The
+complete food suite passes all 25 tests, including per-cell crop growth,
+watering, fractional field-pile hauling, bounded storage, and conserved food
+provenance. All 40 architecture tests and all 27 storage tests pass. The strict
+audit covers 2,171 functions with 141 documented template exemptions and zero
+non-template functions over thirty lines; `git diff --check` is clean.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 now has
+correct reachable fishing, hunting, field-start, campfire, sawing, storage, and
+physical river-catch provenance, but remains in progress until the final clean
+run naturally completes grow, harvest, haul, cook, and eat without starvation.
+R5 remains under the same multi-day scheduler proof. R6 remains unproven. R8
+remains in progress behind the natural founding town, quarry, specialist,
+defense, and final visual-acceptance gates.

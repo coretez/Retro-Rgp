@@ -2980,6 +2980,42 @@ test("R1 survival specialists work food and fire before every axe is staffed", (
   );
 });
 
+test("R1 the founding cook establishes the fire before ordinary forestry", () => {
+  const state = newRogueRun(input);
+  let fire;
+  for (let turn = 0; turn < 20; turn += 1) {
+    applyRogueTurn(state, { kind: "wait" });
+    fire = state.village.jobs.find((job) => job.jobType === "build_campfire");
+    if (fire?.assignedActorId || fire?.status === "completed") break;
+  }
+  const cook = state.village.npcStates.find(
+    (resident) => resident.personKey === "innkeeper",
+  );
+  assert.ok(fire);
+  assert.ok(fire.assignedActorId === cook.id || fire.status === "completed");
+});
+
+test("R1 pre-yard sawing uses the reachable founding work area", () => {
+  const state = newRogueRun(input);
+  stock(state, "lumber_camp_logs").quantity = 20;
+  for (let turn = 0; turn < 20; turn += 1)
+    applyRogueTurn(state, { kind: "wait" });
+  const sawJobs = state.village.jobs.filter(
+    (job) =>
+      job.jobType === "saw_lumber" &&
+      !["completed", "cancelled"].includes(job.status),
+  );
+  assert.ok(sawJobs.length >= 1);
+  assert.ok(
+    sawJobs.every(
+      (job) =>
+        job.targetPosition.y === 19 &&
+        [-18, -17].includes(job.targetPosition.x) &&
+        job.blockingReason !== "no_path",
+    ),
+  );
+});
+
 test("M-11.1 founding crews sustain an overlapping skill pipeline", () => {
   const state = newRogueRun(input);
   stock(state, "lumber_camp_logs").quantity = 100;
@@ -3360,13 +3396,16 @@ test("R8.5 fishing follows the generated regional river instead of the legacy po
     }),
     legacy = legacyView.map.cells.find(
       (cell) => cell.x === legacyPosition.x && cell.y === legacyPosition.y,
-    );
+    ),
+    catchStore = stock(state, "river_catch");
   assert.equal(water.tile, "village_furniture");
   assert.equal(water.groundTile, "outdoor_water");
   assert.equal(water.variant, "jetty");
   assert.notEqual(bank.tile, "outdoor_water");
   assert.deepEqual({ x: jetty.x, y: jetty.y }, job.targetPosition);
   assert.deepEqual(jetty.bankPosition, job.plan.fishingPosition);
+  assert.deepEqual(catchStore.position, jetty.bankPosition);
+  assert.equal(catchStore.containerId, jetty.id);
   assert.notEqual(legacy?.variant, "jetty");
   assert.notDeepEqual(job.targetPosition, { x: 0, y: 16 });
 });

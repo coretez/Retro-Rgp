@@ -309,6 +309,35 @@ const FOUNDING_STOCKPILE_KEYS = new Set([
   "stable_water",
 ]);
 
+const FOUNDING_CAMP_STORE_KEYS = new Set([
+  "inn_meals",
+  "inn_fish",
+  "wild_forage",
+  "hunting_bows",
+  "netting_fiber",
+  "fishing_nets",
+  "founding_axes",
+  "founding_saws",
+  "founding_pickaxes",
+  "founding_hammers",
+  "housing_project",
+]);
+
+const FOUNDING_FARM_STORE_KEYS = new Set([
+  "farm_seed",
+  "farm_grain",
+  "mill_flour",
+  "farm_vegetables",
+  "dairy_milk",
+  "pasture_meat",
+  "farm_eggs",
+  "sheep_wool",
+  "farm_manure",
+  "stable_feed",
+  "stable_water",
+  "farmstead_project",
+]);
+
 const STARTING_SHOP_STOCK = {
   smithy: [
     "iron_mace",
@@ -593,40 +622,37 @@ export function createFoundingStockpiles(runId) {
   return createVillageStockpiles(runId)
     .filter((stockpile) => FOUNDING_STOCKPILE_KEYS.has(stockpile.key))
     .map((stockpile) => {
-      if (stockpile.key === "hunting_bows")
-        return foundingHuntingEquipment(runId, stockpile);
-      if (["inn_meals", "inn_fish"].includes(stockpile.key)) {
-        const position =
-          stockpile.key === "inn_meals" ? { x: -14, y: 18 } : { x: -15, y: 19 };
-        return {
-          ...stockpile,
-          quantity: stockpile.key === "inn_meals" ? 30 : stockpile.quantity,
-          ...(stockpile.key === "inn_meals"
-            ? { threshold: 40, capacity: 60 }
-            : {}),
-          position,
-          containerId: namedUuid(
-            runId,
-            `village-object:${stockpile.containerKind}:${position.x},${position.y}`,
-          ),
-        };
-      }
+      if (FOUNDING_CAMP_STORE_KEYS.has(stockpile.key))
+        return foundingStagingStockpile(runId, stockpile, "camp", {
+          x: -9,
+          y: 16,
+        });
+      if (FOUNDING_FARM_STORE_KEYS.has(stockpile.key))
+        return foundingStagingStockpile(runId, stockpile, "farm", {
+          x: -4,
+          y: 16,
+        });
       return stockpile;
     });
 }
 
-function foundingHuntingEquipment(runId, stockpile) {
-  const position = { x: -16, y: 18 };
+function foundingStagingQuantity(stockpile) {
+  if (stockpile.key === "hunting_bows") return 2;
+  if (stockpile.key === "inn_meals") return 30;
+  return stockpile.quantity;
+}
+
+function foundingStagingStockpile(runId, stockpile, storeKey, position) {
   return {
     ...stockpile,
-    name: "Founding hunting bows and arrow bundles",
-    quantity: 2,
+    ...(stockpile.key === "hunting_bows"
+      ? { name: "Founding hunting bows and arrow bundles" }
+      : {}),
+    quantity: foundingStagingQuantity(stockpile),
+    ...(stockpile.key === "inn_meals" ? { threshold: 40, capacity: 60 } : {}),
     position,
-    containerKind: "fixture",
-    containerId: namedUuid(
-      runId,
-      `village-object:fixture:${position.x},${position.y}`,
-    ),
+    containerKind: "cart",
+    containerId: namedUuid(runId, `founding-${storeKey}-store`),
   };
 }
 

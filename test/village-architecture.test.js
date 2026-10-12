@@ -23,7 +23,10 @@ import {
   specialistFacilityPlan,
   upgradeMissingHouseExits,
 } from "../src/village-architecture.js";
-import { foundingFacilityPlan } from "../src/village-development.js";
+import {
+  foundingFacilityPlan,
+  masterPlanReservationSites,
+} from "../src/village-development.js";
 import {
   boundaryBuildProfile,
   treeWoodYield,
@@ -328,6 +331,50 @@ test("R1 the architect scouts and names all three founding family homes", () => 
         field.barnSiteKey === "farmstead",
     ),
   );
+});
+
+function rectanglesOverlap(left, right) {
+  return (
+    left.x < right.x + (right.w ?? right.width) &&
+    right.x < left.x + (left.w ?? left.width) &&
+    left.y < right.y + (right.h ?? right.height) &&
+    right.y < left.y + (left.h ?? left.height)
+  );
+}
+
+test("R1 the opening farm core never overlaps its fields or family homes", () => {
+  const state = newRogueRun(architectureInput);
+  applyRogueTurn(state, { kind: "wait" });
+  const sites = state.village.development.constructionSites,
+    farm = sites.find((site) => site.key === "farmstead"),
+    pasture = farm.enclosures.find((site) => !site.purpose),
+    fields = farm.enclosures.filter((site) => site.purpose === "field"),
+    homes = sites.filter((site) => site.key.startsWith("founder_house_"));
+  assert.ok(fields.every((field) => !rectanglesOverlap(farm, field)));
+  assert.ok(fields.every((field) => !rectanglesOverlap(pasture, field)));
+  assert.ok(
+    homes.every((home) =>
+      [farm, pasture, ...fields].every(
+        (section) => !rectanglesOverlap(home, section),
+      ),
+    ),
+  );
+});
+
+test("R1 the master plan reserves every named use before work begins", () => {
+  const state = newRogueRun(architectureInput),
+    reservations = masterPlanReservationSites(state);
+  for (let left = 0; left < reservations.length; left += 1)
+    for (let right = left + 1; right < reservations.length; right += 1)
+      if (
+        reservations[left].parentFacilityKey !== reservations[right].key &&
+        reservations[right].parentFacilityKey !== reservations[left].key
+      )
+        assert.equal(
+          rectanglesOverlap(reservations[left], reservations[right]),
+          false,
+          `${reservations[left].key} overlaps ${reservations[right].key}`,
+        );
 });
 
 test("R1 regional terrain still receives all three opening farmhouses", () => {

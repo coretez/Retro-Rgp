@@ -1149,17 +1149,21 @@ function fieldCandidates(template) {
   );
 }
 
-export function terrainAwareFoundingFields(seed, mode, regionalSite) {
-  if (mode !== "regional_v3")
-    return FOUNDING_FIELD_ENCLOSURES.map((area) => ({ ...area }));
+export function terrainAwareFoundingFields(
+  seed,
+  mode,
+  regionalSite,
+  reservedSites = [],
+) {
   const selected = [];
   for (const template of FOUNDING_FIELD_ENCLOSURES) {
     const boundary = fieldCandidates(template).find(
       (candidate) =>
-        fieldDoesNotOverlap(candidate, selected) &&
-        fieldCells(candidate).every((position) =>
-          fieldCellIsUsable(seed, mode, regionalSite.origin, position),
-        ),
+        fieldDoesNotOverlap(candidate, [...reservedSites, ...selected]) &&
+        (mode !== "regional_v3" ||
+          fieldCells(candidate).every((position) =>
+            fieldCellIsUsable(seed, mode, regionalSite.origin, position),
+          )),
     );
     selected.push(boundary ?? structuredClone(template));
   }
@@ -1714,6 +1718,20 @@ function facilityDistrict(districts, plan) {
   );
 }
 
+function plannedFacilityAreas(plan) {
+  return (plan.enclosures ?? [])
+    .filter((area) => area.purpose !== "field")
+    .map((area) => structuredClone(area));
+}
+
+function plannedFacilitySite(plan) {
+  const door = plan.door ?? {
+    x: plan.x + Math.floor(plan.w / 2),
+    y: plan.y + plan.h - 1,
+  };
+  return { x: plan.x, y: plan.y, w: plan.w, h: plan.h, door: { ...door } };
+}
+
 function plannedFacility(key, plan, districts, phase) {
   const rule = FACILITY_PLANNING_RULES[key] ?? {};
   return {
@@ -1738,18 +1756,8 @@ function plannedFacility(key, plan, districts, phase) {
         }
       : null,
     status: key === "lumber_yard" ? "planned" : "future",
-    site: {
-      x: plan.x,
-      y: plan.y,
-      w: plan.w,
-      h: plan.h,
-      door: {
-        ...(plan.door ?? {
-          x: plan.x + Math.floor(plan.w / 2),
-          y: plan.y + plan.h - 1,
-        }),
-      },
-    },
+    reservedAreas: plannedFacilityAreas(plan),
+    site: plannedFacilitySite(plan),
   };
 }
 
@@ -1765,11 +1773,73 @@ function foundingFacilityLayout(runId) {
     ),
     cemetery = plannedFacility(
       "civic_cemetery",
-      { name: "Founders' cemetery", x: 28, y: 36, w: 10, h: 6 },
+      { name: "Founders' cemetery", x: 48, y: 30, w: 10, h: 6 },
       districts,
       "civic",
     );
   return { districts, facilities: [...founding, ...specialist, cemetery] };
+}
+
+function foundingFieldReservations(layout) {
+  const facilities = layout.facilities.map((facility) => ({
+      ...facility.site,
+      clearance: facility.phase === "specialist" ? 3 : 2,
+    })),
+    lots = FOUNDER_HOUSE_PLOTS.map((lot) => ({
+      ...lot,
+      w: 14,
+      h: 10,
+      clearance: 1,
+    })),
+    enclosures = layout.facilities.flatMap((facility) =>
+      facility.reservedAreas.map((area) => ({ ...area, clearance: 1 })),
+    );
+  return [...facilities, ...enclosures, ...lots];
+}
+
+function plannedFacilityReservation(facility) {
+  return {
+    key: facility.key,
+    ...structuredClone(facility.site),
+    clearance: facility.phase === "specialist" ? 3 : 2,
+  };
+}
+
+function plannedHouseReservation(lot) {
+  return {
+    key: `founder_house_${lot.householdKey}`,
+    ...structuredClone(lot),
+    w: 14,
+    h: 10,
+    clearance: 1,
+  };
+}
+
+export function masterPlanReservationSites(state, candidateKey = null) {
+  const plan = state.village.development?.masterPlan;
+  if (!plan) return [];
+  const excluded = new Set([candidateKey]);
+  if (candidateKey === "farmstead") {
+    for (const field of plan.fieldBoundaries ?? []) excluded.add(field.key);
+    excluded.add(FARMSTEAD_PASTURE.key);
+  }
+  return [
+    ...(plan.plannedFacilities ?? []).map(plannedFacilityReservation),
+    ...(plan.plannedFacilities ?? []).flatMap((facility) =>
+      (facility.reservedAreas ?? []).map((area) => ({
+        ...structuredClone(area),
+        parentFacilityKey: facility.key,
+        clearance: area.clearance ?? 1,
+      })),
+    ),
+    ...(plan.householdLots ?? []).map(plannedHouseReservation),
+    ...(plan.fieldBoundaries ?? []).map((field) => ({
+      ...structuredClone(field),
+      door: { ...field.gate },
+    })),
+  ].filter(
+    (site) => !excluded.has(site.key) && !excluded.has(site.parentFacilityKey),
+  );
 }
 
 function siteInsideDistrict(site, district) {
@@ -1914,7 +1984,7 @@ function masterPlanSpatialReservations(layout, householdLots) {
       { key: "market_street", x: -1, y: 10, w: 3, h: 54 },
       { key: "civic_service_lane", x: 0, y: 38, w: 44, h: 2 },
       { key: "common_kitchen_lane", x: 7, y: 10, w: 2, h: 16 },
-      { key: "food_processing_lane", x: -1, y: 38, w: 18, h: 2 },
+      { key: "food_processing_lane", x: -1, y: 38, w: 28, h: 2 },
       { key: "inn_guest_lane", x: 17, y: 38, w: 2, h: 17 },
       { key: "industrial_haul_lane", x: 24, y: 10, w: 2, h: 13 },
       { key: "east_defense_lane", x: 58, y: 8, w: 2, h: 22 },
@@ -2144,12 +2214,13 @@ export function createFoundingMasterPlan(runId, seed, worldGeneration) {
   const surveyHub = worldGeneration?.startsWith("regional_")
     ? regionalSite.hub
     : { x: 0, y: 11 };
-  const fieldBoundaries = terrainAwareFoundingFields(
+  const layout = foundingFacilityLayout(runId),
+    fieldBoundaries = terrainAwareFoundingFields(
       seed,
       worldGeneration,
       regionalSite,
+      foundingFieldReservations(layout),
     ),
-    layout = foundingFacilityLayout(runId),
     surveyedSources = regionalSourceCatalog(surveyHub, seed, worldGeneration);
   return {
     id: namedUuid(runId, "village-master-plan:founding"),
@@ -3300,9 +3371,7 @@ function villagePriorities(state) {
             : 110,
       `${housedResidents}/${residents} residents have roofed household housing with beds`,
       founding
-        ? [
-            ...(foodCritical ? ["one_day_food_reserve"] : []),
-          ]
+        ? [...(foodCritical ? ["one_day_food_reserve"] : [])]
         : hasYard
           ? []
           : ["lumber_yard"],

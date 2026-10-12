@@ -1,6 +1,6 @@
 import { definitionId, namedUuid } from "./identity.js";
 
-export const STORAGE_SCHEMA_VERSION = 6;
+export const STORAGE_SCHEMA_VERSION = 7;
 export const DEFAULT_CELL_ALLOWANCE = 10;
 
 const ALL_STORAGE_TIERS = [
@@ -155,16 +155,19 @@ const STORAGE_AREA_PLANS = [
     stockpileKeys: ["lumber_camp_logs", "lumber_yard_project"],
     area: { x: -56, y: 1, width: 22, height: 8 },
     tier: "ground",
-    protection: "outdoor",
+    protection: "covered",
     stackSlots: 1,
   },
   {
     key: "camp-store",
-    designation: "founding camp store",
+    designation: "roadside founding supply store",
     stockpileKeys: [
       "inn_meals",
       "inn_fish",
       "wild_forage",
+      "hunting_bows",
+      "netting_fiber",
+      "fishing_nets",
       "founding_axes",
       "founding_saws",
       "founding_pickaxes",
@@ -172,13 +175,15 @@ const STORAGE_AREA_PLANS = [
       "housing_project",
     ],
     area: { x: -9, y: 14, width: 7, height: 7 },
-    tier: "covered_floor",
+    cellAllowance: 40,
+    tier: "container",
     protection: "covered",
-    stackSlots: 1,
+    stackSlots: 4,
+    requiresRoadCells: true,
   },
   {
     key: "farm-store",
-    designation: "farm stores",
+    designation: "roadside farm supply store",
     stockpileKeys: [
       "farmstead_project",
       "farm_seed",
@@ -191,11 +196,14 @@ const STORAGE_AREA_PLANS = [
       "farm_eggs",
       "sheep_wool",
       "farm_manure",
+      "stable_water",
     ],
     area: { x: -57, y: 30, width: 13, height: 2 },
-    tier: "granary",
-    protection: "dry",
-    stackSlots: 1,
+    cellAllowance: 60,
+    tier: "container",
+    protection: "outdoor",
+    stackSlots: 6,
+    requiresRoadCells: true,
   },
   {
     key: "trade-store",
@@ -289,7 +297,14 @@ function storageBlockedPositions(state) {
       blockFootprint(blocked, primitive);
   for (const work of plannedConstructionWork(state))
     blockConstructionWork(blocked, work);
-  for (const field of state.village.development?.masterPlan?.fieldBoundaries ?? [])
+  for (const site of state.village.development?.constructionSites ?? [])
+    blockFootprint(blocked, {
+      position: { x: site.x, y: site.y },
+      width: site.w,
+      height: site.h,
+    });
+  for (const field of state.village.development?.masterPlan?.fieldBoundaries ??
+    [])
     blockFootprint(blocked, expandedFieldArea(field));
   return blocked;
 }
@@ -389,11 +404,42 @@ function storagePlan(state, stockpiles) {
     allowContainerCell: true,
     stackSlots: storageStackCount(stockpiles, "capacity"),
   };
+  if (["camp-store", "farm-store"].includes(plan.key)) {
+    const protectedPlan = protectedStoragePlan(state, plan);
+    if (protectedPlan) return protectedPlan;
+  }
   if (plan.key !== "farm-store") return plan;
   return farmBarnStoragePlan(state, {
     ...plan,
     area: temporaryFarmStoreArea(state, plan.area),
   });
+}
+
+function protectedStoragePlan(state, fallback) {
+  const facilityKey = ["granary", "storehouse"].find((key) =>
+      state.village.facilities.includes(key),
+    ),
+    building = state.village.buildings?.find(
+      (candidate) => candidate.key === facilityKey,
+    );
+  if (!building) return null;
+  return {
+    ...fallback,
+    designation: `${building.name} protected storage`,
+    area: {
+      x: building.x + 2,
+      y: building.y + 2,
+      width: Math.max(1, building.w - 4),
+      height: Math.max(1, building.h - 4),
+    },
+    cellAllowance: 60,
+    tier: "granary",
+    protection: "dry",
+    stackSlots: 6,
+    requiresRoadCells: false,
+    allowOwnStructureCells: true,
+    structureKey: building.key,
+  };
 }
 
 function farmBarnStoragePlan(state, fallback) {
@@ -407,6 +453,8 @@ function farmBarnStoragePlan(state, fallback) {
     designation: "farmstead food and fodder barn",
     area: { ...building.storageArea },
     cellAllowance: 40,
+    tier: "granary",
+    protection: "dry",
     stackSlots: 4,
     allowOwnStructureCells: true,
     structureKey: "farmstead",
@@ -480,43 +528,80 @@ const STORAGE_TERRAIN_BLOCKED = new Set([
   "village_building",
   "village_construction",
   "village_fence",
+  "village_furniture",
 ]);
 
 function storageAreaCandidates(area) {
   const candidates = [{ ...area }];
-  for (let distance = 2; distance <= 96; distance += 2)
+  for (let distance = 1; distance <= 96; distance += 1)
     for (const [dx, dy] of [
-      [distance, 0], [-distance, 0], [0, distance], [0, -distance],
-      [distance, distance], [-distance, distance],
-      [distance, -distance], [-distance, -distance],
-    ]) candidates.push({ ...area, x: area.x + dx, y: area.y + dy });
+      [distance, 0],
+      [-distance, 0],
+      [0, distance],
+      [0, -distance],
+      [distance, distance],
+      [-distance, distance],
+      [distance, -distance],
+      [-distance, -distance],
+    ])
+      candidates.push({ ...area, x: area.x + dx, y: area.y + dy });
   return candidates;
 }
 
-function storagePositionOpen(position, occupied, terrainAt) {
+function storagePositionOpen(position, occupied, terrainAt, plan = null) {
   if (occupied.has(positionKey(position))) return false;
-  return !terrainAt || !STORAGE_TERRAIN_BLOCKED.has(terrainAt(position));
+  if (!terrainAt) return true;
+  const terrain = terrainAt(position);
+  if (
+    (plan?.allowOwnStructureCells || plan?.allowContainerCell) &&
+    ["village_building", "village_furniture"].includes(terrain)
+  )
+    return true;
+  return !STORAGE_TERRAIN_BLOCKED.has(terrain);
 }
 
 function storagePlanAtValidTerrain(plan, count, occupied, terrainAt) {
   if (!terrainAt) return plan;
-  return storageAreaCandidates(plan.area)
-    .map((area) => ({ ...plan, area }))
-    .find((candidate) =>
-      plannedPositions(candidate)
-        .slice(0, count)
-        .every((position) => storagePositionOpen(position, occupied, terrainAt)),
-    ) ?? plan;
+  const candidates = storageAreaCandidates(plan.area).map((area) => ({
+    ...plan,
+    area,
+  }));
+  return (
+    candidates.find((candidate) =>
+      storageCandidateValid(candidate, count, occupied, terrainAt, true),
+    ) ??
+    candidates.find((candidate) =>
+      storageCandidateValid(candidate, count, occupied, terrainAt, false),
+    ) ??
+    plan
+  );
+}
+
+function storageCandidateValid(plan, count, occupied, terrainAt, enforceRoad) {
+  const positions = plannedPositions(plan)
+    .filter((position) =>
+      storagePositionOpen(position, occupied, terrainAt, plan),
+    )
+    .slice(0, count);
+  if (positions.length < count) return false;
+  if (!enforceRoad || !plan.requiresRoadCells) return true;
+  return positions.every((position) => terrainAt(position) === "road_dirt");
 }
 
 function zoneCells(
-  runId, containerId, plan, count, allowance, occupied, terrainAt,
+  runId,
+  containerId,
+  plan,
+  count,
+  allowance,
+  occupied,
+  terrainAt,
 ) {
   const cells = [];
   for (const position of plannedPositions(plan)) {
     if (cells.length >= count) break;
     const key = positionKey(position);
-    if (!storagePositionOpen(position, occupied, terrainAt)) continue;
+    if (!storagePositionOpen(position, occupied, terrainAt, plan)) continue;
     occupied.add(key);
     cells.push({
       id: namedUuid(runId, `storage-cell:${containerId}:${cells.length}`),
@@ -556,17 +641,23 @@ function defaultZone(state, containerId, stockpiles, occupied, terrainAt) {
       storageStackCount(stockpiles, "capacity") / (plan.stackSlots ?? 1),
     ),
     count = Math.max(1, volumeCells, stackCells);
-  plan = storagePlanAtValidTerrain(plan, count, occupied, terrainAt);
-  const anchor = { x: plan.area.x, y: plan.area.y };
   if (plan.allowOwnStructureCells)
     for (const position of plannedPositions(plan))
       occupied.delete(positionKey(position));
-  if (plan.allowContainerCell && !hasForeignStructure(state, anchor))
+  if (plan.allowContainerCell && !hasForeignStructure(state, plan.area))
     occupied.delete(positionKey(stockpiles[0].position));
+  plan = storagePlanAtValidTerrain(plan, count, occupied, terrainAt);
+  const anchor = { x: plan.area.x, y: plan.area.y };
   return {
     ...storageZonePolicy(state, containerId, stockpiles, plan, anchor),
     cells: zoneCells(
-      state.id, containerId, plan, count, allowance, occupied, terrainAt,
+      state.id,
+      containerId,
+      plan,
+      count,
+      allowance,
+      occupied,
+      terrainAt,
     ),
   };
 }
@@ -839,7 +930,11 @@ function buildLoosePiles(state, zones, overflow, occupied, current = []) {
 }
 
 function reconcileStorageZones(
-  state, groups, occupied, upgradeFilters, terrainAt,
+  state,
+  groups,
+  occupied,
+  upgradeFilters,
+  terrainAt,
 ) {
   return groups.map(([containerId, stockpiles]) =>
     mergeZone(
@@ -869,7 +964,18 @@ function allocateStorageZones(state, zones, reservations) {
   );
 }
 
+function placeInitialStockpilesInZones(state, zones) {
+  for (const zone of zones) {
+    const position = zone.cells[0];
+    if (!position) continue;
+    for (const stockpile of state.village.stockpiles)
+      if (stockpile.containerId === zone.containerId)
+        stockpile.position = { x: position.x, y: position.y };
+  }
+}
+
 export function reconcileVillageStorage(state, terrainAt = null) {
+  const initializing = !state.village.storage;
   state.village.storage ??= { version: STORAGE_SCHEMA_VERSION, zones: [] };
   const upgradeFilters =
       (state.village.storage.version ?? 0) < STORAGE_SCHEMA_VERSION,
@@ -877,9 +983,14 @@ export function reconcileVillageStorage(state, terrainAt = null) {
     reservations = incomingReservations(state),
     occupied = storageBlockedPositions(state),
     zones = reconcileStorageZones(
-      state, groups, occupied, upgradeFilters, terrainAt,
-    ),
-    allocated = allocateStorageZones(state, zones, reservations);
+      state,
+      groups,
+      occupied,
+      upgradeFilters,
+      terrainAt,
+    );
+  if (initializing) placeInitialStockpilesInZones(state, zones);
+  const allocated = allocateStorageZones(state, zones, reservations);
   const overflow = allocated.flatMap((entry) => entry.overflow),
     loosePiles = buildLoosePiles(
       state,

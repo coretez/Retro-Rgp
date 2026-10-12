@@ -165,6 +165,71 @@ test("R4 regional storage remains terrain-valid after save and load", () => {
   );
 });
 
+test("R4 founding supplies share two road staging stores outside every lot", () => {
+  const run = newRogueRun({
+      ...input,
+      seed: "road-stage-proof-2026-10-12",
+      worldGeneration: "regional_v3",
+      scenario: "founding",
+    }),
+    storage = run.village.storage,
+    staged = storage.zones.filter((zone) =>
+      ["camp-store", "farm-store"].includes(zone.planKey),
+    ),
+    sites = run.village.development.constructionSites;
+  assert.deepEqual(staged.map((zone) => zone.planKey).sort(), [
+    "camp-store",
+    "farm-store",
+  ]);
+  assert.ok(
+    staged.every((zone) =>
+      zone.cells.every((cell) => villageNpcTerrain(run, cell) === "road_dirt"),
+    ),
+  );
+  assert.ok(
+    staged.every((zone) =>
+      zone.cells.every((cell) =>
+        sites.every(
+          (site) =>
+            cell.x < site.x ||
+            cell.x >= site.x + site.w ||
+            cell.y < site.y ||
+            cell.y >= site.y + site.h,
+        ),
+      ),
+    ),
+  );
+});
+
+test("R4 roadside stores migrate inside a completed protected granary", () => {
+  const run = newRogueRun({ ...input, scenario: "founding" });
+  run.village.facilities.push("granary");
+  run.village.buildings.push({
+    key: "granary",
+    name: "Stonebridge granary and store",
+    x: 60,
+    y: 60,
+    w: 14,
+    h: 10,
+  });
+  const storage = reconcileVillageStorage(run),
+    zones = storage.zones.filter((zone) =>
+      ["camp-store", "farm-store"].includes(zone.planKey),
+    );
+  assert.ok(zones.length > 0);
+  assert.ok(
+    zones.every(
+      (zone) =>
+        zone.structureKey === "granary" &&
+        zone.tier === "granary" &&
+        zone.protection === "dry" &&
+        zone.cells.every(
+          (cell) => cell.x >= 62 && cell.x < 72 && cell.y >= 62 && cell.y < 68,
+        ),
+    ),
+  );
+});
+
 test("R4 storage filters reject disallowed goods into visible overflow", () => {
   const run = state(),
     meals = run.village.stockpiles.find((item) => item.key === "inn_meals"),
@@ -359,7 +424,7 @@ test("R8.1 ground, covered floor, racks, and bins keep distinct policies", () =>
     ),
     [
       ["ground", 1],
-      ["covered_floor", 1],
+      ["container", 4],
       ["rack", 4],
       ["bin", 1],
     ],
@@ -475,7 +540,7 @@ test("R8.1 hauling chooses space before travel and travel breaks ties", () => {
     first = zone.cells[0],
     destination = storageDestinationFor(run, grain.id, first);
   assert.notEqual(destination.cellId, first.id);
-  assert.equal(destination.remainingCapacity, 20);
+  assert.equal(destination.remainingCapacity, 29);
   grain.quantity = 0;
   grain.storedQuantity = 0;
   storage = reconcileVillageStorage(run);

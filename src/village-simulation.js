@@ -17,6 +17,7 @@ import {
   DEVELOPMENT_JOB_TEMPLATES,
   ensureFoundingFacilityStructure,
   foundingFacilityPlan,
+  masterPlanReservationSites,
   registerVillageArchitectPlan,
   updateVillageDevelopment,
 } from "./village-development.js";
@@ -6073,10 +6074,7 @@ function facilityProductionTemplate(state, template, planDetails = {}) {
   if (!building || !bench)
     return {
       ...template,
-      targetPosition: {
-        x: template.targetPosition.x + (planDetails.parallelSlot ?? 0),
-        y: template.targetPosition.y,
-      },
+      targetPosition: foundingSawPosition(planDetails.parallelSlot ?? 0),
     };
   return {
     ...template,
@@ -6086,6 +6084,10 @@ function facilityProductionTemplate(state, template, planDetails = {}) {
     },
     accessPosition: { ...building.door },
   };
+}
+
+function foundingSawPosition(parallelSlot) {
+  return { x: -18 + parallelSlot, y: 19 };
 }
 
 function fishingHutProductionTemplate(state, template) {
@@ -6728,12 +6730,20 @@ function installedFishingDuty(state, fisher, context) {
 }
 
 function ensureRegionalFishingJetty(state, duty) {
-  if (geologyPlanContext(state).site.mode !== "regional_v3" || !duty) return;
-  if (
-    state.village.fixtures.some((fixture) => fixture.role === "fishing_jetty")
-  )
-    return;
-  state.village.fixtures.push({
+  if (geologyPlanContext(state).site.mode !== "regional_v3" || !duty)
+    return false;
+  let jetty = state.village.fixtures.find(
+    (fixture) => fixture.role === "fishing_jetty",
+  );
+  if (!jetty) {
+    jetty = regionalFishingJetty(state, duty);
+    state.village.fixtures.push(jetty);
+  }
+  return syncFishingCatchStore(state, jetty);
+}
+
+function regionalFishingJetty(state, duty) {
+  return {
     id: namedUuid(state.id, "regional-fishing-jetty"),
     definitionId: definitionId("village-fixture", "fishing-jetty"),
     entityType: "world-object",
@@ -6748,7 +6758,22 @@ function ensureRegionalFishingJetty(state, duty) {
     walkable: true,
     waterCell: true,
     bankPosition: { ...duty.fishingPosition },
+  };
+}
+
+function syncFishingCatchStore(state, jetty) {
+  const catchStore = stockpileByKey(state, "river_catch");
+  if (!catchStore) return false;
+  const changed =
+    catchStore.containerId !== jetty.id ||
+    catchStore.position.x !== jetty.bankPosition.x ||
+    catchStore.position.y !== jetty.bankPosition.y;
+  Object.assign(catchStore, {
+    position: { ...jetty.bankPosition },
+    containerKind: "fixture",
+    containerId: jetty.id,
   });
+  return changed;
 }
 
 function bestFishingSite(state, fisher, context) {
@@ -6997,7 +7022,8 @@ function postResidentEconomyJobs(state, context, events) {
       "cook_beef_stew",
       "cook_egg_meal",
     ];
-  ensureRegionalFishingJetty(state, fishingDuty);
+  if (ensureRegionalFishingJetty(state, fishingDuty))
+    reconcileVillageStorage(state, context.terrainAt);
   cancelUnreachableFishing(state, fishingDuty, events);
   for (const sourceTemplate of RESIDENT_JOB_TEMPLATES) {
     const template = foundingFieldBowTemplate(state, sourceTemplate);
@@ -7505,7 +7531,10 @@ function searchConstructionSite(state, development, preferred, context) {
         ? preferred
         : { ...preferred, enclosures: [] },
     result = findConstructionSite(template, context.terrainAt, {
-      reservedSites: development.constructionSites,
+      reservedSites: [
+        ...development.constructionSites,
+        ...masterPlanReservationSites(state, preferred.key),
+      ],
       maxRadius: preferred.key.startsWith("founder_house_") ? 64 : undefined,
       fixedEnclosurePurposes: preferred.key === "farmstead" ? ["field"] : [],
       candidateFilter: preferred.requiresTownAccess
@@ -7611,7 +7640,12 @@ function replanFieldBoundary(state, boundary, reserved, context, events) {
 
 function repairFoundingFieldLayout(state, context, events) {
   const plan = state.village.development.masterPlan,
-    reserved = [...state.village.development.constructionSites];
+    reserved = [
+      ...state.village.development.constructionSites,
+      ...masterPlanReservationSites(state).filter(
+        (site) => !plan.fieldBoundaries.some((field) => field.key === site.key),
+      ),
+    ];
   plan.fieldBoundaries = plan.fieldBoundaries.map((boundary) => {
     const valid = assessConstructionSite(
         fieldSite(boundary),
@@ -8442,6 +8476,7 @@ function postFoundingCampfireJob(state, template, context, events) {
     return null;
   return postProductionJob(state, template, context, events, {
     reason: "founding_survival_camp",
+    foundingSupplyCritical: true,
   });
 }
 
