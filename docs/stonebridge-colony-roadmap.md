@@ -7461,3 +7461,45 @@ continuity and construction throughput but remains under multi-day validation.
 R6 remains unproven. R8 remains in progress behind permanent housing, complete
 farm infrastructure, quarry, specialist buildings, defense, and final visual
 acceptance.
+
+## Validation checkpoint 180 / armed founders and physical hunting return
+
+Founders no longer arrive as unequipped castaways. A clean founding state now
+includes two shared shortbows with arrow bundles in a finite four-slot equipment
+rack beside the supply carts. The equipment is reserved and returned like the
+existing axes, saws, pickaxes, and hammers. If those bows are lost before the
+forge exists, a capable carpenter can shape a field replacement from two units
+of building lumber and one bundle of netting fiber; the permanent forge remains
+the proper later production route.
+
+The local hunt loop now obeys the same physical-output rule as regional hunts
+and quarry expeditions. Killing a deer changes the animal state at the hunting
+site, the hunter visibly carries the butchered meat back, camp storage remains
+unchanged during that journey, and only arrival creates the conserved food
+batch in bounded storage. The hunter then returns the reusable bow before taking
+another job. This closes the former shortcut in which local venison could appear
+at camp at the instant of the kill.
+
+Clean visible run `29146705-6ebd-4663-b267-9686ea7dfdf9`, seed
+`armed-founders-physical-hunt-2026-10-12`, proved the complete sequence at
+Observe 16x. Niko Brand checked out one of two founding bows and hunted a deer
+at `(-52,31)`. At tick 279 the deer was dead, stored meat remained zero, the
+hunt was in `return_output`, and Niko's displayed action was `Carrying butchered
+meat to storage`. At tick 312 bounded meat storage held four units while he was
+returning the bow; by tick 327 both bows were back in their rack and the hunt
+was complete. He subsequently joined field and construction work. During the
+same opening, other founders fished and hauled river catch, tended both fields,
+felled trees, sawed lumber outdoors, directed housing, and delivered material
+to the first family home. The focused five-test hunting and founding suite
+passes, the strict audit covers 2,157 functions with 141 documented template
+exemptions and zero functions over thirty lines, and `git diff --check` is
+clean.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 now
+has visible proof for fishing and hunting acquisition plus physical hauling and
+bounded storage, but remains in progress until crops naturally grow, harvest,
+store, cook, and sustain the settlement across multiple days. R5 has continued
+first-day work throughput but remains under multi-day scheduler validation. R6
+remains unproven. R8 remains in progress behind completed permanent housing,
+farm infrastructure, quarry, specialist buildings, defense, and final visual
+acceptance.

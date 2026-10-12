@@ -2105,10 +2105,12 @@ function assignJob(state, job, terrainAt, events) {
   reserveAssignment(state, job, choice, events);
 }
 
-function activateJob(state, job, events) {
-  transitionJob(job, "active", state.tick);
-  const actor = villageWorkActor(state, job.assignedActorId);
-  const action = {
+function jobStartingAction(job) {
+  if (job.jobType === "craft_hunting_bow")
+    return job.plan?.fieldCraft
+      ? "Walking to shape a replacement hunting bow"
+      : "Walking to the forge";
+  return {
     deliver_goods: "Walking to the stable supply cart",
     patrol_route: "Patrolling the market road",
     investigate_crime: "Walking to reported property damage",
@@ -2130,7 +2132,12 @@ function activateJob(state, job, events) {
     worship: "Walking to the road altar",
     govern_village: "Walking to the founding strategy table",
   }[job.jobType];
-  actor.currentAction = action ?? job.name;
+}
+
+function activateJob(state, job, events) {
+  transitionJob(job, "active", state.tick);
+  const actor = villageWorkActor(state, job.assignedActorId);
+  actor.currentAction = jobStartingAction(job) ?? job.name;
   actor.actionReason = job.reason;
   if (actor.actorKind === "companion") actor.objective = job.jobType;
   if (GUARD_JOB_TYPES.has(job.jobType)) actor.objective = "protect_town";
@@ -3402,14 +3409,17 @@ function emitProductionCompleted(state, job, output, events) {
 
 function remoteOutputJob(job) {
   return (
-    (job.plan?.geologyAction === "quarry" || job.plan?.remoteHarvest) &&
+    (job.plan?.geologyAction === "quarry" ||
+      job.plan?.remoteHarvest ||
+      job.plan?.animalEffect === "hunt") &&
     job.production?.output
   );
 }
 
 function applyRemoteHarvestEffect(state, job, events) {
-  if (job.plan?.remoteHarvest !== "animal" || job.plan.remoteHarvestApplied)
-    return;
+  const animalHarvest =
+    job.plan?.remoteHarvest === "animal" || job.plan?.animalEffect === "hunt";
+  if (!animalHarvest || job.plan.remoteHarvestApplied) return;
   finishAnimalProduction(state, job, events);
   job.plan.remoteHarvestApplied = true;
 }
@@ -6088,6 +6098,25 @@ function fishingHutProductionTemplate(state, template) {
   };
 }
 
+function foundingFieldBowTemplate(state, template) {
+  if (template.jobType !== "craft_hunting_bow") return template;
+  if (state.village.scenario !== "founding") return template;
+  if (state.village.facilities.includes("forge")) return template;
+  return {
+    ...template,
+    name: "Shape a field hunting bow",
+    capability: "forestry",
+    skill: "carpentry",
+    targetPosition: { x: -16, y: 18 },
+    requirements: [
+      { key: "lumber_yard_lumber", quantity: 2, consume: true },
+      { key: "netting_fiber", quantity: 1, consume: true },
+    ],
+    requiredFacility: null,
+    fieldCraft: true,
+  };
+}
+
 function pastureContainsAnimal(pasture, animal) {
   return (
     animal.position.x >= pasture.x &&
@@ -6970,7 +6999,8 @@ function postResidentEconomyJobs(state, context, events) {
     ];
   ensureRegionalFishingJetty(state, fishingDuty);
   cancelUnreachableFishing(state, fishingDuty, events);
-  for (const template of RESIDENT_JOB_TEMPLATES) {
+  for (const sourceTemplate of RESIDENT_JOB_TEMPLATES) {
+    const template = foundingFieldBowTemplate(state, sourceTemplate);
     if (
       template.requiredFacility &&
       !state.village.facilities.includes(template.requiredFacility)
@@ -6978,6 +7008,7 @@ function postResidentEconomyJobs(state, context, events) {
       continue;
     if (
       FORGE_JOB_TYPES.has(template.jobType) &&
+      template.requiredFacility === "forge" &&
       !forgeOperations &&
       !state.village.buildings.some(
         (building) =>
@@ -7082,6 +7113,7 @@ function postResidentEconomyJobs(state, context, events) {
           : {
               emergencyFoodDuty: foundingCook && foundingMealEmergency(state),
               foodReserveDuty: foundingCook && foodReserveCritical,
+              fieldCraft: Boolean(template.fieldCraft),
             },
       );
       if (productionJob && foundingCook) {

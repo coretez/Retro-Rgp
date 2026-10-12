@@ -379,7 +379,7 @@ test("M-11.1 founding scenario starts ten homeless residents without buildings",
   );
 });
 
-test("R1 founders start a home beside fire and fishing work", () => {
+test("R1 founders start a home beside fire, fishing, and hunting work", () => {
   const state = newRogueRun(input);
   applyRogueTurn(state, { kind: "wait" });
   const open = (jobType) =>
@@ -390,8 +390,8 @@ test("R1 founders start a home beside fire and fishing work", () => {
     );
   assert.ok(open("build_campfire"));
   assert.ok(open("catch_fish"));
+  assert.ok(open("hunt_game"));
   assert.ok(open("build_house"));
-  assert.equal(open("hunt_game"), undefined);
   assert.equal(open("build_lumber_yard"), undefined);
   assert.equal(open("build_farmstead"), undefined);
   assert.equal(open("prepare_meal"), undefined);
@@ -419,7 +419,7 @@ test("R2 bedrolls move clear when construction claims their cells", () => {
 
 test("R4 a reusable hunting bow makes the deer hunt ready", () => {
   const state = newRogueRun(input);
-  stock(state, "hunting_bows").quantity = 1;
+  assert.equal(stock(state, "hunting_bows").quantity, 2);
   applyRogueTurn(state, { kind: "wait" });
   const hunt = state.village.jobs.find(
     (job) => job.jobType === "hunt_game" && job.status !== "cancelled",
@@ -427,6 +427,28 @@ test("R4 a reusable hunting bow makes the deer hunt ready", () => {
   assert.ok(hunt);
   assert.equal(hunt.production.inputs[0].stockpileKey, "hunting_bows");
   assert.equal(hunt.production.inputs[0].consume, false);
+});
+
+test("R4 founders can replace a hunting bow before constructing a forge", () => {
+  const state = newRogueRun(input),
+    bows = stock(state, "hunting_bows");
+  bows.quantity = 0;
+  stock(state, "lumber_yard_lumber").quantity = 2;
+  stock(state, "netting_fiber").quantity = 1;
+
+  applyRogueTurn(state, { kind: "wait" });
+
+  const craft = state.village.jobs.find(
+    (job) => job.jobType === "craft_hunting_bow" && job.status !== "cancelled",
+  );
+  assert.ok(craft);
+  assert.equal(craft.name, "Shape a field hunting bow");
+  assert.equal(craft.plan.fieldCraft, true);
+  assert.deepEqual(
+    craft.production.inputs.map((entry) => entry.stockpileKey).sort(),
+    ["lumber_yard_lumber", "netting_fiber"],
+  );
+  assert.equal(state.village.facilities.includes("forge"), false);
 });
 
 test("R4 loading an unequipped legacy hunt cancels it as not ready", () => {
@@ -439,6 +461,8 @@ test("R4 loading an unequipped legacy hunt cancels it as not ready", () => {
       targetPosition: deer.position,
       plan: { template: "hunt_game" },
     }).job;
+  stock(state, "hunting_bows").quantity = 0;
+  stock(state, "lumber_yard_lumber").quantity = 0;
   applyRogueTurn(state, { kind: "wait" });
   assert.equal(legacy.status, "cancelled");
   assert.equal(legacy.statusReason, "equipment_requirement_changed");

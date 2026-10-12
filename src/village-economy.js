@@ -593,6 +593,8 @@ export function createFoundingStockpiles(runId) {
   return createVillageStockpiles(runId)
     .filter((stockpile) => FOUNDING_STOCKPILE_KEYS.has(stockpile.key))
     .map((stockpile) => {
+      if (stockpile.key === "hunting_bows")
+        return foundingHuntingEquipment(runId, stockpile);
       if (["inn_meals", "inn_fish"].includes(stockpile.key)) {
         const position =
           stockpile.key === "inn_meals" ? { x: -14, y: 18 } : { x: -15, y: 19 };
@@ -611,6 +613,21 @@ export function createFoundingStockpiles(runId) {
       }
       return stockpile;
     });
+}
+
+function foundingHuntingEquipment(runId, stockpile) {
+  const position = { x: -16, y: 18 };
+  return {
+    ...stockpile,
+    name: "Founding hunting bows and arrow bundles",
+    quantity: 2,
+    position,
+    containerKind: "fixture",
+    containerId: namedUuid(
+      runId,
+      `village-object:fixture:${position.x},${position.y}`,
+    ),
+  };
 }
 
 export function stockpileByKey(state, key) {

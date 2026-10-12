@@ -2103,11 +2103,22 @@ test("R4 a skilled hunter turns persistent wild game into traceable meat", () =>
     hunter = resident(state, "fisher"),
     meat = stock(state, "pasture_meat"),
     deerBefore = livingAnimals(state, "deer").length;
+  let sawPhysicalReturn = false;
   meat.quantity = 0;
   stock(state, "hunting_bows").quantity = 1;
   for (let turn = 0; turn < 600; turn += 1) {
     expediteVillageJobs(state, (job) => job.jobType === "hunt_game");
     advance(state);
+    const hunt = state.village.jobs.find(
+      (job) =>
+        job.jobType === "hunt_game" && job.plan?.step === "return_output",
+    );
+    if (hunt && !sawPhysicalReturn) {
+      sawPhysicalReturn = true;
+      assert.equal(meat.quantity, 0);
+      assert.equal(hunter.carriedItem?.itemKind, "meat");
+      assert.equal(livingAnimals(state, "deer").length, deerBefore - 1);
+    }
     if (
       state.village.jobs.some(
         (job) => job.jobType === "hunt_game" && job.status === "completed",
@@ -2115,6 +2126,7 @@ test("R4 a skilled hunter turns persistent wild game into traceable meat", () =>
     )
       break;
   }
+  assert.equal(sawPhysicalReturn, true);
   assert.equal(livingAnimals(state, "deer").length, deerBefore - 1);
   assert.equal(
     state.village.animals.find(
