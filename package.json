@@ -19,6 +19,7 @@
     "audit:village:scheduler": "node scripts/audit-village-simulation.js --scheduler",
     "audit:village:release": "node scripts/audit-village-simulation.js --release",
     "audit:village:full-town": "node scripts/audit-village-simulation.js --full-town --ticks 2400",
+    "audit:village:playbooks": "node scripts/audit-village-playbooks.js",
     "audit:function-lengths": "node scripts/audit-function-lengths.js",
     "audit:visuals": "node scripts/audit-village-visuals.js",
     "format": "prettier --write src scripts test viewer docs README.md CHANGELOG.md LICENSE.md NOTICE.md",

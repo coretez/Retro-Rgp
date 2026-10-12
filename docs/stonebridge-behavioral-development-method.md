@@ -16,6 +16,14 @@ changed.
 Every implementation begins with behavior and ends with watched play. Headless
 runs support this process but never replace it.
 
+## Executable playbook rule
+
+No playbook may contain a prose-only action. Every step names a registered
+command function, and every command function compiles to a runtime executor
+with declared physical inputs and observable outputs. The playbook validator
+must reject unknown commands before a simulation begins. Function existence is
+only the first gate; focused behavioral proof and watched play remain required.
+
 ## The unit of simulation design
 
 The unit of design is a decision episode:

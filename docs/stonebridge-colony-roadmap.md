@@ -7735,3 +7735,35 @@ the loop. R5 has reached day three without starvation or blocked work, but its
 multi-day stability proof remains open. R6 remains unproven. R8 remains in
 progress behind permanent housing, the complete farm and barn, quarry and
 specialist operation, defense construction, and final visual acceptance.
+
+## Architecture checkpoint 186 / executable food playbooks
+
+The food plan is now expressed as five executable playbooks rather than prose:
+emergency forage, river fishing, hunting, the grain cycle, and meal service.
+Together they contain seventeen registered command functions. Every function
+compiles to an existing production, transfer, or life job executor and declares
+its physical input and observable output. `npm run audit:village:playbooks`
+rejects unknown prose actions, missing functions, unsupported runtime jobs,
+incorrect compilation, and missing physical I/O contracts.
+
+Focused behavioral validation passed for emergency forage and reserve shutoff,
+fishing-net construction and increased catch, river harvesting, physical
+hunting and traceable meat, ordered crop preparation/sowing/growth, persisted
+watering, mature crop harvest, fractional field-pile hauling into bounded
+storage, bow construction, and the meal/life executor families. The expanded
+validation exposed and repaired two missing physical objects: the mature-village
+emergency forage basket and shared founders' tool rack now resolve to the exact
+container UUIDs used by their stockpiles instead of bare grass objects.
+
+This checkpoint validates that every current food-playbook step has an actual
+function and executor. It does not yet make the mayor execute playbooks as goal
+graphs. The next implementation gate is the playbook controller: evaluate food
+goals, expand dependencies, post only ready commands, expose blockers and
+rejected alternatives, and advance to the next step after observed completion.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 gains
+the executable food-command foundation but remains open until the playbook
+controller and natural harvest-to-meal loop are visibly proven. R5 remains
+under multi-day no-starvation validation. R6 remains unproven. R8 remains in
+progress behind complete food stability, permanent housing, farm/barn, quarry,
+specialist, defense, and visual gates.

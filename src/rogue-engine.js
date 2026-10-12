@@ -4386,6 +4386,22 @@ const VILLAGE_FURNITURE = [
     description: "A chair drawn close enough for easy conversation.",
   })),
   {
+    x: -15,
+    y: 19,
+    glyph: "u",
+    name: "Emergency forage basket",
+    description:
+      "A covered willow basket keeps gathered berries and edible greens off the ground.",
+  },
+  {
+    x: -16,
+    y: 18,
+    glyph: "r",
+    name: "Founders' tool rack",
+    description:
+      "Axes, saws, pickaxes, and hammers hang from a shared timber rack.",
+  },
+  {
     x: 47,
     y: 4,
     glyph: "A",
