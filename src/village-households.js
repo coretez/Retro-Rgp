@@ -40,27 +40,35 @@ function plannedSleepingObstructions(state, blocked) {
 function sleepingObstructions(state, residentId) {
   const blocked = new Set();
   plannedSleepingObstructions(state, blocked);
-  for (const building of state.village.buildings ?? []) blockArea(blocked, building);
+  for (const building of state.village.buildings ?? [])
+    blockArea(blocked, building);
   for (const fixture of state.village.fixtures ?? [])
     if (fixture.assignedActorId !== residentId) blockArea(blocked, fixture);
   for (const job of state.village.jobs ?? [])
     for (const element of job.plan?.constructionWork?.elements ?? [])
-      if (element.position) blocked.add(`${element.position.x},${element.position.y}`);
+      if (element.position)
+        blocked.add(`${element.position.x},${element.position.y}`);
   return blocked;
 }
 
-function bedrollPositionOpen(position, blocked) {
-  return [0, 1].every((offset) => !blocked.has(`${position.x + offset},${position.y}`));
+function bedrollPositionOpen(position, blocked, terrainAt) {
+  return [0, 1].every((offset) => {
+    const cell = { x: position.x + offset, y: position.y };
+    return (
+      !blocked.has(`${cell.x},${cell.y}`) &&
+      (!terrainAt || terrainAt(cell) === "outdoor_grass")
+    );
+  });
 }
 
-function clearOutdoorBedrollPosition(state, resident, preferred) {
+function clearOutdoorBedrollPosition(state, resident, preferred, terrainAt) {
   const blocked = sleepingObstructions(state, resident.id);
   for (let radius = 0; radius <= 64; radius += 1)
     for (let dy = -radius; dy <= radius; dy += 1)
       for (let dx = -radius; dx <= radius; dx += 1) {
         if (Math.max(Math.abs(dx), Math.abs(dy)) !== radius) continue;
         const position = { x: preferred.x + dx, y: preferred.y + dy };
-        if (bedrollPositionOpen(position, blocked)) return position;
+        if (bedrollPositionOpen(position, blocked, terrainAt)) return position;
       }
   return preferred;
 }
@@ -72,6 +80,19 @@ function workshopBedrollPosition(building, index) {
   };
 }
 
+function terrainSafePioneerPlacement(state, resident, pioneer, terrainAt) {
+  if (!pioneer) return null;
+  return {
+    ...pioneer,
+    position: clearOutdoorBedrollPosition(
+      state,
+      resident,
+      pioneer.position,
+      terrainAt,
+    ),
+  };
+}
+
 function pioneerBedrollPlacement(state, resident) {
   const job = state.village.jobs?.find(
       (candidate) =>
@@ -79,8 +100,10 @@ function pioneerBedrollPlacement(state, resident) {
         candidate.plan?.remoteTravel?.pioneerCamp &&
         !["completed", "cancelled"].includes(candidate.status),
     ),
-    camp = state.village.development?.masterPlan?.regionalContext?.fieldCamps
-      ?.find((candidate) => candidate.id === job?.plan?.regionalFieldCampId);
+    camp =
+      state.village.development?.masterPlan?.regionalContext?.fieldCamps?.find(
+        (candidate) => candidate.id === job?.plan?.regionalFieldCampId,
+      );
   if (!job || !camp) return null;
   const distance =
     Math.abs(resident.position.x - camp.localPosition.x) +
@@ -96,14 +119,19 @@ function pioneerBedrollPlacement(state, resident) {
   };
 }
 
-function foundingBedrollPlacement(state, resident, index) {
-  const pioneer = pioneerBedrollPlacement(state, resident),
+function foundingBedrollPlacement(state, resident, index, terrainAt) {
+  const pioneer = terrainSafePioneerPlacement(
+      state,
+      resident,
+      pioneerBedrollPlacement(state, resident),
+      terrainAt,
+    ),
     workshop = state.village.buildings?.find(
-    (building) =>
-      building.key === "lumber_yard" &&
-      building.status === "complete" &&
-      building.roofed !== false,
-  );
+      (building) =>
+        building.key === "lumber_yard" &&
+        building.status === "complete" &&
+        building.roofed !== false,
+    );
   if (pioneer) return pioneer;
   if (resident.housingStatus !== "housed" && workshop)
     return {
@@ -118,6 +146,7 @@ function foundingBedrollPlacement(state, resident, index) {
       state,
       resident,
       FOUNDING_BEDROLL_POSITIONS[index],
+      terrainAt,
     ),
     buildingId: null,
     shelterClass: "temporary_outdoor",
@@ -164,8 +193,8 @@ function bedrollRetirementEvent(state, resident, fixture) {
     residentId: resident.id,
     residentName: resident.name,
     decidedByActorId:
-      state.village.npcStates.find((actor) => actor.personKey === "reeve")?.id ??
-      null,
+      state.village.npcStates.find((actor) => actor.personKey === "reeve")
+        ?.id ?? null,
     reason: "permanent_bed_assigned",
   };
 }
@@ -183,13 +212,16 @@ function retireFounderBedroll(state, resident, events) {
 }
 
 function syncSleepingPlaceInventory(state) {
-  const beds = state.village.fixtures.filter((fixture) => fixture.role === "bed"),
+  const beds = state.village.fixtures.filter(
+      (fixture) => fixture.role === "bed",
+    ),
     bedrolls = beds.filter((fixture) => fixture.temporary),
     permanent = beds.filter((fixture) => !fixture.temporary);
   state.village.sleepingPlaceInventory = {
     updatedAtTick: state.tick,
     permanentBeds: permanent.length,
-    assignedPermanentBeds: permanent.filter((bed) => bed.assignedActorId).length,
+    assignedPermanentBeds: permanent.filter((bed) => bed.assignedActorId)
+      .length,
     bedrolls: bedrolls.length,
     assignedBedrolls: bedrolls.filter((bed) => bed.assignedActorId).length,
     homelessResidents: state.village.npcStates.filter(
@@ -254,14 +286,16 @@ export function createVillageHouseholds(runId, residents) {
     byKey = new Map(
       residents.map((resident) => [resident.personKey, resident]),
     ),
-    shared = specs.map(([key, name, keys]) =>
-      household(
-        runId,
-        key,
-        name,
-        keys.map((personKey) => byKey.get(personKey)).filter(Boolean),
-      ),
-    ).filter((entry) => entry.memberIds.length),
+    shared = specs
+      .map(([key, name, keys]) =>
+        household(
+          runId,
+          key,
+          name,
+          keys.map((personKey) => byKey.get(personKey)).filter(Boolean),
+        ),
+      )
+      .filter((entry) => entry.memberIds.length),
     single = residents
       .filter((resident) => !assignedKeys.has(resident.personKey))
       .map((resident) =>
@@ -368,14 +402,14 @@ export function syncResidenceBedAssignments(state) {
       continue;
     }
     const residents = residenceMemberIds(state, residence)
-        .map((id) => state.village.npcStates.find((entry) => entry.id === id))
-        .filter(
-          (resident) =>
-            resident &&
-            resident.life?.status !== "dead" &&
-            !claimed.has(resident.id),
-        )
-        .slice(0, Math.min(residence.residentCapacity, beds.length));
+      .map((id) => state.village.npcStates.find((entry) => entry.id === id))
+      .filter(
+        (resident) =>
+          resident &&
+          resident.life?.status !== "dead" &&
+          !claimed.has(resident.id),
+      )
+      .slice(0, Math.min(residence.residentCapacity, beds.length));
     residence.occupantIds = residents.map((resident) => resident.id);
     residence.householdIds = [...new Set(residents.map((r) => r.householdId))];
     residents.forEach((resident, index) => {
@@ -389,10 +423,10 @@ export function syncResidenceBedAssignments(state) {
 export function syncResidentHousing(state) {
   const claimed = syncResidenceBedAssignments(state),
     usableResidenceIds = new Set(
-    (state.village.residences ?? [])
-      .filter(residenceUsable)
-      .map((residence) => residence.id),
-  );
+      (state.village.residences ?? [])
+        .filter(residenceUsable)
+        .map((residence) => residence.id),
+    );
   for (const resident of state.village.npcStates) {
     if (
       !claimed.has(resident.id) &&
@@ -409,13 +443,12 @@ export function syncResidentHousing(state) {
     resident.life.statusTags = resident.life.statusTags.filter(
       (tag) => !["homeless", "rough_sleeping"].includes(tag),
     );
-    if (!housed)
-      resident.life.statusTags.push("homeless", "rough_sleeping");
+    if (!housed) resident.life.statusTags.push("homeless", "rough_sleeping");
   }
 }
 
 // function-length-exempt: template -- authored founding shelter construction
-export function ensureFoundingSleepingPlaces(state, events = []) {
+export function ensureFoundingSleepingPlaces(state, events = [], terrainAt) {
   if (state.village.scenario !== "founding") return [];
   state.village.fixtures ??= [];
   const fixtures = state.village.npcStates.flatMap((resident, index) => {
@@ -427,7 +460,7 @@ export function ensureFoundingSleepingPlaces(state, events = []) {
       return [];
     }
     const id = foundingBedrollId(state, resident),
-      placement = foundingBedrollPlacement(state, resident, index),
+      placement = foundingBedrollPlacement(state, resident, index, terrainAt),
       position = placement.position;
     let fixture = state.village.fixtures.find(
       (candidate) => candidate.id === id,
@@ -467,8 +500,7 @@ export function ensureFoundingSleepingPlaces(state, events = []) {
       providesShelter: true,
       shelterClass: placement.shelterClass,
       walkable: true,
-      assignedActorId:
-        resident.housingStatus === "housed" ? null : resident.id,
+      assignedActorId: resident.housingStatus === "housed" ? null : resident.id,
       assignmentStatus:
         resident.housingStatus === "housed" ? "released" : "assigned",
       buildingId: placement.buildingId,

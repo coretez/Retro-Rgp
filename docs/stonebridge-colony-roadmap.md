@@ -7814,3 +7814,30 @@ completes. R5 remains under multi-day no-starvation validation. R6 remains
 unproven. R8 remains in progress behind R4 food stability, permanent housing,
 the complete farm/barn, quarry and specialist operation, defense construction,
 and final visual acceptance.
+
+## Visual checkpoint 188 / sleeping ground follows terrain
+
+The clean-run review exposed temporary bedrolls rendered over the unrevealed
+mountain mass. Bedroll placement had checked planned structures and other
+fixtures but not the underlying terrain. It now requires both cells of the
+one-by-two sleeping place to be outdoor grass. The search moves outward from
+the preferred family-camp position until it finds two unobstructed valid cells;
+remote pioneer bedrolls use the same rule.
+
+The repair separates ground terrain from movement terrain. A walkable bedroll
+still presents itself as floor to pathfinding, but placement and save migration
+inspect the real tile beneath the furniture. This avoids both placing a new
+bedroll on solid rock and repeatedly moving a valid bedroll because its own
+sprite changed the movement reading. Existing saves are corrected during load.
+
+Focused tests prove ten unique two-cell bedrolls, relocation away from planned
+construction, relocation off solid mountain terrain, and a homeless founder
+successfully receiving and using the relocated assigned bedroll. The strict
+audit now covers 2,209 functions with 141 exemptions and zero functions over
+thirty lines; `git diff --check` is clean.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 and R5
+remain under the live ten-minute food/playbook validation. R6 remains unproven.
+R8 remains in progress; mountain readability improved, while terrain-correct
+temporary sleeping placement is repaired but still requires visible confirmation
+after the native client reloads.

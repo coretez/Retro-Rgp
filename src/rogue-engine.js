@@ -2038,7 +2038,9 @@ export function newRogueRun(input) {
     villageNpcTerrain(state, position),
   );
   syncResidentHousing(state);
-  ensureFoundingSleepingPlaces(state);
+  ensureFoundingSleepingPlaces(state, [], (position) =>
+    villageGroundTerrain(state, position),
+  );
   ensureRegionalSimulation(state);
   return state;
 }
@@ -3563,6 +3565,10 @@ function resolveVillageTurn(state, intent, events) {
 export function villageNpcTerrain(state, position) {
   const terrain = villageTile(state, position.x, position.y, false, false);
   return terrain.furniture?.walkable ? "village_floor" : terrain.tile;
+}
+
+export function villageGroundTerrain(state, position) {
+  return villageTile(state, position.x, position.y, false, false).tile;
 }
 
 function resolveExteriorTurn(state, intent, events) {
@@ -9648,7 +9654,9 @@ function migrateIdentity(value) {
   ensureVillageHouseholds(value);
   ensureVillageDemography(value);
   syncResidentHousing(value);
-  ensureFoundingSleepingPlaces(value);
+  ensureFoundingSleepingPlaces(value, [], (position) =>
+    villageGroundTerrain(value, position),
+  );
   for (const toolKind of ["hand_axe", "field_shovel"])
     if (!value.hero.inventory.some((item) => item.kind === toolKind))
       value.hero.inventory.push(equipmentItem(newInstanceId(), toolKind));

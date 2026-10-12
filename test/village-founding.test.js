@@ -417,6 +417,31 @@ test("R2 bedrolls move clear when construction claims their cells", () => {
   assert.equal(bedroll.x === original.x && bedroll.y === original.y, false);
 });
 
+test("R2 bedrolls relocate off solid mountain terrain", () => {
+  const state = newRogueRun(input),
+    bedrolls = state.village.fixtures.filter(
+      (fixture) => fixture.bedType === "bedroll",
+    ),
+    originalCells = new Set(
+      bedrolls.flatMap((fixture) => [
+        `${fixture.x},${fixture.y}`,
+        `${fixture.x + 1},${fixture.y}`,
+      ]),
+    );
+  ensureFoundingSleepingPlaces(state, [], (position) =>
+    originalCells.has(`${position.x},${position.y}`)
+      ? "outdoor_rock"
+      : "outdoor_grass",
+  );
+  assert.ok(
+    bedrolls.every(
+      (fixture) =>
+        !originalCells.has(`${fixture.x},${fixture.y}`) &&
+        !originalCells.has(`${fixture.x + 1},${fixture.y}`),
+    ),
+  );
+});
+
 test("R4 a reusable hunting bow makes the deer hunt ready", () => {
   const state = newRogueRun(input);
   assert.equal(stock(state, "hunting_bows").quantity, 2);
