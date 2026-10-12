@@ -159,8 +159,12 @@ test("M-5 cancellation returns in-transit cargo and releases claims", () => {
   const job = deliveryJob(state),
     { source, target } = supplies(state);
   assert.equal(job.transfer.carriedQuantity, 1);
+  assert.equal(job.plan.step, "to_destination");
   assert.equal(cancelJob(state, job, "test_cancelled"), true);
   assert.equal(job.transfer.carriedQuantity, 0);
+  assert.equal(job.plan.step, "to_source");
+  assert.equal(job.progress.completed, 0);
+  assert.deepEqual(job.destination, job.sourcePosition);
   assert.equal(source.quantity, 3);
   assert.equal(target.quantity, 0);
   assert.ok(

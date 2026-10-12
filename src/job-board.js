@@ -331,5 +331,17 @@ export function restoreJobTransfer(state, job) {
     ].find((candidate) => candidate.id === job.assignedActorId);
     if (actor) actor.carriedItem = null;
   }
+  resetRestoredTransfer(job, restored);
   return restored;
+}
+
+function resetRestoredTransfer(job, restored) {
+  if (!restored || !job.plan) return;
+  job.plan.step = "to_input";
+  if (job.transfer) job.plan.step = "to_source";
+  job.progress.completed = 0;
+  job.destination = job.sourcePosition ? { ...job.sourcePosition } : null;
+  delete job.plan.cachedPath;
+  delete job.plan.routeTarget;
+  delete job.plan.cachedRouteCost;
 }

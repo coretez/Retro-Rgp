@@ -240,7 +240,7 @@ function blockedRetryDelay(job, reason) {
 }
 const SURVIVAL_WARNING_THRESHOLD = 40;
 const SURVIVAL_DANGER_THRESHOLD = 25;
-const FOUNDING_EMERGENCY_FOOD_CREW = 3;
+const FOUNDING_EMERGENCY_FOOD_CREW = 6;
 const OPTIONAL_LIFE_NEEDS = new Set(["social", "morale"]);
 const FOUNDING_OPTIONAL_LIFE_JOB_LIMIT = 2;
 const FOUNDING_MEAL_TARGET = Object.freeze({
@@ -1883,6 +1883,21 @@ function readyEmergencyFoodWork(state, actor) {
   );
 }
 
+function emergencyFoodCrewAllows(state, actor, job) {
+  if (!job.plan?.emergencyFoodDuty) return true;
+  const crew = new Set(
+    state.village.jobs
+      .filter(
+        (candidate) =>
+          candidate.plan?.emergencyFoodDuty &&
+          ["reserved", "active"].includes(candidate.status),
+      )
+      .map((candidate) => candidate.assignedActorId)
+      .filter(Boolean),
+  );
+  return crew.has(actor.id) || crew.size < FOUNDING_EMERGENCY_FOOD_CREW;
+}
+
 function deferRecoveryForFoodCrew(state, actor, job) {
   if (availableSurvivalFood(state) || !job.plan?.lifeJob) return false;
   if (!["fatigue", "safety"].includes(job.plan.need)) return false;
@@ -1915,6 +1930,7 @@ function readyForSkillChoice(state, actor, job, options = {}) {
     !jobResourceBlocker(state, job) &&
     (job.nextAssignmentAtTick == null ||
       state.tick >= job.nextAssignmentAtTick) &&
+    emergencyFoodCrewAllows(state, actor, job) &&
     actorCanPerform(actor, job, options)
   );
 }
@@ -1941,10 +1957,14 @@ function assignmentActors(state, job) {
   return {
     available: eligible.filter(
       (actor) =>
-        actorCanPerform(actor, job) && actorPrefersJobNow(state, actor, job),
+        emergencyFoodCrewAllows(state, actor, job) &&
+        actorCanPerform(actor, job) &&
+        actorPrefersJobNow(state, actor, job),
     ),
-    working: eligible.filter((actor) =>
-      actorCanPerform(actor, job, { allowWorking: true }),
+    working: eligible.filter(
+      (actor) =>
+        emergencyFoodCrewAllows(state, actor, job) &&
+        actorCanPerform(actor, job, { allowWorking: true }),
     ),
   };
 }
@@ -2271,7 +2291,7 @@ function unloadDelivery(state, job, actor, events) {
   const target = stockpile(state, job.transfer.targetStockpileId),
     quantity = job.transfer.carriedQuantity;
   if (!target) return blockActiveJob(state, job, "stockpile_missing", events);
-  if (quantity < 1) return blockActiveJob(state, job, "cargo_missing", events);
+  if (quantity <= 0) return blockActiveJob(state, job, "cargo_missing", events);
   if (storageAvailableFor(state, target.id, job.id) < quantity)
     return blockActiveJob(state, job, "destination_full", events);
   if (job.plan.foodCargo?.length)
@@ -6479,6 +6499,17 @@ function transferQuantity(source, target) {
   return Math.min(1, source.quantity, target.capacity - target.quantity);
 }
 
+function repairEmptyTransferState(job) {
+  if (!job.transfer || job.transfer.carriedQuantity > 0) return;
+  if (job.plan.step !== "to_destination") return;
+  job.plan.step = "to_source";
+  job.progress.completed = 0;
+  job.destination = job.sourcePosition ? { ...job.sourcePosition } : null;
+  delete job.plan.cachedPath;
+  delete job.plan.routeTarget;
+  delete job.plan.cachedRouteCost;
+}
+
 // function-length-exempt: template -- declarative hauling-job policy
 function postTransferJob(state, template, context, events) {
   if (!transferReady(state, template)) return null;
@@ -6538,6 +6569,7 @@ function postTransferJob(state, template, context, events) {
       targetStockpileId: target.id,
     },
   });
+  repairEmptyTransferState(job);
   job.plan.foodReserveDuty = Boolean(template.foodReserveDuty);
   job.plan.emergencyFoodDuty = Boolean(template.emergencyFoodDuty);
   if (created) events.push(jobEvent(state, "job_posted", job));

@@ -7384,3 +7384,79 @@ remains under scheduler validation, but the opening capital queue now honors
 shelter before the lumber yard. R6 remains unproven in this clean run. R8
 remains in progress behind the complete natural town-build, quarry, defense,
 and visual acceptance gates.
+
+## Failure checkpoint 178 / Day-227 founding collapse and food repair
+
+The housing-first acceptance run was preserved at tick 542,202 (Day 227) after
+the visible town contradicted the earlier opening proof. Only the Weiss-Voss
+farmhouse was complete. The second home had completed 9 of 55 construction
+elements and the farmstead 8 of 150. Nine founders remained homeless, prepared
+meals and stored fish were both zero, hunger was at or near danger for almost
+the entire settlement, and ready housing and farm work had made negligible
+progress. This is a failed natural run, not slow but acceptable construction.
+
+The preserved state exposed two deterministic harvest-pipeline defects.
+Personal-survival interruption restored a hauler's cargo to its source but left
+the job in its destination stage. Reassigned workers therefore travelled to
+storage empty and entered a repeated `cargo_missing` cycle. In addition,
+unloading rejected every positive quantity below one whole unit, while
+cell-scale harvest piles naturally contain fractional yields such as 0.375 or
+0.8125. Transfer restoration now returns the job to its source stage, clears
+its route and progress, and a live-state repair normalizes previously corrupted
+empty transfers. Unloading now accepts every positive conserved quantity.
+
+Emergency food work also had no workforce ceiling. The intended minimum crew
+was used only to defer sleep; it did not constrain assignments. At dawn on Day
+227, nine of ten founders immediately occupied fishing, foraging, hauling, or
+crop jobs, leaving housing and the farmstead without a viable construction
+crew. Emergency food assignments are now capped at six distinct founders,
+leaving at least four people available for shelter, lumber, and construction
+while maintaining fishing, foraging, hauling, cooking, and field capacity.
+
+Focused regressions prove that interrupted cargo resets to its source, a 0.375
+field harvest is physically loaded and delivered into bounded storage, and a
+zero-food founding emergency staffs at least three but no more than six food
+workers. The strict function-length audit reports zero non-template functions
+over thirty lines, and `git diff --check` is clean. Natural acceptance remains
+pending a new clean visible run.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 is
+failing its natural food-stability proof until the clean rerun demonstrates
+grow, harvest, haul, store, cook, and eat. R5 is failing its natural scheduler
+proof because the prior run starved construction; the repaired workforce split
+must be observed. R6 remains unproven. R8 remains in progress and cannot pass
+until a clean town naturally completes housing, farm infrastructure, quarry,
+specialist buildings, and defense without visible contradictions.
+
+## Validation checkpoint 179 / repaired first-day throughput
+
+Clean visible run `0d98ea52-c5de-4f3f-a7ad-3ea30919b88f`, seed
+`day-227-repair-proof-2026-10-12`, began at Day 1 and remained open in the
+native client at Observe 16x. At 10:39 all ten founders had concrete work:
+three farmed, two sawed lumber, two hauled construction material, one raised a
+house wall, one fished, and one felled timber. Three fish had already moved
+from the river catch into bounded storage, directly exercising the repaired
+transfer path.
+
+By 14:25 stored fish had risen to four and the first home had four completed
+physical elements. The only open fish transfer was correctly travelling to its
+source with zero carried cargo, rather than travelling empty to storage. By
+18:25 stored fish had risen to seven, the first home had completed 11 of 55
+physical elements, and 14 elements had received material. Founders then moved
+to meals and assigned bedrolls at dusk. No founder displayed `waiting for open
+work`; one one-tick `Available for work` caption was already backed by a
+reserved grain-cell job and was presentation lag rather than scheduler idle.
+
+This proves that the Day-227 cargo loop and whole-workforce food capture are
+repaired over the first visible workday. It does not yet prove multi-day crop
+maturity, permanent housing completion, or the downstream town. The full
+scheduler audit was still running when this checkpoint was written and is not
+counted as a pass until it returns a result.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 has
+recovered visible fishing, hauling, storage, eating, and active field work but
+still needs the natural grow-to-harvest proof. R5 has recovered first-day work
+continuity and construction throughput but remains under multi-day validation.
+R6 remains unproven. R8 remains in progress behind permanent housing, complete
+farm infrastructure, quarry, specialist buildings, defense, and final visual
+acceptance.

@@ -456,9 +456,7 @@ test("R1 first housing remains the capital priority while crops start", () => {
   stock(state, "lumber_yard_lumber").quantity = 500;
   applyRogueTurn(state, { kind: "wait" });
   assert.equal(state.village.development.activePriority, "housing");
-  assert.ok(
-    state.village.jobs.some((job) => job.jobType === "grow_grain"),
-  );
+  assert.ok(state.village.jobs.some((job) => job.jobType === "grow_grain"));
   assert.ok(state.village.jobs.some((job) => job.jobType === "build_house"));
   const housing = state.village.development.priorities.find(
     (priority) => priority.key === "housing",
@@ -470,10 +468,10 @@ test("R1 outdoor sawing supplies the first home before a lumber yard", () => {
   const state = newRogueRun(input);
   applyRogueTurn(state, { kind: "wait" });
   const house = state.village.jobs.find(
-      (job) =>
-        job.jobType === "build_house" &&
-        !["completed", "cancelled"].includes(job.status),
-    );
+    (job) =>
+      job.jobType === "build_house" &&
+      !["completed", "cancelled"].includes(job.status),
+  );
   assert.equal(state.village.development.activePriority, "housing");
   assert.ok(house);
   assert.equal(state.village.facilities.includes("lumber_yard"), false);
@@ -721,7 +719,7 @@ test("R5 a personal survival need returns shared work to its queue", () => {
   assert.ok(["reserved", "active"].includes(meal.status));
 });
 
-test("R4 zero food keeps a three-person founding survival crew awake", () => {
+test("R4 zero food staffs survival without consuming the whole workforce", () => {
   const state = newRogueRun(input);
   state.village.facilities.push("survival_camp", "farmstead");
   ensureVillageFoodSystem(state);
@@ -749,6 +747,15 @@ test("R4 zero food keeps a three-person founding survival crew awake", () => {
   assert.ok(
     crew.size >= 3,
     `expected 3 emergency workers, received ${crew.size}`,
+  );
+  assert.ok(
+    crew.size <= 6,
+    `expected at most 6 emergency workers, received ${crew.size}`,
+  );
+  assert.ok(
+    state.village.npcStates.some(
+      (resident) => resident.life?.status !== "dead" && !crew.has(resident.id),
+    ),
   );
 });
 

@@ -196,9 +196,22 @@ test("R8.5 a mature founding crop becomes reserve-critical harvest work", () => 
   state.village.facilities.push("farmstead");
   ensureVillageFoodSystem(state);
   for (const pile of state.village.stockpiles)
-    if (["raw_fish", "hearty_meal", "grain", "vegetables", "milk", "meat", "egg", "wild_forage"].includes(pile.itemKind))
+    if (
+      [
+        "raw_fish",
+        "hearty_meal",
+        "grain",
+        "vegetables",
+        "milk",
+        "meat",
+        "egg",
+        "wild_forage",
+      ].includes(pile.itemKind)
+    )
       pile.quantity = 0;
-  const plot = state.village.cropPlots.find((item) => item.cropKind === "grain");
+  const plot = state.village.cropPlots.find(
+    (item) => item.cropKind === "grain",
+  );
   Object.assign(plot, { stage: "mature", growthProgress: 1, workQueue: null });
   Object.assign(state.village.clock, { hour: 9, block: "work" });
 
@@ -216,7 +229,9 @@ test("R8.5 every colocated harvest pile exposes ready fractional hauling", () =>
   state.location = "village";
   state.village.facilities.push("farmstead");
   ensureVillageFoodSystem(state);
-  const plot = state.village.cropPlots.find((item) => item.cropKind === "grain"),
+  const plot = state.village.cropPlots.find(
+      (item) => item.cropKind === "grain",
+    ),
     grain = stock(state, "farm_grain"),
     quantities = [0.375, 5.625];
   for (const [index, quantity] of quantities.entries())
@@ -275,13 +290,57 @@ test("R8.5 every colocated harvest pile exposes ready fractional hauling", () =>
   );
 });
 
+test("R8.5 a fractional field harvest reaches bounded storage", () => {
+  const state = newRogueRun(input);
+  state.location = "village";
+  state.village.facilities.push("farmstead");
+  ensureVillageFoodSystem(state);
+  for (const resident of state.village.npcStates)
+    for (const need of Object.keys(resident.life.needs))
+      resident.life.needs[need] = 100;
+  const plot = state.village.cropPlots.find(
+      (item) => item.cropKind === "grain",
+    ),
+    grain = stock(state, "farm_grain"),
+    pile = {
+      id: namedUuid(state.id, "fractional-delivery-proof"),
+      key: "fractional_delivery_proof",
+      name: "grain field harvest",
+      itemKind: "grain",
+      quantity: 0.375,
+      capacity: 24,
+      position: { ...plot.workPosition },
+      containerKind: "field_pile",
+      harvestDestinationStockpileId: grain.id,
+      cropPlotId: plot.id,
+    },
+    events = [];
+  state.village.stockpiles.push(pile);
+  Object.assign(state.village.clock, { hour: 9, block: "work" });
+  for (let turn = 0; turn < 220; turn += 1)
+    events.push(...applyRogueTurn(state, { kind: "wait" }).events);
+  const haul = state.village.jobs.find(
+    (job) => job.transfer?.sourceStockpileId === pile.id,
+  );
+  assert.equal(haul.status, "completed");
+  assert.equal(pile.quantity, 0);
+  assert.ok(grain.quantity >= 0.375);
+  assert.ok(
+    events.some(
+      (event) => event.type === "cargo_delivered" && event.jobId === haul.id,
+    ),
+  );
+});
+
 test("R8.5 a critical harvest exposes an all-hands field crew", () => {
   const state = newRogueRun(input);
   state.location = "village";
   state.village.facilities.push("farmstead");
   ensureVillageFoodSystem(state);
   for (const pile of state.village.stockpiles) pile.quantity = 0;
-  const plot = state.village.cropPlots.find((item) => item.cropKind === "grain");
+  const plot = state.village.cropPlots.find(
+    (item) => item.cropKind === "grain",
+  );
   Object.assign(plot, { stage: "mature", growthProgress: 1, workQueue: null });
   Object.assign(state.village.clock, { hour: 9, block: "work" });
 
@@ -331,11 +390,14 @@ test("R8.5 survival preemption returns a shared crop cell to the crew", () => {
   state.location = "village";
   state.village.facilities.push("farmstead");
   ensureVillageFoodSystem(state);
-  const plot = state.village.cropPlots.find((item) => item.cropKind === "grain");
+  const plot = state.village.cropPlots.find(
+    (item) => item.cropKind === "grain",
+  );
   Object.assign(plot, { stage: "mature", growthProgress: 1, workQueue: null });
   Object.assign(state.village.clock, { hour: 9, block: "work" });
   for (const resident of state.village.npcStates)
-    for (const need of Object.keys(resident.life.needs)) resident.life.needs[need] = 100;
+    for (const need of Object.keys(resident.life.needs))
+      resident.life.needs[need] = 100;
   for (let turn = 0; turn < 3; turn += 1)
     applyRogueTurn(state, { kind: "wait" });
   const harvest = state.village.jobs.find(
@@ -651,10 +713,12 @@ test("R4 crop plots occupy visible field-scale areas", () => {
         (cell) => (cell.cropLastYield ?? 0) === (plot.lastYield ?? 0),
       ),
     );
-    assert.ok(cells.every(
-      (cell) =>
-        (cell.cropLastFarmerSkill ?? 0) === (plot.lastFarmerSkill ?? 0),
-    ));
+    assert.ok(
+      cells.every(
+        (cell) =>
+          (cell.cropLastFarmerSkill ?? 0) === (plot.lastFarmerSkill ?? 0),
+      ),
+    );
   }
 });
 
@@ -720,12 +784,9 @@ test("R4 starvation foraging identifies a tree blocking the only access", () => 
         ? "outdoor_tree"
         : "outdoor_grass";
 
-  const tree = forageAccessTree(
-    state,
-    [worker],
-    [{ position: target }],
-    { terrainAt },
-  );
+  const tree = forageAccessTree(state, [worker], [{ position: target }], {
+    terrainAt,
+  });
 
   assert.ok(blocked.has(`${tree.x},${tree.y}`));
 });
