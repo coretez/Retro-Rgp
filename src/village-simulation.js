@@ -6109,7 +6109,7 @@ function foundingFieldBowTemplate(state, template) {
     name: "Shape a field hunting bow",
     capability: "forestry",
     skill: "carpentry",
-    targetPosition: { x: -16, y: 18 },
+    targetPosition: { x: -17, y: 19 },
     requirements: [
       { key: "lumber_yard_lumber", quantity: 2, consume: true },
       { key: "netting_fiber", quantity: 1, consume: true },
@@ -6137,13 +6137,15 @@ function currentAnimalPasture(state, animal) {
 }
 
 function refreshProductionTarget(state, job, template, context) {
-  if (!template.accessPosition) return;
+  if (!template.accessPosition && !job.plan?.fieldCraft) return;
   const reader = context.workObjectAt ?? context.objectAt,
     target = reader(template.targetPosition);
   if (!target) return;
   job.targetId = target.id;
   job.targetPosition = { ...template.targetPosition };
-  job.plan.accessPosition = { ...template.accessPosition };
+  if (template.accessPosition)
+    job.plan.accessPosition = { ...template.accessPosition };
+  else delete job.plan.accessPosition;
   delete job.plan.cachedPath;
   if (job.status !== "blocked" || job.blockingReason !== "target_missing")
     return;

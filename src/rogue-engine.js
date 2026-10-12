@@ -4527,6 +4527,14 @@ const VILLAGE_FURNITURE = [
     description: "A simple place beside the campfire for eating communal food.",
   })),
   {
+    x: -17,
+    y: 19,
+    glyph: "T",
+    name: "Founders' bowyer stump",
+    description:
+      "A shaving stump supports emergency field-bow repairs until the forge is operating.",
+  },
+  {
     x: 24,
     y: 30,
     glyph: "S",
@@ -4555,6 +4563,7 @@ const FOUNDING_FIXTURES = new Set([
   "Kitchen garden marker",
   "Camp stew pot",
   "Camp meal place",
+  "Founders' bowyer stump",
   "Quarry stone staging pallet",
 ]);
 

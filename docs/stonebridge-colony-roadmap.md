@@ -7668,6 +7668,13 @@ creates a one-cell resident trap. Focused bedroll, founding-provisions, and
 campfire-priority regressions all pass, including walkable escape cells beside
 the meal area.
 
+Emergency pre-forge bow repair previously targeted the removed tool-cache prop.
+It now uses a separate bowyer stump outside the camp circulation pocket, and
+save-compatible target refresh moves an already blocked field-bow job to that
+real work object. The live saved run proved the circulation repair immediately:
+Ada left the trapped meal cell, reached her assigned bedroll, and began sleeping
+with no remaining sleep blockage.
+
 Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 has
 visible first-day acquisition, hauling, cooking, eating, field preparation, and
 sowing continuity, but remains in progress until the planted crop grows,

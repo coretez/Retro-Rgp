@@ -444,11 +444,26 @@ test("R4 founders can replace a hunting bow before constructing a forge", () => 
   assert.ok(craft);
   assert.equal(craft.name, "Shape a field hunting bow");
   assert.equal(craft.plan.fieldCraft, true);
+  assert.equal(
+    villageWorldObjectAt(state, -17, 19, false).name,
+    "Founders' bowyer stump",
+  );
   assert.deepEqual(
     craft.production.inputs.map((entry) => entry.stockpileKey).sort(),
     ["lumber_yard_lumber", "netting_fiber"],
   );
   assert.equal(state.village.facilities.includes("forge"), false);
+
+  Object.assign(craft, {
+    status: "blocked",
+    blockingReason: "target_missing",
+    assignedActorId: null,
+    targetPosition: { x: -16, y: 18 },
+    nextRetryAtTick: 0,
+  });
+  applyRogueTurn(state, { kind: "wait" });
+  assert.deepEqual(craft.targetPosition, { x: -17, y: 19 });
+  assert.notEqual(craft.status, "blocked");
 });
 
 test("R4 loading an unequipped legacy hunt cancels it as not ready", () => {
