@@ -7839,5 +7839,6 @@ thirty lines; `git diff --check` is clean.
 Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 and R5
 remain under the live ten-minute food/playbook validation. R6 remains unproven.
 R8 remains in progress; mountain readability improved, while terrain-correct
-temporary sleeping placement is repaired but still requires visible confirmation
-after the native client reloads.
+temporary sleeping placement is repaired. After the native client reload, all
+ten assigned bedrolls resolve to two underlying `outdoor_grass` cells; none
+remain over `outdoor_rock` or hidden mountain terrain.
