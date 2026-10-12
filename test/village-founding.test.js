@@ -445,7 +445,7 @@ test("R4 founders can replace a hunting bow before constructing a forge", () => 
   assert.equal(craft.name, "Shape a field hunting bow");
   assert.equal(craft.plan.fieldCraft, true);
   assert.equal(
-    villageWorldObjectAt(state, -17, 19, false).name,
+    villageWorldObjectAt(state, -17, 20, false).name,
     "Founders' bowyer stump",
   );
   assert.deepEqual(
@@ -462,7 +462,7 @@ test("R4 founders can replace a hunting bow before constructing a forge", () => 
     nextRetryAtTick: 0,
   });
   applyRogueTurn(state, { kind: "wait" });
-  assert.deepEqual(craft.targetPosition, { x: -17, y: 19 });
+  assert.deepEqual(craft.targetPosition, { x: -17, y: 20 });
   assert.notEqual(craft.status, "blocked");
 });
 

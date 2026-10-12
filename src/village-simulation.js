@@ -6109,7 +6109,7 @@ function foundingFieldBowTemplate(state, template) {
     name: "Shape a field hunting bow",
     capability: "forestry",
     skill: "carpentry",
-    targetPosition: { x: -17, y: 19 },
+    targetPosition: { x: -17, y: 20 },
     requirements: [
       { key: "lumber_yard_lumber", quantity: 2, consume: true },
       { key: "netting_fiber", quantity: 1, consume: true },

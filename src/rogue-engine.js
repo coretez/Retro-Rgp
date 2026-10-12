@@ -4528,7 +4528,7 @@ const VILLAGE_FURNITURE = [
   })),
   {
     x: -17,
-    y: 19,
+    y: 20,
     glyph: "T",
     name: "Founders' bowyer stump",
     description:
