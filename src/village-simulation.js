@@ -102,6 +102,7 @@ import {
 } from "./village-food.js";
 import { advanceVillageTrade } from "./village-trade.js";
 import { advanceVillageDemography } from "./village-demography.js";
+import { syncFoodPlaybookController } from "./village-playbook-controller.js";
 import { regionalGeology, regionalTravelAssessment } from "./village-region.js";
 import {
   reconcileVillageStorage,
@@ -12656,6 +12657,7 @@ export function advanceVillageSimulation(state, intent, events, context = {}) {
   postGuardIncidentJobs(state, events);
   postLeadershipDuty(state, events);
   postGuardPatrol(state, context, events);
+  syncFoodPlaybookController(state);
   refreshScheduleScores(state);
   syncVillageSkillWorkQueues(state);
   interruptCompanionWork(state, events);

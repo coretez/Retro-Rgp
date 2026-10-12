@@ -7767,3 +7767,50 @@ controller and natural harvest-to-meal loop are visibly proven. R5 remains
 under multi-day no-starvation validation. R6 remains unproven. R8 remains in
 progress behind complete food stability, permanent housing, farm/barn, quarry,
 specialist, defense, and visual gates.
+
+## Controller checkpoint 187 / live food orders
+
+The first mayor food-playbook controller is connected to the real village turn.
+It maps open physical jobs to registered commands, records whether each command
+is ready, active, or blocked, stamps the job with playbook/command/step identity,
+and applies the survival-priority floor before schedule scoring. The native
+client view now exports the selected playbook, current command, and concurrent
+directives for behavioral inspection.
+
+The saved day-four run accepted the controller without reset. It selected
+`meal_service / prepare_meat_meal`; the assigned cook ran that command at
+priority 161 while a ready fish-meal command waited at 141. Bounded prepared
+meal stock reached 31, with eight fish and two meat remaining. The prior run
+was saved before beginning a clean founding proof.
+
+The clean visible run `5a94658f-fd41-4a72-93ee-b71c8d99b0e9` started from day
+one using regional generation. By tick 25 the mayor selected
+`river_fishing / catch_river_fish` at priority 141. At the same time three
+founders were actively executing `grain_cycle / prepare_crop_cell`, one was
+executing `hunting / hunt_wild_game`, another established the survival
+campfire, and the kitchen-garden and first-house work remained represented by
+real jobs. At tick 65 all five food directives were still active with no
+playbook blocker; event evidence showed physical travel or production progress
+for each grain worker and the hunter. Off-duty founders at dawn reported
+legitimate free-time rest rather than “waiting for open work.”
+
+Focused controller tests prove crop-command advancement from prepare to sow and
+native-view observability. The existing mature-harvest, fractional-hauling, and
+physical-watering regressions pass. The playbook audit reports five playbooks,
+seventeen commands, and valid production/transfer/life executors. The strict
+audit covers 2,207 functions with 141 exemptions and zero functions over thirty
+lines; `git diff --check` is clean.
+
+This does not close the food milestone. The clean run must still naturally move
+from preparation to sowing, growth, watering if needed, harvest piles, bounded
+storage, cooking, and eating. The controller also needs an explanation and
+dependency-order layer for a command absent because its route, facility, tool,
+ingredient, worker, or destination does not yet exist.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 now has
+live mayor selection and concurrent fishing, field-preparation, and hunting
+execution, but remains in progress until the clean natural harvest-to-meal loop
+completes. R5 remains under multi-day no-starvation validation. R6 remains
+unproven. R8 remains in progress behind R4 food stability, permanent housing,
+the complete farm/barn, quarry and specialist operation, defense construction,
+and final visual acceptance.

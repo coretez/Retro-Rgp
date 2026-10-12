@@ -1,6 +1,6 @@
 # Stonebridge Food Playbooks
 
-Status: executable command-contract foundation  
+Status: executable commands with live scheduler controller
 Established: 2026-10-12
 
 ## Rule
@@ -90,8 +90,17 @@ resident's hunger.
 | `prepare_meat_meal`      | `cook_beef_stew`      | production | Stored meat transforms into two bounded meals                         |
 | `eat_prepared_meal`      | `eat_meal`            | life       | Meal quantity decreases and hunger rises                              |
 
-The matrix proves command availability and focused behavior. It does not prove
-that the mayor selects the correct playbook at the correct time. The next layer
-is a playbook controller that evaluates goals and prerequisites, expands ready
-steps into job queues, records rejected steps and blockers, and changes plans
-when the world changes.
+The mayor's food-playbook controller now inspects the real posted jobs, maps
+each one to its registered command, records readiness and blockers, and adds
+the playbook, command, and step identity to the job itself. Ready food commands
+receive a survival priority floor before normal schedule modifiers are applied.
+The current focus and all concurrent directives are exported in the native
+client view, so a test can prove the order being executed rather than infer it
+from totals.
+
+This is the first controller slice. Existing physical job posters still decide
+when a command exists; the controller selects and prioritizes among those real
+options. The next slice must explain commands that are absent because a
+prerequisite, route, facility, tool, ingredient, worker, or destination is
+missing, and request the corresponding dependency job when one does not yet
+exist.

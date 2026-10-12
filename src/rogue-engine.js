@@ -8883,6 +8883,9 @@ export function rogueUnityView(state, recentEvents = [], options = {}) {
     villageDevelopment: dungeon
       ? null
       : structuredClone(state.village.development),
+    foodPlaybooks: dungeon
+      ? null
+      : structuredClone(state.village.playbookController ?? null),
     villageTrade: dungeon ? null : villageTradeView(state, true),
     villageMeaning: dungeon ? null : villageMeaningView(state),
     classPower: dungeon ? structuredClone(state.hero.classPower) : null,
