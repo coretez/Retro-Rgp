@@ -7675,6 +7675,16 @@ real work object. The live saved run proved the circulation repair immediately:
 Ada left the trapped meal cell, reached her assigned bedroll, and began sleeping
 with no remaining sleep blockage.
 
+At day two, 02:31, the resumed save had zero blocked jobs and all founders were
+sleeping, resting, socializing, or performing a legitimate night watch. At the
+08:00 work transition the saved production queues resumed rather than being
+recreated: the fisher returned to the regional jetty, the cook resumed fish
+stew, the farmer carried the conserved seed batch to the prepared grain plot,
+the hunter dressed a deer, the porter continued sawing, housing material moved,
+and the compatibility-repaired field bow advanced at its separate stump. The
+colony held 25 ready meals plus four river fish and six stored meat at the latest
+checkpoint, with no blocked job and no survival need below its danger threshold.
+
 Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 has
 visible first-day acquisition, hauling, cooking, eating, field preparation, and
 sowing continuity, but remains in progress until the planted crop grows,
