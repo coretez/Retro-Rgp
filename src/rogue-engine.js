@@ -4527,21 +4527,6 @@ const VILLAGE_FURNITURE = [
     description: "A simple place beside the campfire for eating communal food.",
   })),
   {
-    x: -16,
-    y: 18,
-    glyph: "T",
-    name: "Founders' tool cache",
-    description: "Axes, saws, and hammers are kept dry beneath a canvas cover.",
-  },
-  {
-    x: -15,
-    y: 19,
-    glyph: "C",
-    name: "Founding food cache",
-    description:
-      "A covered timber chest keeps the settlement's fish pantry dry.",
-  },
-  {
     x: 24,
     y: 30,
     glyph: "S",
@@ -4570,8 +4555,6 @@ const FOUNDING_FIXTURES = new Set([
   "Kitchen garden marker",
   "Camp stew pot",
   "Camp meal place",
-  "Founders' tool cache",
-  "Founding food cache",
   "Quarry stone staging pallet",
 ]);
 

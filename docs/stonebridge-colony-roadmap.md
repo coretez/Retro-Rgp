@@ -7657,6 +7657,17 @@ including this new starter-to-enclosure expansion contract. The strict audit
 covers 2,173 functions with 141 template exemptions and zero functions over
 thirty lines; `git diff --check` is clean.
 
+The first-night observation then preserved a concrete circulation failure. Ada
+could not reach her assigned bedroll because sleepers closed the north side of
+her cell while obsolete static `Founders' tool cache` and `Founding food cache`
+props closed the west and south sides and the active camp cookery closed the
+east. Those two props belonged to the retired unlimited ground-cache model;
+the tools and food are now physically represented by the finite roadside cart
+storage. They have been removed so the camp no longer draws fake storage or
+creates a one-cell resident trap. Focused bedroll, founding-provisions, and
+campfire-priority regressions all pass, including walkable escape cells beside
+the meal area.
+
 Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 has
 visible first-day acquisition, hauling, cooking, eating, field preparation, and
 sowing continuity, but remains in progress until the planted crop grows,

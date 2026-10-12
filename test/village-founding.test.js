@@ -1593,13 +1593,15 @@ test("M-11.1 founders receive explicit reusable tools and finite provisions", ()
   assert.equal(stock(state, "founding_saws").quantity, 2);
   assert.equal(stock(state, "founding_hammers").quantity, 2);
   assert.equal(stock(state, "inn_meals").quantity, 30);
-  assert.deepEqual(stock(state, "inn_fish").position, { x: -15, y: 19 });
-  assert.equal(
-    villageWorldObjectAt(state, -15, 19, false).name,
-    "Founding food cache",
+  assert.ok(
+    state.village.storage.zones.some(
+      (zone) => zone.containerId === stock(state, "inn_fish").containerId,
+    ),
   );
   assert.ok(
     [
+      [-16, 18],
+      [-15, 19],
       [-16, 19],
       [-15, 18],
       [-15, 20],
