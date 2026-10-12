@@ -7693,3 +7693,45 @@ R5 has a stronger scheduler handoff proof but still requires the multi-day
 no-starvation run. R6 remains unproven. R8 remains in progress behind natural
 permanent housing, the full farm and barn, quarry and specialist operation,
 defense construction, and final visual acceptance.
+
+## Validation checkpoint 185 / planted field and second-night continuity
+
+The clean visible run was observed continuously through the October 12 cutoff,
+then paused and saved at tick 4,931: day three, 07:18. The grain crew naturally
+completed all sixteen starter-field cells. The plot changed from `sowing` to
+`growing`, reached 19.875 percent aggregate growth, and retained 64 moisture;
+there were no blocked jobs. This is visible-run evidence that planting and the
+growth clock now continue across the day boundary, not merely a unit-level
+contract. It is not yet harvest-loop acceptance: the crop has not matured,
+created field piles, entered bounded grain storage, or fed a later meal.
+
+Food production remained positive while farming and housing progressed. At the
+saved checkpoint the bounded stores held 21 ready meals, five fish in the inn
+pantry, seven fish at the physical river bank, seven meat, and five conserved
+seed. The ready-meal count had risen from 25 to 31 before the next morning meal
+cycle. All ten founders slept simultaneously during the second rest block, all
+ten woke into real eating, hauling, sawing, or supervision work, and no survival
+need crossed a danger threshold. Short daytime contention states corresponded
+to the finite saw, crop-cell, cookery, or construction position already being
+claimed; the affected resident took work when the position or next cell opened.
+
+Permanent housing also began physical construction rather than remaining a
+plan flag. The first farmhouse door received its complete material load, was
+built for twelve work minutes, and became the first permanent construction
+element. The project remains deliberately incomplete at one of fifty-five
+elements, with no roof and all ten founders still homeless; this evidence does
+not close the housing or R8 gate.
+
+The cutoff QA reran the strict length audit over 2,173 functions with 141
+documented template exemptions and found zero non-template functions over
+thirty lines. `git diff --check` is clean. The native client remains open on the
+broad founding-town review view with the saved run paused.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 now has
+natural planting and early growth plus repeated fishing, hauling, cooking,
+eating, and bounded-stock proof, but remains in progress until natural maturity,
+harvest, physical field piles, bounded storage, and later consumption complete
+the loop. R5 has reached day three without starvation or blocked work, but its
+multi-day stability proof remains open. R6 remains unproven. R8 remains in
+progress behind permanent housing, the complete farm and barn, quarry and
+specialist operation, defense construction, and final visual acceptance.
