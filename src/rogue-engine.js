@@ -9562,15 +9562,24 @@ function migrateIdentity(value) {
           stockpile.position.x === fallback.position.x &&
           stockpile.position.y === fallback.position.y),
     );
+    const regionalCatch =
+      fallback.key === "river_catch" &&
+      value.village.fixtures.some(
+        (fixture) =>
+          fixture.role === "fishing_jetty" &&
+          fixture.id === existing?.containerId,
+      );
     return existing
       ? {
           ...fallback,
           ...existing,
           capacity: Math.max(fallback.capacity, existing.capacity ?? 0),
-          ...(fallback.key === "river_catch"
+          ...(!regionalCatch && fallback.key === "river_catch"
             ? { position: { ...fallback.position } }
             : {}),
-          containerId: fallback.containerId,
+          containerId: regionalCatch
+            ? existing.containerId
+            : fallback.containerId,
         }
       : fallback;
   });

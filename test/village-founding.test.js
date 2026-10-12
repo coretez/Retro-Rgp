@@ -3406,6 +3406,10 @@ test("R8.5 fishing follows the generated regional river instead of the legacy po
   assert.deepEqual(jetty.bankPosition, job.plan.fishingPosition);
   assert.deepEqual(catchStore.position, jetty.bankPosition);
   assert.equal(catchStore.containerId, jetty.id);
+  const loaded = parseRogueState(serializeRogueState(state)),
+    loadedCatch = stock(loaded, "river_catch");
+  assert.deepEqual(loadedCatch.position, jetty.bankPosition);
+  assert.equal(loadedCatch.containerId, jetty.id);
   assert.notEqual(legacy?.variant, "jetty");
   assert.notDeepEqual(job.targetPosition, { x: 0, y: 16 });
 });

@@ -7603,8 +7603,10 @@ separate provenance fault: the regional fisher worked at the real river jetty,
 but the caught-fish stockpile and hauling source still retained the legacy pond
 coordinate. Regional jetty installation now moves the finite catch container to
 the actual walkable bank, rebuilds its storage zone there before posting work,
-and makes subsequent hauling begin at that bank. The regional-river regression
-now asserts the water jetty, bank, catch position, and container identity.
+and makes subsequent hauling begin at that bank. Save/load migration no longer
+restores that legitimate regional container to the legacy pond coordinate. The
+regional-river regression now asserts the water jetty, bank, catch position,
+container identity, and serialized round trip.
 
 Final clean visible proof run `ac5f62af-bf6f-44f3-879f-42dd5d9c9962`, seed
 `whole-map-food-proof-2026-10-12-d`, is running at Observe 16x from a fresh
