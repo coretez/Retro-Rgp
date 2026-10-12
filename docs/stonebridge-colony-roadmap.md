@@ -7450,8 +7450,9 @@ reserved grain-cell job and was presentation lag rather than scheduler idle.
 This proves that the Day-227 cargo loop and whole-workforce food capture are
 repaired over the first visible workday. It does not yet prove multi-day crop
 maturity, permanent housing completion, or the downstream town. The full
-scheduler audit was still running when this checkpoint was written and is not
-counted as a pass until it returns a result.
+scheduler audit remained CPU-bound without a result for fourteen minutes and
+was terminated so it would not starve the visible client. It is not counted as
+a pass; simulation/audit throughput is now an explicit R5 follow-up.
 
 Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 has
 recovered visible fishing, hauling, storage, eating, and active field work but
