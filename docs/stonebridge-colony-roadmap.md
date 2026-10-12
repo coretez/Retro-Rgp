@@ -7624,3 +7624,44 @@ run naturally completes grow, harvest, haul, cook, and eat without starvation.
 R5 remains under the same multi-day scheduler proof. R6 remains unproven. R8
 remains in progress behind the natural founding town, quarry, specialist,
 defense, and final visual-acceptance gates.
+
+## Validation checkpoint 184 / first-day food and field continuity
+
+The final clean visible run remains active at Observe 16x. Between ticks 491
+and 1,102, the grain work queue advanced naturally from six prepared cells to
+all sixteen prepared cells, changed to the sow queue, and immediately claimed
+its first planting cell. Apparent one-tick `Waiting for an open work position`
+states were queue handoffs rather than a stalled field: completed-cell counts
+continued to rise and up to three residents worked distinct cells without a
+blocked job. At the meal break all hungry founders selected and walked to real
+meal jobs instead of continuing lower-priority work.
+
+The same observed interval closed several independent food paths. River catch
+rose at the physical jetty and was carried across the map into the roadside inn
+store; the cook converted stored meat and fish into meals; the ready-meal count
+rose from 30 to 35 before the coordinated meal break; and a bow-equipped hunter
+completed a deer hunt and carried butchered meat back to bounded storage. Logs
+rose from 49 to 147, sawing produced seasoned lumber, and two physical five-unit
+lumber loads reached the first farmhouse door while food work continued. No job
+was blocked. A few founders legitimately reported contention when all remaining
+crop cells were already claimed or when the next construction input was still
+in transit; each returned to work or a personal survival job as readiness
+changed.
+
+The fenced field no longer remains permanently limited to its 4-by-4 emergency
+starter patch. Once the architect's full field survey reports that the trees
+inside and around the enclosure are cleared, the next fallow cycle expands the
+crop queue to the complete 8-by-8 cultivable interior without overwriting an
+in-progress preparation cycle. The complete food suite now passes 26 tests,
+including this new starter-to-enclosure expansion contract. The strict audit
+covers 2,173 functions with 141 template exemptions and zero functions over
+thirty lines; `git diff --check` is clean.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 has
+visible first-day acquisition, hauling, cooking, eating, field preparation, and
+sowing continuity, but remains in progress until the planted crop grows,
+harvests, reaches bounded storage, and feeds the settlement over multiple days.
+R5 has a stronger scheduler handoff proof but still requires the multi-day
+no-starvation run. R6 remains unproven. R8 remains in progress behind natural
+permanent housing, the full farm and barn, quarry and specialist operation,
+defense construction, and final visual acceptance.

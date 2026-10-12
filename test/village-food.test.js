@@ -486,6 +486,44 @@ test("R4 farming skill queue advances one ordered field cell at a time", () => {
   assert.ok(state.village.skillWorkQueues.farming.queueIds.includes(queue.id));
 });
 
+test("R4 a cleared founding enclosure expands its starter crop on the next cycle", () => {
+  const state = newRogueRun(input),
+    survey = state.village.development.masterPlan.fieldClearingSurveys.find(
+      (candidate) => candidate.cropKind === "grain",
+    ),
+    boundary = state.village.development.masterPlan.fieldBoundaries.find(
+      (candidate) => candidate.cropKind === "grain",
+    );
+  Object.assign(survey, {
+    starterStatus: "cleared",
+    starterArea: {
+      x: boundary.x + 1,
+      y: boundary.y + 1,
+      width: 4,
+      height: 4,
+    },
+    status: "clearing",
+  });
+  ensureVillageFoodSystem(state);
+  const plot = state.village.cropPlots.find(
+    (candidate) => candidate.key === "grain",
+  );
+  assert.deepEqual([plot.area.width, plot.area.height], [4, 4]);
+  plot.workQueue = { action: "harvest", completedCount: 16, cells: [] };
+  survey.status = "cleared";
+
+  const action = cropActionForJob(state, "grow_grain"),
+    expectedCellCount = (boundary.w - 2) * (boundary.h - 2);
+  assert.equal(action.action, "prepare");
+  assert.deepEqual(plot.area, {
+    x: boundary.x + 1,
+    y: boundary.y + 1,
+    width: boundary.w - 2,
+    height: boundary.h - 2,
+  });
+  assert.equal(action.queue.cells.length, expectedCellCount);
+});
+
 test("R4 one conserved seed batch supports every sowing cell in a plot", () => {
   const state = newRogueRun(input);
   state.village.facilities.push("farmstead");

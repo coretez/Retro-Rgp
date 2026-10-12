@@ -251,9 +251,10 @@ export function ensureVillageFoodSystem(state) {
       const existing = state.village.cropPlots.find((plot) => plot.key === key);
       if (!existing) {
         const starter = starterSurveys.get(definition.itemKind),
-          boundary = state.village.development?.masterPlan?.fieldBoundaries?.find(
-            (candidate) => candidate.cropKind === definition.itemKind,
-          ),
+          boundary =
+            state.village.development?.masterPlan?.fieldBoundaries?.find(
+              (candidate) => candidate.cropKind === definition.itemKind,
+            ),
           plannedArea = boundary
             ? {
                 x: boundary.x + 1,
@@ -350,21 +351,61 @@ function ensureCropWorkQueue(plot, action) {
   return plot.workQueue;
 }
 
+function clearedBoundaryArea(state, plot) {
+  const plan = state.village.development?.masterPlan,
+    boundary = plan?.fieldBoundaries?.find(
+      (candidate) => candidate.cropKind === plot.cropKind,
+    ),
+    survey = plan?.fieldClearingSurveys?.find(
+      (candidate) => candidate.boundaryKey === boundary?.key,
+    );
+  if (!boundary || survey?.status !== "cleared") return null;
+  return {
+    x: boundary.x + 1,
+    y: boundary.y + 1,
+    width: boundary.w - 2,
+    height: boundary.h - 2,
+  };
+}
+
+function expandClearedStarterField(state, plot) {
+  if (plot.stage !== "fallow") return;
+  if (plot.workQueue?.action === "prepare" && plot.workQueue.completedCount)
+    return;
+  const area = clearedBoundaryArea(state, plot);
+  if (
+    !area ||
+    (plot.area.width >= area.width && plot.area.height >= area.height)
+  )
+    return;
+  plot.area = area;
+  plot.position = {
+    x: area.x + Math.floor(area.width / 2),
+    y: area.y + Math.floor(area.height / 2),
+  };
+  plot.workPosition = { ...plot.position };
+  transaction(state, "field_expanded_to_boundary", {
+    plotId: plot.id,
+    cropKind: plot.cropKind,
+    area: { ...area },
+  });
+}
+
 function farmingQueueSnapshot(work) {
   return {
     queueIds: work.map((item) => item.id),
     queues: work.map((item) => ({
-    id: item.id,
-    action: item.action,
-    readyCellKeys: item.cells
-      .filter((cell) => cell.status === "queued")
-      .slice(0, item.batchSize)
-      .map((cell) => cell.key),
-    claimedCellKeys: item.cells
-      .filter((cell) => cell.status === "claimed")
-      .map((cell) => cell.key),
-    completedCount: item.completedCount,
-    totalCount: item.cells.length,
+      id: item.id,
+      action: item.action,
+      readyCellKeys: item.cells
+        .filter((cell) => cell.status === "queued")
+        .slice(0, item.batchSize)
+        .map((cell) => cell.key),
+      claimedCellKeys: item.cells
+        .filter((cell) => cell.status === "claimed")
+        .map((cell) => cell.key),
+      completedCount: item.completedCount,
+      totalCount: item.cells.length,
     })),
   };
 }
@@ -700,6 +741,7 @@ export function cropActionForJob(state, jobType) {
     ),
     plot = cropJobPlot(state, definition);
   if (!plot) return null;
+  expandClearedStarterField(state, plot);
   const action = plot.cutOrdered
     ? "cut"
     : plot.stage === "fallow"
@@ -857,7 +899,7 @@ export function applyCropAction(state, job) {
   const action = job.plan?.cropAction,
     plot = state.village.cropPlots?.find(
       (candidate) => candidate.id === job.plan?.cropPlotId,
-  );
+    );
   if (!plot || !action) return;
   if (action === "sow" && job.plan.foodInputBatchIds?.length)
     plot.pendingSeedBatchIds = [
