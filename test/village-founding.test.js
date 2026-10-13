@@ -10,6 +10,7 @@ import {
   villageWorldObjectAt,
 } from "../src/rogue-engine.js";
 import {
+  planVillageAssignmentRoute,
   planVillageRoute,
   villageAssignmentAudit,
   villageMovementCost,
@@ -1554,6 +1555,33 @@ test("R1 a founder enclosed by new camp fixtures returns to walkable ground", ()
     villageMovementCost(villageNpcTerrain(state, resident.position)),
     null,
   );
+});
+
+test("R1 transient crowding does not make assignable work unavailable", () => {
+  const state = newRogueRun(input),
+    actor = state.village.npcStates[0],
+    blocker = state.village.npcStates[1],
+    target = { x: 2, y: 0 },
+    terrainAt = ({ x, y }) =>
+      y === 0 && x >= 0 && x <= 2 ? "village_floor" : "outdoor_water";
+  actor.position = { x: 0, y: 0 };
+  blocker.position = { x: 1, y: 0 };
+  state.village.npcStates.slice(2).forEach((resident, index) => {
+    resident.position = { x: 10 + index, y: 10 };
+  });
+  const occupied = planVillageRoute(state, actor, target, terrainAt, false),
+    assignment = planVillageAssignmentRoute(
+      state,
+      actor,
+      target,
+      terrainAt,
+      false,
+      occupied,
+    );
+  assert.equal(occupied.reason, "destination_congested");
+  assert.equal(assignment.ok, true);
+  assert.equal(assignment.transientCongestion, true);
+  assert.deepEqual(assignment.path, [actor.position, blocker.position, target]);
 });
 
 test("R6 completed structure parts identify their building in the inspector", () => {

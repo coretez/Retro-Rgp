@@ -7976,3 +7976,33 @@ R5 remains under survival and scheduler validation; the remaining access and
 contention waits are not accepted as healthy. R6 remains unproven. R8 remains
 in progress behind the natural food, construction, quarry/specialist, defense,
 and visual gates.
+
+## Survival checkpoint 193 / temporary crowding no longer suppresses shelter work
+
+At day two, 19:48 the clean playbook run held thirty-five usable food portions
+against the mayor's thirty-portion reserve target, with zero hungry and zero
+starving founders. Housing was correctly ranked first at score 142, but both
+door-material deliveries for the first farmhouse had accumulated twenty-two
+retries as `destination_congested`. The house itself remained available while
+no construction element could become ready, so the settlement appeared to be
+choosing food and rest over shelter even though food was no longer the limiting
+resource.
+
+The scheduler had treated a resident temporarily occupying the only current
+route as proof that the delivery was not assignable. Assignment planning now
+distinguishes transient crowding from impassable terrain: it may reserve the
+work when a terrain-valid route exists, but it does not cache the crowd-blind
+path. The active worker must still route normally and request that a blocking
+resident yield; no actor, material, or completed work is teleported.
+
+Focused regressions prove that an occupied one-cell corridor remains assignable
+and that permanent terrain obstruction still fails normally. The strict audit
+covers 2,215 functions with 141 template exemptions and zero functions over
+thirty lines; `git diff --check` is clean.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 is
+food-safe at the current reserve level and still awaits the natural crop
+harvest-to-meal proof. R5 gains the shelter-delivery scheduling repair but
+remains under live construction validation. R6 remains unproven. R8 remains in
+progress behind completed permanent housing, natural food stability,
+quarry/specialist operation, defense, and final visual acceptance.

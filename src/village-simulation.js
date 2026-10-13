@@ -1624,7 +1624,26 @@ function planVillageTerrainRoute(state, actor, target, terrainAt, adjacent) {
   return weightedRoute(options);
 }
 
-function routeForAssignment(state, actor, job, terrainAt) {
+export function planVillageAssignmentRoute(
+  state,
+  actor,
+  target,
+  terrainAt,
+  adjacent,
+  route = planVillageRoute(state, actor, target, terrainAt, adjacent),
+) {
+  if (route.reason !== "destination_congested") return route;
+  const fallback = planVillageTerrainRoute(
+    state,
+    actor,
+    target,
+    terrainAt,
+    adjacent,
+  );
+  return fallback.ok ? { ...fallback, transientCongestion: true } : route;
+}
+
+function preferredAssignmentRoute(state, actor, job, terrainAt) {
   const accessDoor = jobAccessDoor(state, job);
   if (accessDoor && accessDoor.state !== "open")
     return planVillageRoute(
@@ -1650,6 +1669,19 @@ function routeForAssignment(state, actor, job, terrainAt) {
     job.plan.accessPosition,
     terrainAt,
     true,
+  );
+}
+
+function routeForAssignment(state, actor, job, terrainAt) {
+  const route = preferredAssignmentRoute(state, actor, job, terrainAt),
+    goal = jobNavigationGoal(state, job);
+  return planVillageAssignmentRoute(
+    state,
+    actor,
+    goal.target,
+    terrainAt,
+    goal.adjacent,
+    route,
   );
 }
 
@@ -1682,7 +1714,12 @@ function clearJobCrowdBlock(state, job, actor, terrainAt, events, movedActors) {
 }
 
 function cacheJobRoute(job, route, target = jobTargetPosition(job)) {
-  if (!job.plan || GUARD_JOB_TYPES.has(job.jobType)) return;
+  if (
+    !job.plan ||
+    route.transientCongestion ||
+    GUARD_JOB_TYPES.has(job.jobType)
+  )
+    return;
   job.plan.cachedPath = route.path.map((position) => ({ ...position }));
   job.plan.routeTarget = key(target);
   job.plan.cachedRouteCost = route.cost;
