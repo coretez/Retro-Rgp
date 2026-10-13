@@ -7842,3 +7842,32 @@ R8 remains in progress; mountain readability improved, while terrain-correct
 temporary sleeping placement is repaired. After the native client reload, all
 ten assigned bedrolls resolve to two underlying `outdoor_grass` cells; none
 remain over `outdoor_rock` or hidden mountain terrain.
+
+## Scheduler checkpoint 189 / retry-window skill starvation
+
+The ten-minute live review caught a scheduler starvation loop at day one,
+15:07. Fishing had correctly advanced to physical fish hauling, three grain
+workers were preparing separate cells, and meal preparation was ready. However,
+the woodcutter remained on lower-priority shared farming while three forestry
+jobs stayed one tick short of reassignment. Each turn deferred the forestry
+jobs again because their eligible specialist was busy, so skill preemption
+never considered them ready and the specialist could remain misplaced forever.
+
+Assignment preference and skill preemption now treat work whose retry opens
+within two ticks as pending-ready. The job is not executed early; the scheduler
+simply refuses to start lower-skill work during that tiny window and may release
+an already misplaced specialist so the intended job can claim them on its legal
+retry tick. Assignment diagnostics expose the same pending competitor rather
+than incorrectly reporting no competing work.
+
+Focused regressions prove ordinary high-priority contention, suspended shared
+work recovery, and the new one-tick specialist retry contract. The strict audit
+covers 2,209 functions with 141 exemptions and zero functions over thirty lines;
+`git diff --check` is clean.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 has
+advanced naturally from river fishing to bounded fish hauling while grain-field
+preparation continues, but harvest-to-meal remains open. R5 gains a repaired
+skill-priority handoff and remains under live validation. R6 remains unproven.
+R8 remains in progress behind the food, housing, farm/barn, quarry, specialist,
+defense, and final visual gates.

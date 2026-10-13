@@ -8,7 +8,10 @@ import {
   serializeRogueState,
   villageWorldObjectAt,
 } from "../src/rogue-engine.js";
-import { villageMovementCost } from "../src/village-simulation.js";
+import {
+  villageAssignmentAudit,
+  villageMovementCost,
+} from "../src/village-simulation.js";
 import {
   advanceAnimalHusbandry,
   advanceAnimalDisease,
@@ -751,6 +754,47 @@ test("R5 unclaimed shared work cannot strand a suspended specialist", () => {
       (event) => event.type === "job_resumed" && event.jobId === current.id,
     ),
   );
+});
+
+test("R5 a one-tick retry cannot attract a specialist to lower-priority work", () => {
+  const state = newRogueRun(input),
+    woodcutter = state.village.npcStates.find(
+      (resident) => resident.personKey === "woodcutter",
+    );
+  state.location = "village";
+  satisfyFounders(state);
+  Object.assign(state.village.clock, { hour: 9, block: "work" });
+  state.village.jobs = [];
+  for (const resident of state.village.npcStates)
+    if (resident.id !== woodcutter.id)
+      resident.workPermissions.allowedJobTypes = [];
+  const low = createJob(state, {
+      jobType: "grow_vegetables",
+      name: "Temporary shared farm duty",
+      priority: 120,
+      targetPosition: { ...woodcutter.position },
+      plan: { skills: ["farming"] },
+    }).job,
+    forestry = createJob(state, {
+      jobType: "fell_tree",
+      name: "Ready forestry duty",
+      priority: 90,
+      targetPosition: {
+        x: woodcutter.position.x + 2,
+        y: woodcutter.position.y,
+      },
+      plan: { skills: ["forestry"] },
+    }).job;
+  forestry.nextAssignmentAtTick = state.tick + 1;
+  woodcutter.workState = "available";
+
+  const audit = villageAssignmentAudit(state, low.id).find(
+    (candidate) => candidate.actorId === woodcutter.id,
+  );
+
+  assert.equal(audit.canPerform, true);
+  assert.equal(audit.preferredNow, false);
+  assert.deepEqual(audit.competingJobIds, [forestry.id]);
 });
 
 test("R5 a personal survival need returns shared work to its queue", () => {

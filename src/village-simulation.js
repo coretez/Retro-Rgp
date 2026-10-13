@@ -1923,6 +1923,7 @@ function requiredEmergencyFoodSpecialist(state, actor) {
 }
 
 function readyForSkillChoice(state, actor, job, options = {}) {
+  const retryWindow = options.allowPendingRetry ? 2 : 0;
   return (
     job.status === "available" &&
     (!job.plan?.ownerActorId || job.plan.ownerActorId === actor.id) &&
@@ -1931,7 +1932,7 @@ function readyForSkillChoice(state, actor, job, options = {}) {
     constructionReadyForAssignment(job) &&
     !jobResourceBlocker(state, job) &&
     (job.nextAssignmentAtTick == null ||
-      state.tick >= job.nextAssignmentAtTick) &&
+      state.tick + retryWindow >= job.nextAssignmentAtTick) &&
     emergencyFoodCrewAllows(state, actor, job) &&
     actorCanPerform(actor, job, options)
   );
@@ -1942,7 +1943,9 @@ function actorPrefersJobNow(state, actor, job) {
   return !state.village.jobs.some(
     (candidate) =>
       candidate.id !== job.id &&
-      readyForSkillChoice(state, actor, candidate) &&
+      readyForSkillChoice(state, actor, candidate, {
+        allowPendingRetry: true,
+      }) &&
       actorSkillPriority(state, actor, candidate) < priority,
   );
 }
@@ -1978,7 +1981,9 @@ export function villageAssignmentAudit(state, jobId) {
     const competing = state.village.jobs.filter(
       (candidate) =>
         candidate.id !== job.id &&
-        readyForSkillChoice(state, actor, candidate) &&
+        readyForSkillChoice(state, actor, candidate, {
+          allowPendingRetry: true,
+        }) &&
         actorSkillPriority(state, actor, candidate) <
           actorSkillPriority(state, actor, job),
     );
@@ -12200,7 +12205,10 @@ function currentActorJob(state, actor) {
 
 function readyForSkillPreemption(state, actor, job) {
   if (job.status === "available")
-    return readyForSkillChoice(state, actor, job, { allowWorking: true });
+    return readyForSkillChoice(state, actor, job, {
+      allowWorking: true,
+      allowPendingRetry: true,
+    });
   return (
     job.status === "suspended" &&
     job.assignedActorId === actor.id &&
