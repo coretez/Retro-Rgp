@@ -8000,6 +8000,17 @@ and that permanent terrain obstruction still fails normally. The strict audit
 covers 2,215 functions with 141 template exemptions and zero functions over
 thirty lines; `git diff --check` is clean.
 
+The saved live run then crossed naturally into the day-three work block. Both
+door deliveries reopened without the old permanent blocker. Edda Voss carried
+the first five-lumber batch all the way to farmhouse door one, Lina Roth
+completed the corresponding door-two batch, and the scheduler posted the next
+five-lumber batches after the saw crew replenished the physical lumber stack.
+At 11:36 Edda had accepted the next door-one trip while farming, fishing,
+physical fish hauling, cooking, hunting, and crop work continued. This proves
+the shelter chain can now coexist with food production; the current shelter
+rate is limited by log-to-lumber throughput rather than an excessive food
+reserve target.
+
 Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 is
 food-safe at the current reserve level and still awaits the natural crop
 harvest-to-meal proof. R5 gains the shelter-delivery scheduling repair but
