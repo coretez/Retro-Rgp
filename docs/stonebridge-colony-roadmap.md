@@ -7912,3 +7912,29 @@ crop harvest-to-meal loop completes. R5 gains route-proved forestry targeting
 and remains under live validation. R6 remains unproven. R8 remains in progress
 behind natural food stability, permanent construction, quarry/specialist
 operation, defense, and final visual acceptance.
+
+## Survival checkpoint 191 / bedroll relocation no longer hijacks meals
+
+The day-two night review found five founders below the hunger warning line even
+though twenty-five prepared meals were physically available. Their eating jobs
+had accumulated up to forty-five congestion retries. Preserved state showed
+that every affected `eat_meal` order had been rebound from the communal stew
+pot to its owner's bedroll. The bedroll maintenance pass was retargeting every
+open personal life job whenever temporary sleeping places moved, rather than
+retargeting sleep jobs alone. This made hungry field workers try to eat from
+occupied beds and produced the misleading no-path and congestion failures.
+
+Bedroll relocation now changes only `sleep` orders. Existing corrupted eating
+orders retain their target-refresh flag and will rebind to a real communal meal
+place on the corrected simulation pass. A focused regression moves a founder's
+bedroll while both sleeping and eating orders exist: the sleep order follows
+the assigned bedroll, while the meal order remains attached to the physical
+camp meal fixture. Both focused tests pass; the strict audit remains at 2,212
+functions with 141 exemptions and zero violations, and `git diff --check` is
+clean.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 gains
+the repaired meal-access dependency but remains open until the live run clears
+the stale meal jobs and naturally completes harvest-to-meal. R5 remains under
+live survival validation. R6 remains unproven. R8 remains in progress behind
+the natural food, construction, quarry/specialist, defense, and visual gates.

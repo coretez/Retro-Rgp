@@ -1497,6 +1497,34 @@ test("R1 moving a bedroll retargets an existing sleep order", () => {
   assert.equal(job.plan.targetRefreshRequired, undefined);
 });
 
+test("R1 moving a bedroll does not turn an eating order into sleep work", () => {
+  const state = newRogueRun(input),
+    resident = state.village.npcStates[0],
+    targetPosition = { x: -14, y: 18 },
+    target = villageWorldObjectAt(state, -14, 18, false),
+    job = createJob(state, {
+      id: "founding-meal-order",
+      jobType: "eat_meal",
+      name: "Eat from the founding provisions",
+      priority: 100,
+      targetId: target.id,
+      targetPosition,
+      requiredCapabilities: ["eat"],
+      reason: "hunger_need",
+      progressTotal: 30,
+      progressUnit: "life_minute",
+      plan: { lifeJob: true, need: "hunger", ownerActorId: resident.id },
+    }).job;
+  const bedroll = state.village.fixtures.find(
+    (fixture) => fixture.id === resident.sleepingLocation.fixtureId,
+  );
+  bedroll.x += 20;
+  ensureFoundingSleepingPlaces(state);
+  assert.deepEqual(job.targetPosition, targetPosition);
+  assert.equal(job.targetId, target.id);
+  assert.equal(job.plan.targetRefreshRequired, undefined);
+});
+
 test("R6 completed structure parts identify their building in the inspector", () => {
   const state = newRogueRun(input),
     building = {

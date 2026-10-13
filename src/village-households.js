@@ -163,6 +163,7 @@ function retargetOpenSleepJobs(state, resident, fixture) {
   for (const job of state.village.jobs ?? []) {
     if (
       !job.plan?.lifeJob ||
+      job.jobType !== "sleep" ||
       job.plan.ownerActorId !== resident.id ||
       ["completed", "cancelled"].includes(job.status)
     )
