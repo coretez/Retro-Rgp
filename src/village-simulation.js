@@ -7267,6 +7267,18 @@ function ensureFieldClearingSurveys(state, context, events) {
   return surveys;
 }
 
+function forestryTargetReachable(state, context, position) {
+  return villageWorkActors(state)
+    .filter(
+      (actor) =>
+        actor.capabilityTags.includes("forestry") &&
+        actor.workPermissions.allowedJobTypes.includes("fell_tree"),
+    )
+    .some((actor) =>
+      planVillageRoute(state, actor, position, context.terrainAt, true).ok,
+    );
+}
+
 function focusedFieldTree(state, context, excluded) {
   const farm = state.village.jobs.find(
     (job) =>
@@ -7291,7 +7303,8 @@ function focusedFieldTree(state, context, excluded) {
           Math.abs(tree.y - fence.position.y),
         ) <= 2 &&
         context.terrainAt(tree) === "outdoor_tree" &&
-        !excluded.has(key(tree)),
+        !excluded.has(key(tree)) &&
+        forestryTargetReachable(state, context, tree),
     );
     if (target) return target;
   }
@@ -7308,7 +7321,11 @@ function plannedFieldTree(state, context, excluded) {
     const remaining = (survey.starterTreeCells ?? []).filter(
         (tree) => context.terrainAt(tree) === "outdoor_tree",
       ),
-      starter = remaining.find((tree) => !excluded.has(key(tree)));
+      starter = remaining.find(
+        (tree) =>
+          !excluded.has(key(tree)) &&
+          forestryTargetReachable(state, context, tree),
+      );
     if (starter) return starter;
     if (remaining.length) continue;
     Object.assign(survey, {
@@ -7320,7 +7337,11 @@ function plannedFieldTree(state, context, excluded) {
     const remaining = survey.treeCells.filter(
         (tree) => context.terrainAt(tree) === "outdoor_tree",
       ),
-      position = remaining.find((tree) => !excluded.has(key(tree)));
+      position = remaining.find(
+        (tree) =>
+          !excluded.has(key(tree)) &&
+          forestryTargetReachable(state, context, tree),
+      );
     if (position) return position;
     if (remaining.length) continue;
     if (survey.status === "clearing")
@@ -7369,7 +7390,11 @@ function forestryTarget(state, context, excluded = new Set()) {
       index += 1;
       continue;
     }
-    if (context.terrainAt(position) === "outdoor_tree") return position;
+    if (
+      context.terrainAt(position) === "outdoor_tree" &&
+      forestryTargetReachable(state, context, position)
+    )
+      return position;
     candidates.splice(index, 1);
   }
   return null;

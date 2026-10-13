@@ -7881,3 +7881,34 @@ attempts, cancels the stale order with evidence, and selects another tree rather
 than recreating the same inaccessible assignment. A focused natural-turn
 regression proves the failed target is recorded and not selected again. The
 strict audit consequently covers 2,211 functions with zero violations.
+
+## Scheduler checkpoint 190 / forestry target selection proves access first
+
+The next visible night review showed that merely remembering rejected trees was
+not sufficient. The three replacements had already accumulated five `no_path`
+assignment failures before the woodcutter's rest block. The selector had been
+choosing nearby trees by distance and terrain identity without proving that a
+permitted forestry worker could reach an adjacent work cell. That allowed an
+inaccessible cluster to consume another full retry cycle.
+
+Forestry selection now route-proves every candidate against the current
+permitted forestry crew before posting it. The same requirement applies to
+starter-field clearing, focused fence-apron clearing, the full surveyed field
+apron, and ordinary timber collection. Rejected coordinates remain persisted,
+so a failed tree cannot return after save/load while the selector looks for a
+different reachable tree.
+
+The focused replacement and one-tick skill-priority regressions pass. The
+strict audit covers 2,212 functions with 141 exemptions and zero functions over
+thirty lines; `git diff --check` is clean. The live run remains food-safe at
+night with twenty-five prepared meals, five stored fish, and three fish at the
+river. Four earlier river-to-cart transfers completed physically; the current
+transfer is awaiting its retry/work window rather than proving a new natural
+food transition.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 keeps
+its natural fishing and bounded-hauling evidence but remains open until the
+crop harvest-to-meal loop completes. R5 gains route-proved forestry targeting
+and remains under live validation. R6 remains unproven. R8 remains in progress
+behind natural food stability, permanent construction, quarry/specialist
+operation, defense, and final visual acceptance.

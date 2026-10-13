@@ -9,6 +9,7 @@ import {
   villageWorldObjectAt,
 } from "../src/rogue-engine.js";
 import {
+  planVillageRoute,
   villageAssignmentAudit,
   villageMovementCost,
 } from "../src/village-simulation.js";
@@ -2813,6 +2814,31 @@ test("R5 repeatedly inaccessible forestry targets are replaced", () => {
       .every(
         (job) =>
           `${job.targetPosition.x},${job.targetPosition.y}` !== targetKey,
+      ),
+  );
+  const view = rogueUnityView(state),
+    terrain = new Map(
+      view.map.cells.map((cell) => [`${cell.x},${cell.y}`, cell.tile]),
+    ),
+    workers = state.village.npcStates.filter((actor) =>
+      actor.capabilityTags.includes("forestry"),
+    );
+  assert.ok(
+    state.village.jobs
+      .filter(
+        (job) => job.jobType === "fell_tree" && job.status !== "cancelled",
+      )
+      .every((job) =>
+        workers.some(
+          (actor) =>
+            planVillageRoute(
+              state,
+              actor,
+              job.targetPosition,
+              (position) => terrain.get(`${position.x},${position.y}`),
+              true,
+            ).ok,
+        ),
       ),
   );
 });
