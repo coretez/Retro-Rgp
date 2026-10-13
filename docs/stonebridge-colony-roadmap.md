@@ -7966,7 +7966,13 @@ The strict audit covers 2,214 functions with 141 exemptions and zero functions
 over thirty lines; `git diff --check` is clean.
 
 Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 gains
-the blocked-cell recovery required for reliable eating but still awaits live
-recovery plus natural crop harvest-to-meal proof. R5 remains under survival and
-scheduler validation. R6 remains unproven. R8 remains in progress behind the
-natural food, construction, quarry/specialist, defense, and visual gates.
+the blocked-cell recovery required for reliable eating. On the corrected live
+reload, Edda left the enclosed camp cell, completed a normal routed construction
+delivery, and returned to the available pool without another no-path failure.
+At tick 3,045 the visible run had six active founders covering grain tending,
+river fishing, physical fish hauling, cooking, lumber production, and Edda's
+construction delivery. R4 still awaits the natural crop harvest-to-meal proof.
+R5 remains under survival and scheduler validation; the remaining access and
+contention waits are not accepted as healthy. R6 remains unproven. R8 remains
+in progress behind the natural food, construction, quarry/specialist, defense,
+and visual gates.
