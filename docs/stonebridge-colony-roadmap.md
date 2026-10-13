@@ -7942,3 +7942,31 @@ the repaired meal-access dependency but remains open until the live run clears
 the stale meal jobs and naturally completes harvest-to-meal. R5 remains under
 live survival validation. R6 remains unproven. R8 remains in progress behind
 the natural food, construction, quarry/specialist, defense, and visual gates.
+
+## Survival checkpoint 192 / completed fixtures cannot imprison founders
+
+The corrected meal targets exposed the remaining route failure rather than
+hiding it: Edda Voss was standing on `-14,20`, a cell that had become
+impassable after camp fixtures and material objects were established. Every
+orthogonal exit was also blocked, so her valid communal meal order could not
+find a path. At hunger 28 she was approaching the danger threshold while the
+inspector truthfully reported “Waiting for access to work.”
+
+The simulation now reconciles living actor positions against current terrain
+before needs and work are scheduled. If construction, storage, or another new
+fixture encloses an occupied cell, the actor is moved by a bounded breadth-first
+search to the nearest walkable, unoccupied cell and the relocation is recorded
+as an inspectable event. This is recovery for a terrain transition, not
+teleportation used to complete work; the actor must still route normally from
+the recovered position to food or a job.
+
+Focused regressions prove meal jobs remain independent from moving bedrolls and
+a founder enclosed by a newly placed camp obstruction returns to valid ground.
+The strict audit covers 2,214 functions with 141 exemptions and zero functions
+over thirty lines; `git diff --check` is clean.
+
+Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 gains
+the blocked-cell recovery required for reliable eating but still awaits live
+recovery plus natural crop harvest-to-meal proof. R5 remains under survival and
+scheduler validation. R6 remains unproven. R8 remains in progress behind the
+natural food, construction, quarry/specialist, defense, and visual gates.

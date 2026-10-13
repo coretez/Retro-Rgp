@@ -453,6 +453,47 @@ function villageWorkActor(state, actorId) {
   return villageWorkActors(state).find((actor) => actor.id === actorId);
 }
 
+function blockedActorRecoveryCell(state, actor, terrainAt) {
+  const occupied = occupiedVillageCells(state, actor.id),
+    queue = [{ ...actor.position, distance: 0 }],
+    seen = new Set([key(actor.position)]);
+  while (queue.length) {
+    const current = queue.shift();
+    if (
+      current.distance > 0 &&
+      villageMovementCost(terrainAt(current)) != null &&
+      !occupied.has(key(current))
+    )
+      return { x: current.x, y: current.y };
+    if (current.distance >= 12) continue;
+    for (const next of orthogonalNeighbors(current)) {
+      if (seen.has(key(next))) continue;
+      seen.add(key(next));
+      queue.push({ ...next, distance: current.distance + 1 });
+    }
+  }
+  return null;
+}
+
+function repairBlockedActorPositions(state, terrainAt, events) {
+  for (const actor of villageWorkActors(state)) {
+    if (villageMovementCost(terrainAt(actor.position)) != null) continue;
+    const prior = { ...actor.position },
+      position = blockedActorRecoveryCell(state, actor, terrainAt);
+    if (!position) continue;
+    actor.position = position;
+    events.push({
+      type: "resident_relocated_from_blocked_cell",
+      scope: "village",
+      actorId: actor.id,
+      actorName: actorName(actor),
+      from: prior,
+      position: { ...position },
+      tick: state.tick,
+    });
+  }
+}
+
 function actorName(actor) {
   return actor?.name ?? PERSON_NAMES[actor?.personKey] ?? null;
 }
@@ -12678,6 +12719,7 @@ export function advanceVillageSimulation(state, intent, events, context = {}) {
   repairFarmFieldGeometry(state, events);
   cancelMisalignedFarmChildJobs(state);
   repairUnbuiltFarmCirculation(state, context, events);
+  repairBlockedActorPositions(state, terrainAt, events);
   updateVillageLives(state);
   events.push(...advanceVillageCivic(state));
   deriveVillageArchitecture(state);

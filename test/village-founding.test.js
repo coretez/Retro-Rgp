@@ -6,6 +6,7 @@ import {
   parseRogueState,
   rogueUnityView,
   serializeRogueState,
+  villageNpcTerrain,
   villageWorldObjectAt,
 } from "../src/rogue-engine.js";
 import {
@@ -1523,6 +1524,36 @@ test("R1 moving a bedroll does not turn an eating order into sleep work", () => 
   assert.deepEqual(job.targetPosition, targetPosition);
   assert.equal(job.targetId, target.id);
   assert.equal(job.plan.targetRefreshRequired, undefined);
+});
+
+test("R1 a founder enclosed by new camp fixtures returns to walkable ground", () => {
+  const state = newRogueRun(input),
+    resident = state.village.npcStates.find(
+      (candidate) => candidate.personKey === "reeve",
+    );
+  resident.position = { x: -14, y: 20 };
+  state.village.fixtures.push({
+    id: "camp-obstruction",
+    entityType: "fixture",
+    objectKind: "fixture",
+    name: "New camp obstruction",
+    role: "storage",
+    x: resident.position.x,
+    y: resident.position.y,
+    width: 1,
+    height: 1,
+    walkable: false,
+  });
+  assert.equal(
+    villageMovementCost(villageNpcTerrain(state, resident.position)),
+    null,
+  );
+  applyRogueTurn(state, { kind: "wait" });
+  assert.notDeepEqual(resident.position, { x: -14, y: 20 });
+  assert.notEqual(
+    villageMovementCost(villageNpcTerrain(state, resident.position)),
+    null,
+  );
 });
 
 test("R6 completed structure parts identify their building in the inspector", () => {
