@@ -7931,7 +7931,11 @@ bedroll while both sleeping and eating orders exist: the sleep order follows
 the assigned bedroll, while the meal order remains attached to the physical
 camp meal fixture. Both focused tests pass; the strict audit remains at 2,212
 functions with 141 exemptions and zero violations, and `git diff --check` is
-clean.
+clean. After the saved run reloaded, all five corrupted meal orders rebound to
+the four real camp meal places. Bram Eder immediately began eating, Lina Roth
+resumed the physical river-fish haul, and Niko Brand received one of the new
+route-proved forestry targets. The remaining meal-place congestion is now a
+real four-seat/ five-eater queue rather than an attempt to eat from bedrolls.
 
 Phase checkpoint: R0–R3 and R7 retain automated-contract completion. R4 gains
 the repaired meal-access dependency but remains open until the live run clears
