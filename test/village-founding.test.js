@@ -2785,6 +2785,38 @@ test("M-11.1 first founding trial fells timber without consuming tools", () => {
   );
 });
 
+test("R5 repeatedly inaccessible forestry targets are replaced", () => {
+  const state = newRogueRun(input);
+  for (let turn = 0; turn < 40; turn += 1)
+    applyRogueTurn(state, { kind: "wait" });
+  const stalled = state.village.jobs.find(
+    (job) => job.jobType === "fell_tree" && job.status !== "cancelled",
+  );
+  assert.ok(stalled);
+  const targetKey = `${stalled.targetPosition.x},${stalled.targetPosition.y}`;
+  Object.assign(stalled, { status: "available", retryCount: 6 });
+
+  applyRogueTurn(state, { kind: "wait" });
+
+  assert.equal(stalled.status, "cancelled");
+  assert.equal(stalled.statusReason, "forestry_target_rejected");
+  assert.ok(
+    state.village.development.rejectedForestryTargets.some(
+      (entry) => `${entry.position.x},${entry.position.y}` === targetKey,
+    ),
+  );
+  assert.ok(
+    state.village.jobs
+      .filter(
+        (job) => job.jobType === "fell_tree" && job.status !== "cancelled",
+      )
+      .every(
+        (job) =>
+          `${job.targetPosition.x},${job.targetPosition.y}` !== targetKey,
+      ),
+  );
+});
+
 test("M-11.1 forestry output follows the designated tree species", () => {
   const state = newRogueRun(input);
   applyRogueTurn(state, { kind: "wait" });

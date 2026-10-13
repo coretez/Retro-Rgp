@@ -7871,3 +7871,13 @@ preparation continues, but harvest-to-meal remains open. R5 gains a repaired
 skill-priority handoff and remains under live validation. R6 remains unproven.
 R8 remains in progress behind the food, housing, farm/barn, quarry, specialist,
 defense, and final visual gates.
+
+The same checkpoint then isolated the access cause behind the specialist
+starvation: all three founding forestry targets beside camp had accumulated
+eighteen failed access attempts. Once the retry window became visible, those
+jobs truthfully reported `destination_congested` instead of appearing merely
+unclaimed. Forestry now persists rejected target coordinates after six failed
+attempts, cancels the stale order with evidence, and selects another tree rather
+than recreating the same inaccessible assignment. A focused natural-turn
+regression proves the failed target is recorded and not selected again. The
+strict audit consequently covers 2,211 functions with zero violations.

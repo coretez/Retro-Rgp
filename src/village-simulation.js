@@ -7375,9 +7375,37 @@ function forestryTarget(state, context, excluded = new Set()) {
   return null;
 }
 
+function rejectStalledForestryJobs(state, events) {
+  const rejected = (state.village.development.rejectedForestryTargets ??= []);
+  for (const job of state.village.jobs.filter(
+    (candidate) =>
+      candidate.jobType === "fell_tree" &&
+      !["completed", "cancelled"].includes(candidate.status) &&
+      (candidate.retryCount ?? 0) >= 6,
+  )) {
+    rejected.push({
+      position: { ...job.targetPosition },
+      reason: job.blockingReason ?? "repeated_access_failure",
+      rejectedAtTick: state.tick,
+      retryCount: job.retryCount,
+    });
+    cancelJob(state, job, "forestry_target_rejected");
+    events.push(jobEvent(state, "job_cancelled", job));
+  }
+}
+
+function rejectedForestryKeys(state) {
+  return new Set(
+    (state.village.development.rejectedForestryTargets ?? []).map((entry) =>
+      key(entry.position),
+    ),
+  );
+}
+
 // function-length-exempt: template -- declarative forestry-job policy
 function postForestryJobs(state, template, context, events, workOrderId) {
   if (!productionReady(state, template)) return null;
+  rejectStalledForestryJobs(state, events);
   const remote = state.village.jobs.find(
     (job) =>
       job.jobType === "remote_fell_tree" &&
@@ -7404,8 +7432,9 @@ function postForestryJobs(state, template, context, events, workOrderId) {
       0,
     ),
     desired = Math.min(3, (toolStock?.quantity ?? 0) + carriedTools),
-    excluded = new Set(
-      state.village.jobs
+    excluded = new Set([
+      ...rejectedForestryKeys(state),
+      ...state.village.jobs
         .filter(
           (job) =>
             job.plan?.terrainEffect &&
@@ -7413,7 +7442,7 @@ function postForestryJobs(state, template, context, events, workOrderId) {
             !["completed", "cancelled"].includes(job.status),
         )
         .map((job) => key(job.targetPosition)),
-    );
+    ]);
   for (let index = open.length; index < desired; index += 1) {
     const targetPosition = forestryTarget(state, context, excluded),
       target = targetPosition ? context.objectAt(targetPosition) : null,
